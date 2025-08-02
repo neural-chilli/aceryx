@@ -1,332 +1,463 @@
-/* Aceryx Flow Designer Styles */
-
-/* CSS Reset and Base Styles */
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
+/* web/static/css/aceryx.css */
+/* Aceryx - Custom styles consistent with Tabler design system */
 
 :root {
-    --primary-color: #667eea;
-    --secondary-color: #764ba2;
-    --accent-color: #4c51bf;
-    --success-color: #38a169;
-    --text-color: #2d3748;
-    --text-light: #718096;
-    --bg-light: #f7fafc;
-    --border-color: #e2e8f0;
-    --shadow: 0 10px 30px rgba(0,0,0,0.2);
-    --shadow-light: 0 4px 12px rgba(0,0,0,0.1);
-    --border-radius: 12px;
-    --border-radius-small: 8px;
-    --transition: all 0.3s ease;
+    /* Aceryx brand colors that work with Tabler */
+    --tblr-primary: #206bc4;
+    --tblr-primary-rgb: 32, 107, 196;
+    --tblr-primary-fg: #ffffff;
+
+    /* Aceryx accent colors */
+    --aceryx-accent: #0054a6;
+    --aceryx-accent-light: #4dabf7;
+    --aceryx-success: #2fb344;
+    --aceryx-warning: #f59f00;
+    --aceryx-danger: #d63384;
+
+    /* Semantic colors that respect Tabler's system */
+    --aceryx-text: var(--tblr-body-color);
+    --aceryx-text-muted: var(--tblr-muted);
+    --aceryx-bg: var(--tblr-bg-surface);
+    --aceryx-bg-subtle: var(--tblr-bg-surface-secondary);
+    --aceryx-border: var(--tblr-border-color);
+
+    /* Flow designer specific colors */
+    --aceryx-node-bg: var(--tblr-bg-surface);
+    --aceryx-node-border: var(--tblr-border-color);
+    --aceryx-node-selected: var(--tblr-primary);
+    --aceryx-edge-color: var(--tblr-muted);
+    --aceryx-edge-selected: var(--tblr-primary);
 }
 
-body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, sans-serif;
-    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-    min-height: 100vh;
-    color: var(--text-color);
-    line-height: 1.6;
+/* Dark theme overrides - automatically applied by Tabler */
+[data-bs-theme="dark"] {
+    --aceryx-accent: #74c0fc;
+    --aceryx-accent-light: #339af0;
+    --aceryx-success: #51cf66;
+    --aceryx-warning: #ffd43b;
+    --aceryx-danger: #ff6b6b;
+
+    /* Adjust node colors for dark mode */
+    --aceryx-node-bg: var(--tblr-bg-surface-dark);
+    --aceryx-node-border: var(--tblr-border-color-dark);
+    --aceryx-edge-color: var(--tblr-muted-dark);
 }
 
-.container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 2rem;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-}
-
-/* Header Styles */
-header {
-    text-align: center;
-    margin-bottom: 3rem;
-    color: white;
-}
-
-header h1 {
-    font-size: 3.5rem;
-    margin-bottom: 0.5rem;
-    text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
-    background: linear-gradient(45deg, #fff, #f0f4ff);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-}
-
-.subtitle {
-    font-size: 1.3rem;
-    opacity: 0.95;
-    font-weight: 300;
-}
-
-/* Main Content */
-main {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-.welcome-card {
-    background: white;
-    border-radius: var(--border-radius);
-    padding: 3rem;
-    box-shadow: var(--shadow);
-    max-width: 900px;
-    width: 100%;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-}
-
-.welcome-card h2 {
-    color: var(--accent-color);
-    margin-bottom: 1rem;
-    font-size: 2.5rem;
+/* Aceryx brand elements */
+.aceryx-logo {
+    font-size: 1.5rem;
     font-weight: 600;
+    color: var(--tblr-primary);
 }
 
-.welcome-card > p {
-    font-size: 1.2rem;
-    color: var(--text-light);
-    margin-bottom: 2rem;
+.aceryx-logo .maple-leaf {
+    color: var(--aceryx-accent);
+    margin-right: 0.5rem;
 }
 
-/* Features Grid */
-.features {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 2rem;
-    margin: 2rem 0;
-}
-
-.feature {
-    padding: 2rem;
-    border: 2px solid var(--border-color);
-    border-radius: var(--border-radius-small);
-    transition: var(--transition);
-    background: linear-gradient(135deg, #f8fafc 0%, #ffffff 100%);
-}
-
-.feature:hover {
-    transform: translateY(-4px);
-    border-color: var(--accent-color);
-    box-shadow: var(--shadow-light);
-}
-
-.feature h3 {
-    color: var(--text-color);
-    margin-bottom: 1rem;
-    font-size: 1.3rem;
-    font-weight: 600;
-}
-
-.feature p {
-    color: var(--text-light);
-    font-size: 1rem;
-}
-
-/* Status Section */
-.status {
-    background: var(--bg-light);
-    padding: 2rem;
-    border-radius: var(--border-radius-small);
-    margin: 2rem 0;
-    border-left: 4px solid var(--success-color);
-}
-
-.status p {
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
-}
-
-.status-healthy {
-    color: var(--success-color);
-    font-weight: 600;
-}
-
-.status a {
-    color: var(--accent-color);
-    text-decoration: none;
-    font-weight: 500;
-}
-
-.status a:hover {
-    text-decoration: underline;
-}
-
-/* Action Buttons */
-.actions {
-    display: flex;
-    gap: 1rem;
-    margin-top: 2rem;
-    flex-wrap: wrap;
-}
-
-.btn {
-    padding: 1rem 2rem;
-    border: none;
-    border-radius: var(--border-radius-small);
-    font-size: 1.1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: var(--transition);
-    text-decoration: none;
+/* Status indicators */
+.aceryx-status {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-}
-
-.btn-primary {
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: white;
-    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
-}
-
-.btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-}
-
-.btn-secondary {
-    background: white;
-    color: var(--accent-color);
-    border: 2px solid var(--accent-color);
-}
-
-.btn-secondary:hover {
-    background: var(--accent-color);
-    color: white;
-    transform: translateY(-2px);
-}
-
-/* Footer */
-footer {
-    text-align: center;
-    color: white;
-    margin-top: 2rem;
-    opacity: 0.9;
-    font-size: 1rem;
-}
-
-footer a {
-    color: white;
-    text-decoration: none;
+    gap: 0.375rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: var(--tblr-border-radius);
+    font-size: 0.75rem;
     font-weight: 500;
-    border-bottom: 1px solid transparent;
-    transition: var(--transition);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
 }
 
-footer a:hover {
-    border-bottom-color: white;
+.aceryx-status.healthy {
+    background-color: rgba(47, 179, 68, 0.1);
+    color: var(--aceryx-success);
+    border: 1px solid rgba(47, 179, 68, 0.2);
 }
 
-/* Responsive Design */
+.aceryx-status.unhealthy {
+    background-color: rgba(214, 51, 132, 0.1);
+    color: var(--aceryx-danger);
+    border: 1px solid rgba(214, 51, 132, 0.2);
+}
+
+.aceryx-status.warning {
+    background-color: rgba(245, 159, 0, 0.1);
+    color: var(--aceryx-warning);
+    border: 1px solid rgba(245, 159, 0, 0.2);
+}
+
+/* Flow designer container */
+.aceryx-flow-designer {
+    height: 100%;
+    background: var(--aceryx-bg);
+    border: 1px solid var(--aceryx-border);
+    border-radius: var(--tblr-border-radius);
+    overflow: hidden;
+}
+
+/* Tool palette */
+.aceryx-tool-palette {
+    background: var(--aceryx-bg-subtle);
+    border-right: 1px solid var(--aceryx-border);
+    height: 100%;
+    overflow-y: auto;
+}
+
+.aceryx-tool-item {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem;
+    margin: 0.25rem;
+    background: var(--aceryx-node-bg);
+    border: 1px solid var(--aceryx-node-border);
+    border-radius: var(--tblr-border-radius);
+    cursor: grab;
+    transition: all 0.2s ease;
+    user-select: none;
+}
+
+.aceryx-tool-item:hover {
+    border-color: var(--tblr-primary);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transform: translateY(-1px);
+}
+
+.aceryx-tool-item:active {
+    cursor: grabbing;
+    transform: scale(0.98);
+}
+
+.aceryx-tool-icon {
+    width: 24px;
+    height: 24px;
+    margin-right: 0.75rem;
+    color: var(--tblr-primary);
+    flex-shrink: 0;
+}
+
+.aceryx-tool-info h6 {
+    margin: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--aceryx-text);
+}
+
+.aceryx-tool-info p {
+    margin: 0;
+    font-size: 0.75rem;
+    color: var(--aceryx-text-muted);
+    line-height: 1.3;
+}
+
+/* Tool categories */
+.aceryx-tool-category {
+    padding: 0.5rem 0.75rem;
+    margin: 0.5rem 0.25rem 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--aceryx-text-muted);
+    border-bottom: 1px solid var(--aceryx-border);
+}
+
+/* ReactFlow custom styles */
+.aceryx-flow-designer .react-flow {
+    background: var(--aceryx-bg);
+}
+
+.aceryx-flow-designer .react-flow__background {
+    background: var(--aceryx-bg);
+}
+
+.aceryx-flow-designer .react-flow__background-pattern {
+    color: var(--aceryx-border);
+    opacity: 0.4;
+}
+
+/* Custom node styles */
+.aceryx-node {
+    background: var(--aceryx-node-bg);
+    border: 2px solid var(--aceryx-node-border);
+    border-radius: var(--tblr-border-radius);
+    padding: 0.75rem;
+    min-width: 150px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+}
+
+.aceryx-node:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.aceryx-node.selected {
+    border-color: var(--aceryx-node-selected);
+    box-shadow: 0 0 0 3px rgba(32, 107, 196, 0.1);
+}
+
+.aceryx-node-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.aceryx-node-icon {
+    width: 20px;
+    height: 20px;
+    margin-right: 0.5rem;
+    color: var(--tblr-primary);
+}
+
+.aceryx-node-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--aceryx-text);
+    margin: 0;
+}
+
+.aceryx-node-description {
+    font-size: 0.75rem;
+    color: var(--aceryx-text-muted);
+    margin: 0;
+    line-height: 1.3;
+}
+
+/* Custom handle styles */
+.aceryx-handle {
+    width: 10px;
+    height: 10px;
+    background: var(--tblr-primary);
+    border: 2px solid var(--aceryx-node-bg);
+    border-radius: 50%;
+}
+
+.aceryx-handle.source {
+    right: -5px;
+}
+
+.aceryx-handle.target {
+    left: -5px;
+}
+
+/* Custom edge styles */
+.aceryx-edge {
+    stroke: var(--aceryx-edge-color);
+    stroke-width: 2;
+}
+
+.aceryx-edge.selected {
+    stroke: var(--aceryx-edge-selected);
+    stroke-width: 3;
+}
+
+/* Properties panel */
+.aceryx-properties-panel {
+    background: var(--aceryx-bg-subtle);
+    border-left: 1px solid var(--aceryx-border);
+    height: 100%;
+    overflow-y: auto;
+}
+
+.aceryx-properties-header {
+    padding: 1rem;
+    border-bottom: 1px solid var(--aceryx-border);
+    background: var(--aceryx-bg);
+}
+
+.aceryx-properties-content {
+    padding: 1rem;
+}
+
+/* Form controls in properties panel */
+.aceryx-properties-panel .form-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--aceryx-text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.aceryx-properties-panel .form-control,
+.aceryx-properties-panel .form-select {
+    font-size: 0.875rem;
+    margin-bottom: 0.75rem;
+}
+
+/* Minimap custom styles */
+.aceryx-flow-designer .react-flow__minimap {
+    background: var(--aceryx-bg-subtle);
+    border: 1px solid var(--aceryx-border);
+    border-radius: var(--tblr-border-radius);
+}
+
+/* Controls custom styles */
+.aceryx-flow-designer .react-flow__controls {
+    background: var(--aceryx-bg);
+    border: 1px solid var(--aceryx-border);
+    border-radius: var(--tblr-border-radius);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.aceryx-flow-designer .react-flow__controls-button {
+    background: var(--aceryx-bg);
+    border-color: var(--aceryx-border);
+    color: var(--aceryx-text);
+}
+
+.aceryx-flow-designer .react-flow__controls-button:hover {
+    background: var(--aceryx-bg-subtle);
+    border-color: var(--tblr-primary);
+}
+
+/* Toolbar styles */
+.aceryx-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    background: var(--aceryx-bg);
+    border-bottom: 1px solid var(--aceryx-border);
+}
+
+.aceryx-toolbar .btn {
+    font-size: 0.875rem;
+    padding: 0.375rem 0.75rem;
+}
+
+/* Execution status */
+.aceryx-execution-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.375rem 0.75rem;
+    background: var(--aceryx-bg-subtle);
+    border: 1px solid var(--aceryx-border);
+    border-radius: var(--tblr-border-radius);
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.aceryx-execution-status.running {
+    background: rgba(32, 107, 196, 0.1);
+    border-color: rgba(32, 107, 196, 0.2);
+    color: var(--tblr-primary);
+}
+
+.aceryx-execution-status.success {
+    background: rgba(47, 179, 68, 0.1);
+    border-color: rgba(47, 179, 68, 0.2);
+    color: var(--aceryx-success);
+}
+
+.aceryx-execution-status.error {
+    background: rgba(214, 51, 132, 0.1);
+    border-color: rgba(214, 51, 132, 0.2);
+    color: var(--aceryx-danger);
+}
+
+/* Pulse animation for running status */
+.aceryx-pulse {
+    animation: aceryx-pulse 2s infinite;
+}
+
+@keyframes aceryx-pulse {
+    0% { opacity: 1; }
+    50% { opacity: 0.5; }
+    100% { opacity: 1; }
+}
+
+/* Loading spinner */
+.aceryx-spinner {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 2px solid var(--aceryx-border);
+    border-radius: 50%;
+    border-top-color: var(--tblr-primary);
+    animation: aceryx-spin 1s linear infinite;
+}
+
+@keyframes aceryx-spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive design */
 @media (max-width: 768px) {
-    .container {
-        padding: 1rem;
+    .aceryx-tool-palette {
+        position: absolute;
+        top: 0;
+        left: -300px;
+        width: 300px;
+        z-index: 1000;
+        transition: left 0.3s ease;
     }
 
-    header h1 {
-        font-size: 2.5rem;
+    .aceryx-tool-palette.open {
+        left: 0;
     }
 
-    .subtitle {
-        font-size: 1.1rem;
+    .aceryx-properties-panel {
+        position: absolute;
+        top: 0;
+        right: -300px;
+        width: 300px;
+        z-index: 1000;
+        transition: right 0.3s ease;
     }
 
-    .welcome-card {
-        padding: 2rem;
-        margin: 1rem 0;
+    .aceryx-properties-panel.open {
+        right: 0;
     }
 
-    .welcome-card h2 {
-        font-size: 2rem;
+    .aceryx-node {
+        min-width: 120px;
+        padding: 0.5rem;
     }
 
-    .features {
-        grid-template-columns: 1fr;
-        gap: 1.5rem;
+    .aceryx-node-title {
+        font-size: 0.8rem;
     }
 
-    .feature {
-        padding: 1.5rem;
-    }
-
-    .actions {
-        flex-direction: column;
-    }
-
-    .btn {
-        width: 100%;
-        justify-content: center;
-    }
-}
-
-@media (max-width: 480px) {
-    header h1 {
-        font-size: 2rem;
-    }
-
-    .welcome-card {
-        padding: 1.5rem;
-    }
-
-    .welcome-card h2 {
-        font-size: 1.8rem;
+    .aceryx-node-description {
+        font-size: 0.7rem;
     }
 }
 
-/* Animations */
-@keyframes fadeInUp {
-    from {
-        opacity: 0;
-        transform: translateY(30px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+/* Utility classes */
+.aceryx-text-primary {
+    color: var(--tblr-primary) !important;
 }
 
-.welcome-card {
-    animation: fadeInUp 0.6s ease-out;
+.aceryx-text-accent {
+    color: var(--aceryx-accent) !important;
 }
 
-.feature {
-    animation: fadeInUp 0.6s ease-out;
+.aceryx-bg-subtle {
+    background-color: var(--aceryx-bg-subtle) !important;
 }
 
-.feature:nth-child(1) { animation-delay: 0.1s; }
-.feature:nth-child(2) { animation-delay: 0.2s; }
-.feature:nth-child(3) { animation-delay: 0.3s; }
+.aceryx-border {
+    border-color: var(--aceryx-border) !important;
+}
 
-/* Focus states for accessibility */
-.btn:focus,
-a:focus {
-    outline: 2px solid var(--accent-color);
+/* Focus styles for accessibility */
+.aceryx-tool-item:focus,
+.aceryx-node:focus {
+    outline: 2px solid var(--tblr-primary);
     outline-offset: 2px;
 }
 
-/* High contrast mode support */
-@media (prefers-contrast: high) {
-    :root {
-        --primary-color: #000080;
-        --secondary-color: #000040;
-        --text-color: #000000;
-        --border-color: #000000;
+/* Print styles */
+@media print {
+    .aceryx-tool-palette,
+    .aceryx-properties-panel,
+    .aceryx-toolbar {
+        display: none !important;
     }
-}
 
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-    * {
-        animation-duration: 0.01ms !important;
-        animation-iteration-count: 1 !important;
-        transition-duration: 0.01ms !important;
+    .aceryx-flow-designer {
+        border: none !important;
+        background: white !important;
     }
 }
