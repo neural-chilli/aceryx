@@ -21,8 +21,8 @@ The implementation follows a modular, trait-based design that scales from develo
                     │   - Configuration       │
                     └─────────────────────────┘
                                  │
-         ┌───────────────────────┼───────────────────────┐
-         │                       │                       │
+         ┌───────────────────────┼──────────────────────┐
+         │                       │                      │
 ┌────────▼────────┐    ┌─────────▼─────────┐    ┌───────▼───────┐
 │   Storage       │    │   Tool System     │    │   Execution   │
 │   - Memory      │    │   - Native Tools  │    │   - Context   │
