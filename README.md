@@ -1,5 +1,5 @@
 [![CI Pipeline](https://github.com/neural-chilli/aceryx/actions/workflows/build.yml/badge.svg)](https://github.com/neural-chilli/aceryx/actions/workflows/build.yml)
-[![Quarto Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://neural-chilli.github.io/Cyclonetix/)
+[![Quarto Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://neural-chilli.github.io/aceryx/)
 
 # Aceryx 🍁
 
