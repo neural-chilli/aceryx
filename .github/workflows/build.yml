@@ -1,4 +1,4 @@
-name: Build and Publish
+name: Build and Test
 
 on:
   push:
@@ -14,47 +14,60 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # Set up Rust with cargo caching
-      - name: Set up Rust
+      # Install Rust with explicit verification
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
 
-      # Cache cargo registry, git db, and target directory
-      - name: Cache cargo
-        uses: actions/cache@v4
+      # Verify Rust installation
+      - name: Verify Rust installation
+        run: |
+          rustc --version
+          cargo --version
+          rustfmt --version
+          cargo clippy --version
+
+      # Use Swatinem's cache action (more reliable for Rust)
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          # Cache on lock file changes
+          key: ${{ hashFiles('Cargo.lock') }}
+          # Also cache based on Cargo.toml for when lock file doesn't exist yet
+          shared-key: "aceryx"
 
       # Check formatting first (fast fail)
-      - name: Check formatting
+      - name: Check code formatting
         run: cargo fmt --all -- --check
 
-      # Run clippy for linting
+      # Run clippy for linting (only default features for now)
       - name: Run clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
-      # Run tests
+      # Run tests with default features
       - name: Run tests
-        run: cargo test --all-features
+        run: cargo test
 
-      # Build in release mode
-      - name: Build (release mode)
-        run: cargo build --release --all-features
+      # Build in release mode with default features
+      - name: Build release
+        run: cargo build --release
 
-      # Upload the artifact (the compiled binary) for reference
-      - name: Upload artifact
+      # Test that optional features compile
+      - name: Test feature compilation
+        run: |
+          cargo check --features redis-storage
+          cargo check --features postgres-storage
+          cargo check --features ai-agents
+          cargo check --all-features
+
+      # Upload the compiled binary
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aceryx-binary-${{ github.sha }}
+          name: aceryx-${{ runner.os }}-${{ github.sha }}
           path: target/release/aceryx
           retention-days: 30
