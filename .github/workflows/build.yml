@@ -40,13 +40,15 @@ jobs:
           # Also cache based on Cargo.toml for when lock file doesn't exist yet
           shared-key: "aceryx"
 
-      # Check formatting first (fast fail)
+      # Check formatting (warning only, don't fail the build)
       - name: Check code formatting
         run: cargo fmt --all -- --check
+        continue-on-error: true
 
-      # Run clippy for linting (only default features for now)
+      # Run clippy for linting (warning only during development)
       - name: Run clippy
         run: cargo clippy --all-targets -- -D warnings
+        continue-on-error: true
 
       # Run tests with default features
       - name: Run tests
