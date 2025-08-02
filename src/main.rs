@@ -56,7 +56,10 @@ async fn main() -> Result<()> {
 
             // For now, just bind and hold
             let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-            info!("Server started successfully - listening on http://{}:{}", host, port);
+            info!(
+                "Server started successfully - listening on http://{}:{}",
+                host, port
+            );
             info!("Press Ctrl+C to stop");
 
             // Simple holding pattern until we implement the actual server
@@ -76,11 +79,15 @@ async fn main() -> Result<()> {
 
         Commands::Version => {
             println!("aceryx {}", env!("CARGO_PKG_VERSION"));
-            println!("Built with Rust {}", std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string()));
+            println!(
+                "Built with Rust {}",
+                std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string())
+            );
             Ok(())
         }
     }
 }
+
 
 /// Initialize logging/tracing with appropriate levels for development vs production
 fn init_logging(dev_mode: bool) -> Result<()> {
@@ -92,8 +99,7 @@ fn init_logging(dev_mode: bool) -> Result<()> {
 
     tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| filter.into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| filter.into()),
         )
         .with(tracing_subscriber::fmt::layer())
         .init();
