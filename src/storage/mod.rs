@@ -5,7 +5,6 @@ use anyhow::Result;
 
 pub mod memory;
 pub mod types;
-mod memory;
 
 pub use types::*;
 

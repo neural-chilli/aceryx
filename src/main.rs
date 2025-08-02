@@ -4,7 +4,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use std::sync::Arc;
 use tracing::{info, warn};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod api;
 mod config;
@@ -21,7 +21,7 @@ use tools::{native::NativeProtocol, ToolRegistry};
 #[command(name = "aceryx")]
 #[command(about = "An open-source agentic flow builder for Rust")]
 #[command(long_about = r#"
-Aceryx is the visual AI workflow platform that bridges modern AI interfaces 
+Aceryx is the visual AI workflow platform that bridges modern AI interfaces
 with enterprise systems through secure, high-performance workflow orchestration.
 
 The Apache Camel of AI - Universal bridge for enterprise AI integration.
@@ -134,7 +134,7 @@ async fn main() -> Result<()> {
 
             // Initialize tool registry
             let tool_registry = create_tool_registry(&app_config, storage.clone()).await?;
-            info!("Tool registry initialized with {} protocols", 
+            info!("Tool registry initialized with {} protocols",
                 tool_registry.protocols().len());
 
             // Discover and register tools
@@ -191,9 +191,8 @@ async fn main() -> Result<()> {
             println!("The Apache Camel of AI");
             println!();
             println!("Build information:");
-            println!("  Rust version: {}", env!("RUSTC_VERSION").unwrap_or("unknown"));
-            println!("  Build date: {}", env!("BUILD_DATE").unwrap_or("unknown"));
-            println!("  Git commit: {}", env!("GIT_HASH").unwrap_or("unknown"));
+            println!("  Built with Rust");
+            println!("  Build target: {}", std::env::consts::ARCH);
             println!();
             println!("Features:");
             #[cfg(feature = "redis-storage")]
@@ -226,8 +225,9 @@ fn init_logging(config: &config::AceryxConfig, dev_mode: bool) -> Result<()> {
 
     let subscriber = tracing_subscriber::registry()
         .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| filter.into()),
+            EnvFilter::try_from_default_env()
+                .or_else(|_| EnvFilter::try_new(filter))
+                .unwrap_or_else(|_| EnvFilter::new("info")),
         );
 
     match config.logging.format {
@@ -254,7 +254,7 @@ fn init_logging(config: &config::AceryxConfig, dev_mode: bool) -> Result<()> {
 /// Initialize minimal logging for CLI commands
 fn init_minimal_logging() -> Result<()> {
     tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
         .with(tracing_subscriber::fmt::layer().compact())
         .init();
 
@@ -360,10 +360,10 @@ async fn list_tools(
         None
     };
 
-    let tools = registry.storage.list_tools(category).await?;
+    let tools = registry.storage.list_tools(category.clone()).await?;
 
     if tools.is_empty() {
-        if let Some(cat) = category {
+        if let Some(cat) = &category {
             println!("No tools found in category: {}", cat);
         } else {
             println!("No tools available. Run 'aceryx tools refresh' to discover tools.");
@@ -374,7 +374,8 @@ async fn list_tools(
     println!("Available Tools:");
     println!("{:-<80}", "");
 
-    for tool in tools {
+    let tool_count = tools.len();
+    for tool in &tools {
         println!("🔧 {} ({})", tool.name, tool.id);
         println!("   Category: {}", tool.category);
         println!("   Description: {}", tool.description);
@@ -382,7 +383,7 @@ async fn list_tools(
         println!();
     }
 
-    println!("Total: {} tools", tools.len());
+    println!("Total: {} tools", tool_count);
     Ok(())
 }
 

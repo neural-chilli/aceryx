@@ -337,6 +337,7 @@ impl FlowStorage for MemoryStorage {
 mod tests {
     use super::*;
     use serde_json::json;
+    use crate::storage::{ExecutionMode, WasmPermissions};
 
     #[tokio::test]
     async fn test_memory_storage_flow_crud() {

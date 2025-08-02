@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 pub mod types;
-mod types;
 
 pub use types::*;
 

@@ -35,9 +35,6 @@ pub enum AceryxError {
     #[error("Rate limit exceeded")]
     RateLimitExceeded,
 
-    #[error("Storage error: {0}")]
-    Storage(#[from] anyhow::Error),
-
     #[error("Serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
 
@@ -46,6 +43,9 @@ pub enum AceryxError {
 
     #[error("HTTP client error: {0}")]
     HttpClient(#[from] reqwest::Error),
+
+    #[error("Storage error: {0}")]
+    StorageError(String),
 
     #[error("Internal server error: {message}")]
     Internal { message: String },
@@ -79,7 +79,7 @@ impl AceryxError {
             AceryxError::AccessDenied { .. } => StatusCode::FORBIDDEN,
             AceryxError::RateLimitExceeded => StatusCode::TOO_MANY_REQUESTS,
             AceryxError::ToolExecutionFailed { .. } => StatusCode::INTERNAL_SERVER_ERROR,
-            AceryxError::Storage(_)
+            AceryxError::StorageError(_)
             | AceryxError::Serialization(_)
             | AceryxError::Io(_)
             | AceryxError::HttpClient(_)
@@ -98,7 +98,7 @@ impl AceryxError {
             AceryxError::AccessDenied { .. } => "ACCESS_DENIED",
             AceryxError::RateLimitExceeded => "RATE_LIMIT_EXCEEDED",
             AceryxError::ToolExecutionFailed { .. } => "TOOL_EXECUTION_FAILED",
-            AceryxError::Storage(_) => "STORAGE_ERROR",
+            AceryxError::StorageError(_) => "STORAGE_ERROR",
             AceryxError::Serialization(_) => "SERIALIZATION_ERROR",
             AceryxError::Io(_) => "IO_ERROR",
             AceryxError::HttpClient(_) => "HTTP_CLIENT_ERROR",
@@ -151,21 +151,17 @@ impl IntoResponse for AceryxError {
 /// Convert anyhow errors to AceryxError
 impl From<anyhow::Error> for AceryxError {
     fn from(err: anyhow::Error) -> Self {
-        AceryxError::Storage(err)
+        AceryxError::StorageError(err.to_string())
     }
 }
 
-// src/api/middleware.rs
+// Middleware functions
 
 use axum::{
-    body::Body,
     extract::Request,
-    http::{HeaderMap, Method, StatusCode},
     middleware::Next,
-    response::Response,
 };
 use std::time::Instant;
-use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Request logging middleware
@@ -175,18 +171,21 @@ pub async fn request_logging(request: Request, next: Next) -> Response {
     let uri = request.uri().clone();
     let request_id = Uuid::new_v4();
 
-    // Extract user agent and other relevant headers
-    let headers = request.headers();
-    let user_agent = headers
+    // Extract user agent from headers before we modify the request
+    let user_agent = request
+        .headers()
         .get("user-agent")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("unknown");
+        .unwrap_or("unknown")
+        .to_string();
+
+    // Convert to mut after we've extracted what we need
+    let mut request = request;
 
     // Add request ID to request extensions for use in handlers
-    let mut request = request;
     request.extensions_mut().insert(request_id);
 
-    info!(
+    tracing::info!(
         request_id = %request_id,
         method = %method,
         uri = %uri,
@@ -199,6 +198,127 @@ pub async fn request_logging(request: Request, next: Next) -> Response {
     let status = response.status();
 
     // Log the response
-    let log_level = if status.is_client_error() || status.is_server_error() {
-        tracing::Level::WARN
+    if status.is_client_error() || status.is_server_error() {
+        tracing::warn!(
+            request_id = %request_id,
+            method = %method,
+            uri = %uri,
+            status = %status,
+            duration_ms = duration.as_millis(),
+            "Request completed with error"
+        );
     } else {
+        tracing::info!(
+            request_id = %request_id,
+            method = %method,
+            uri = %uri,
+            status = %status,
+            duration_ms = duration.as_millis(),
+            "Request completed successfully"
+        );
+    }
+
+    response
+}
+
+/// Error handling middleware
+pub async fn error_handling(request: Request, next: Next) -> Response {
+    let response = next.run(request).await;
+
+    // If the response is already an error, pass it through
+    if response.status().is_client_error() || response.status().is_server_error() {
+        return response;
+    }
+
+    response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_aceryx_error_status_codes() {
+        assert_eq!(
+            AceryxError::FlowNotFound {
+                id: "test".to_string()
+            }
+                .status_code(),
+            StatusCode::NOT_FOUND
+        );
+
+        assert_eq!(
+            AceryxError::ValidationError {
+                message: "test".to_string()
+            }
+                .status_code(),
+            StatusCode::BAD_REQUEST
+        );
+
+        assert_eq!(
+            AceryxError::AuthenticationRequired.status_code(),
+            StatusCode::UNAUTHORIZED
+        );
+
+        assert_eq!(
+            AceryxError::RateLimitExceeded.status_code(),
+            StatusCode::TOO_MANY_REQUESTS
+        );
+    }
+
+    #[test]
+    fn test_aceryx_error_codes() {
+        assert_eq!(
+            AceryxError::FlowNotFound {
+                id: "test".to_string()
+            }
+                .error_code(),
+            "FLOW_NOT_FOUND"
+        );
+
+        assert_eq!(
+            AceryxError::ToolNotFound {
+                id: "test".to_string()
+            }
+                .error_code(),
+            "TOOL_NOT_FOUND"
+        );
+
+        assert_eq!(
+            AceryxError::ValidationError {
+                message: "test".to_string()
+            }
+                .error_code(),
+            "VALIDATION_ERROR"
+        );
+    }
+
+    #[test]
+    fn test_client_error_classification() {
+        let client_error = AceryxError::FlowNotFound {
+            id: "test".to_string(),
+        };
+        assert!(client_error.is_client_error());
+
+        let server_error = AceryxError::Internal {
+            message: "test".to_string(),
+        };
+        assert!(!server_error.is_client_error());
+    }
+
+    #[test]
+    fn test_error_helper_methods() {
+        let validation_error = AceryxError::validation("test message");
+        assert!(matches!(validation_error, AceryxError::ValidationError { .. }));
+
+        let internal_error = AceryxError::internal("test message");
+        assert!(matches!(internal_error, AceryxError::Internal { .. }));
+    }
+
+    #[test]
+    fn test_error_conversion() {
+        let anyhow_error = anyhow::anyhow!("test error");
+        let aceryx_error: AceryxError = anyhow_error.into();
+        assert!(matches!(aceryx_error, AceryxError::StorageError(_)));
+    }
+}

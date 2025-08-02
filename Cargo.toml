@@ -11,6 +11,15 @@ keywords = ["ai", "workflow", "automation", "enterprise", "integration"]
 categories = ["web-programming", "command-line-utilities"]
 readme = "README.md"
 
+# Library and binary configuration
+[lib]
+name = "aceryx"
+path = "src/lib.rs"
+
+[[bin]]
+name = "aceryx"
+path = "src/main.rs"
+
 [dependencies]
 # Core async runtime
 tokio = { version = "1.0", features = ["full"] }
@@ -18,7 +27,7 @@ tokio = { version = "1.0", features = ["full"] }
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
 tower = { version = "0.4", features = ["full"] }
-tower-http = { version = "0.5", features = ["fs", "cors", "trace", "timeout"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace", "timeout", "compression-full"] }
 
 # HTTP client for tool integrations
 reqwest = { version = "0.12", features = ["json", "stream"] }
@@ -88,10 +97,6 @@ ai-agents = ["dep:rig-core"]
 
 # All features for development/testing
 full = ["redis-storage", "postgres-storage", "ai-agents"]
-
-[[bin]]
-name = "aceryx"
-path = "src/main.rs"
 
 [profile.release]
 opt-level = 3

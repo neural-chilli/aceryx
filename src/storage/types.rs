@@ -56,7 +56,7 @@ impl ToolDefinition {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum ToolCategory {
     AI,         // LLMs, ML models
     Http,       // REST APIs, webhooks
@@ -421,5 +421,17 @@ mod tests {
         assert_eq!(filters.created_by, Some("user1".to_string()));
         assert_eq!(filters.tags.len(), 2);
         assert_eq!(filters.limit, Some(10));
+    }
+
+    #[test]
+    fn test_tool_category_hash() {
+        use std::collections::HashMap;
+
+        let mut map = HashMap::new();
+        map.insert(ToolCategory::AI, 5);
+        map.insert(ToolCategory::Http, 10);
+
+        assert_eq!(map.get(&ToolCategory::AI), Some(&5));
+        assert_eq!(map.get(&ToolCategory::Http), Some(&10));
     }
 }
