@@ -1,6 +1,6 @@
 // src/lib.rs
 
-//! # Aceryx - The Apache Camel of AI
+//! # Aceryx - The multi-tool of AI
 //!
 //! Aceryx is a visual AI workflow platform that bridges modern AI interfaces 
 //! with enterprise systems through secure, high-performance workflow orchestration.

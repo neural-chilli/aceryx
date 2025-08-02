@@ -1,0 +1,132 @@
+<div class="alert alert-success alert-dismissible" role="alert">
+  <div class="d-flex">
+    <div>
+      <svg class="icon alert-icon"><use xlink:href="#tabler-check"></use></svg>
+    </div>
+    <div>
+      <h4 class="alert-title">Tools Refreshed</h4>
+      <div class="text-muted">{{ tools_discovered }} tools discovered successfully.</div>
+    </div>
+  </div>
+  <a class="btn-close" data-bs-dismiss="alert" aria-label="close"></a>
+</div>
+
+<!-- JavaScript for tool testing -->
+<script>
+  function testTool(toolId) {
+    document.getElementById('test-tool-id').value = toolId;
+    document.getElementById('test-tool-input').value = '{}';
+    document.getElementById('test-result').style.display = 'none';
+
+    const modal = new bootstrap.Modal(document.getElementById('tool-test-modal'));
+    modal.show();
+  }
+
+  function executeTestTool() {
+    const toolId = document.getElementById('test-tool-id').value;
+    const input = document.getElementById('test-tool-input').value;
+
+    let parsedInput;
+    try {
+      parsedInput = JSON.parse(input);
+    } catch (e) {
+      alert('Invalid JSON input');
+      return;
+    }
+
+    fetch(`/api/v1/tools/execute/${toolId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: parsedInput
+      })
+    })
+            .then(response => response.json())
+            .then(data => {
+              document.getElementById('test-result-output').textContent = JSON.stringify(data, null, 2);
+              document.getElementById('test-result').style.display = 'block';
+            })
+            .catch(error => {
+              console.error('Error:', error);
+              document.getElementById('test-result-output').textContent = 'Error: ' + error.message;
+              document.getElementById('test-result').style.display = 'block';
+            });
+  }
+
+  // Auto-refresh dashboard stats every 30 seconds
+  document.addEventListener('DOMContentLoaded', function() {
+    if (window.location.pathname === '/dashboard' || window.location.pathname === '/') {
+      setInterval(function() {
+        htmx.ajax('GET', '/partials/dashboard_content', {
+          target: '#dashboard-stats',
+          swap: 'outerHTML'
+        });
+      }, 30000);
+    }
+  });
+
+  // Enhanced HTMX event handlers
+  document.addEventListener('htmx:afterRequest', function(event) {
+    // Show success message for successful requests
+    if (event.detail.xhr.status >= 200 && event.detail.xhr.status < 300) {
+      if (event.detail.requestConfig.path.includes('/execute')) {
+        // Tool or flow execution completed
+        console.log('Execution completed successfully');
+      }
+    }
+  });
+
+  document.addEventListener('htmx:responseError', function(event) {
+    // Handle HTMX errors gracefully
+    console.error('HTMX request failed:', event.detail);
+
+    // Show user-friendly error message
+    const errorDiv = document.createElement('div');
+    errorDiv.className = 'alert alert-danger alert-dismissible';
+    errorDiv.innerHTML = `
+        <div class="d-flex">
+            <div>
+                <svg class="icon alert-icon"><use xlink:href="#tabler-alert-circle"></use></svg>
+            </div>
+            <div>
+                <h4 class="alert-title">Request Failed</h4>
+                <div class="text-muted">Please try again or refresh the page.</div>
+            </div>
+        </div>
+        <a class="btn-close" data-bs-dismiss="alert" aria-label="close"></a>
+    `;
+
+    // Insert at top of main content
+    const main = document.querySelector('.page-body .container-xl');
+    if (main) {
+      main.insertBefore(errorDiv, main.firstChild);
+
+      // Auto-remove after 5 seconds
+      setTimeout(() => {
+        if (errorDiv.parentNode) {
+          errorDiv.remove();
+        }
+      }, 5000);
+    }
+  });
+
+  // Loading indicators for HTMX requests
+  document.addEventListener('htmx:beforeRequest', function(event) {
+    // Add loading state to buttons
+    const trigger = event.detail.elt;
+    if (trigger.tagName === 'BUTTON') {
+      trigger.disabled = true;
+      const originalText = trigger.innerHTML;
+      trigger.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>' + trigger.textContent;
+
+      // Restore original state after request
+      document.addEventListener('htmx:afterRequest', function restoreButton() {
+        trigger.disabled = false;
+        trigger.innerHTML = originalText;
+        document.removeEventListener('htmx:afterRequest', restoreButton);
+      }, { once: true });
+    }
+  });
+</script>

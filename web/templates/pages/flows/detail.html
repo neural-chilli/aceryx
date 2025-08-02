@@ -1,0 +1,204 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ flow.name }} - Flow Details{% endblock %}
+
+{% block header %}
+<div class="row g-2 align-items-center">
+    <div class="col">
+        <div class="page-pretitle">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/flows">Flows</a></li>
+                    <li class="breadcrumb-item active">{{ flow.name }}</li>
+                </ol>
+            </nav>
+        </div>
+        <h2 class="page-title">{{ flow.name }}</h2>
+        <div class="text-muted mt-1">{{ flow.description }}</div>
+    </div>
+    <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+            {% if can_edit %}
+            <a href="/flows/{{ flow.id }}/design" class="btn btn-primary">
+                <svg class="icon"><use xlink:href="#tabler-edit"></use></svg>
+                Design
+            </a>
+            {% endif %}
+            {% if can_execute %}
+            <button class="btn btn-success"
+                    hx-post="/api/v1/flows/{{ flow.id }}/execute"
+                    hx-target="#execution-results"
+                    hx-swap="innerHTML">
+                <svg class="icon"><use xlink:href="#tabler-player-play"></use></svg>
+                Execute
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- Flow Information -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title">Flow Information</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-5">Created by:</dt>
+                            <dd class="col-7">{{ flow.created_by }}</dd>
+                            <dt class="col-5">Version:</dt>
+                            <dd class="col-7">{{ flow.version }}</dd>
+                            <dt class="col-5">Created:</dt>
+                            <dd class="col-7">{{ flow.created_at | date }}</dd>
+                            <dt class="col-5">Updated:</dt>
+                            <dd class="col-7">{{ flow.updated_at | date }}</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-5">Nodes:</dt>
+                            <dd class="col-7">{{ flow.nodes | length }}</dd>
+                            <dt class="col-5">Connections:</dt>
+                            <dd class="col-7">{{ flow.edges | length }}</dd>
+                            <dt class="col-5">Variables:</dt>
+                            <dd class="col-7">{{ flow.variables | length }}</dd>
+                        </dl>
+                    </div>
+                </div>
+
+                {% if flow.tags %}
+                <div class="mt-3">
+                    <strong>Tags:</strong>
+                    {% for tag in flow.tags %}
+                    <span class="badge bg-blue me-1">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Execution Results -->
+        <div id="execution-results"></div>
+
+        <!-- Execution History -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Execution History</h3>
+            </div>
+            <div class="card-body">
+                {% if execution_history %}
+                <div class="table-responsive">
+                    <table class="table">
+                        <thead>
+                        <tr>
+                            <th>Started</th>
+                            <th>Status</th>
+                            <th>Duration</th>
+                            <th>Actions</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        {% for execution in execution_history %}
+                        <tr>
+                            <td>{{ execution.started_at | date }}</td>
+                            <td>
+                                {% if execution.status == "completed" %}
+                                <span class="badge bg-success">Completed</span>
+                                {% elif execution.status == "failed" %}
+                                <span class="badge bg-danger">Failed</span>
+                                {% else %}
+                                <span class="badge bg-warning">{{ execution.status | title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ execution.duration_ms }}ms</td>
+                            <td>
+                                <a href="#" class="btn btn-sm btn-outline-primary">View</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty">
+                    <div class="empty-icon">
+                        <svg class="icon"><use xlink:href="#tabler-clock"></use></svg>
+                    </div>
+                    <p class="empty-title">No executions yet</p>
+                    <p class="empty-subtitle text-muted">This flow hasn't been executed yet.</p>
+                    <div class="empty-action">
+                        <button class="btn btn-primary"
+                                hx-post="/api/v1/flows/{{ flow.id }}/execute"
+                                hx-target="#execution-results">
+                            <svg class="icon"><use xlink:href="#tabler-player-play"></use></svg>
+                            Execute Now
+                        </button>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Versions -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title">Versions</h3>
+            </div>
+            <div class="card-body">
+                {% if versions %}
+                <div class="list-group list-group-flush">
+                    {% for version in versions %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <span>{{ version }}</span>
+                        {% if version == flow.version %}
+                        <span class="badge bg-primary">Current</span>
+                        {% else %}
+                        <a href="/flows/{{ flow.id }}/versions/{{ version }}" class="btn btn-sm btn-outline-primary">View</a>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="text-muted">Only current version available</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Quick Actions -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Quick Actions</h3>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="/flows/{{ flow.id }}/design" class="btn btn-outline-primary">
+                        <svg class="icon"><use xlink:href="#tabler-edit"></use></svg>
+                        Edit Flow
+                    </a>
+                    <button class="btn btn-outline-secondary">
+                        <svg class="icon"><use xlink:href="#tabler-copy"></use></svg>
+                        Duplicate
+                    </button>
+                    <button class="btn btn-outline-secondary">
+                        <svg class="icon"><use xlink:href="#tabler-download"></use></svg>
+                        Export
+                    </button>
+                    <hr>
+                    <button class="btn btn-outline-danger">
+                        <svg class="icon"><use xlink:href="#tabler-trash"></use></svg>
+                        Delete Flow
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

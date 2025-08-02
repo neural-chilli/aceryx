@@ -1,0 +1,148 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}System Overview - Aceryx{% endblock %}
+
+{% block header %}
+<div class="row g-2 align-items-center">
+    <div class="col">
+        <h2 class="page-title">System Overview</h2>
+        <div class="text-muted mt-1">Monitor system health and configuration</div>
+    </div>
+    <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+            <button class="btn btn-outline-primary"
+                    hx-get="/system"
+                    hx-target="body"
+                    hx-swap="outerHTML">
+                <svg class="icon"><use xlink:href="#tabler-refresh"></use></svg>
+                Refresh
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- System Health -->
+<div class="row row-deck row-cards mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Health Status</h3>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <div class="text-muted">Overall Status</div>
+                            {% if health.overall_status == "healthy" %}
+                            <div class="h3 text-success">Healthy</div>
+                            {% else %}
+                            <div class="h3 text-danger">Unhealthy</div>
+                            {% endif %}
+                        </div>
+                        <div class="mb-3">
+                            <div class="text-muted">Storage</div>
+                            <div class="h4">{{ health.storage.status | title }}</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="mb-3">
+                            <div class="text-muted">Tool Registry</div>
+                            <div class="h4">{{ health.tools.status | title }}</div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="text-muted">Version</div>
+                            <div class="h4">{{ version }}</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">System Information</h3>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-6">Architecture:</dt>
+                    <dd class="col-6">{{ system.target_arch }}</dd>
+                    <dt class="col-6">OS:</dt>
+                    <dd class="col-6">{{ system.target_os | title }}</dd>
+                    <dt class="col-6">Memory:</dt>
+                    <dd class="col-6">{{ system.memory_usage.rss }}</dd>
+                    <dt class="col-6">Uptime:</dt>
+                    <dd class="col-6">{{ system.uptime }}</dd>
+                </dl>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Features -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Enabled Features</h3>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            {% for feature in features %}
+            <div class="col-md-6 mb-2">
+                <div class="d-flex align-items-center">
+                    {% if feature.enabled %}
+                    <svg class="icon text-success me-2"><use xlink:href="#tabler-check"></use></svg>
+                    {% else %}
+                    <svg class="icon text-muted me-2"><use xlink:href="#tabler-x"></use></svg>
+                    {% endif %}
+                    <div>
+                        <strong>{{ feature.name }}</strong>
+                        <div class="text-muted small">{{ feature.description }}</div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Protocol Health -->
+{% if health.tools.protocol_details %}
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Protocol Health</h3>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                <tr>
+                    <th>Protocol</th>
+                    <th>Status</th>
+                    <th>Tools</th>
+                    <th>Last Refresh</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for protocol in health.tools.protocol_details %}
+                <tr>
+                    <td>{{ protocol.protocol_name | title }}</td>
+                    <td>
+                        {% if protocol.healthy %}
+                        <span class="badge bg-success">Healthy</span>
+                        {% else %}
+                        <span class="badge bg-danger">Unhealthy</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ protocol.tool_count }}</td>
+                    <td>{{ protocol.last_refresh | date }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

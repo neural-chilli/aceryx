@@ -1,0 +1,55 @@
+<div class="search-results">
+  {% if flows %}
+  <h6 class="text-muted mb-2">Flows ({{ flows | length }})</h6>
+  <div class="list-group mb-3">
+    {% for flow in flows[:5] %}
+    <a href="/flows/{{ flow.id }}" class="list-group-item list-group-item-action">
+      <div class="d-flex w-100 justify-content-between">
+        <h6 class="mb-1">{{ flow.name }}</h6>
+        <small class="text-muted">{{ flow.created_at | date }}</small>
+      </div>
+      <p class="mb-1">{{ flow.description }}</p>
+      <small class="text-muted">by {{ flow.created_by }}</small>
+    </a>
+    {% endfor %}
+    {% if flows | length > 5 %}
+    <a href="/flows?search={{ search_query }}" class="list-group-item list-group-item-action text-center">
+      View all {{ flows | length }} results
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if tools %}
+  <h6 class="text-muted mb-2">Tools ({{ tools | length }})</h6>
+  <div class="list-group">
+    {% for tool in tools[:5] %}
+    <a href="/tools/{{ tool.id }}" class="list-group-item list-group-item-action">
+      <div class="d-flex w-100 justify-content-between">
+        <h6 class="mb-1">{{ tool.name }}</h6>
+        <span class="badge bg-blue">{{ tool.category }}</span>
+      </div>
+      <p class="mb-1">{{ tool.description }}</p>
+      <small class="text-muted">{{ tool.id }}</small>
+    </a>
+    {% endfor %}
+    {% if tools | length > 5 %}
+    <a href="/tools?search={{ search_query }}" class="list-group-item list-group-item-action text-center">
+      View all {{ tools | length }} results
+    </a>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if not flows and not tools %}
+  <div class="empty">
+    <div class="empty-icon">
+      <svg class="icon"><use xlink:href="#tabler-search"></use></svg>
+    </div>
+    <p class="empty-title">No results found</p>
+    <p class="empty-subtitle text-muted">
+      Try adjusting your search terms or browse all items.
+    </p>
+  </div>
+  {% endif %}
+</div>

@@ -1,53 +1,204 @@
+<!-- web/templates/index.html - Simple working template -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
-    <link rel="stylesheet" href="{{ asset_url('style.css') }}">
-    <link rel="icon" href="{{ asset_url('favicon.ico') }}" type="image/x-icon">
+    <title>🍁 Aceryx - The multi-tool of AI</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 3rem;
+        }
+        .header h1 {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+        .dashboard {
+            background: white;
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            margin-bottom: 2rem;
+        }
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+        .stat-number {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 0.5rem;
+        }
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        .action-card {
+            background: #f8f9fa;
+            padding: 1.5rem;
+            border-radius: 8px;
+            border: 1px solid #e9ecef;
+            transition: transform 0.2s;
+        }
+        .action-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: 500;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #5a67d8;
+        }
+        .btn-outline {
+            background: transparent;
+            color: #667eea;
+            border: 2px solid #667eea;
+        }
+        .btn-outline:hover {
+            background: #667eea;
+            color: white;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            background: #48bb78;
+            color: white;
+            border-radius: 12px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .links {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 2rem;
+        }
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+            .header h1 {
+                font-size: 2rem;
+            }
+            .stats {
+                grid-template-columns: 1fr;
+            }
+            .actions {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
 <div class="container">
-    <header>
-        <h1>🍁 Aceryx Flow Designer</h1>
-        <p class="subtitle">An open-source agentic flow builder for Rust</p>
-    </header>
+    <div class="header">
+        <h1>🍁 Aceryx</h1>
+        <p class="subtitle">The multi-tool of AI - Visual AI Workflow Platform</p>
+    </div>
 
-    <main>
-        <div class="welcome-card">
-            <h2>Welcome to Aceryx</h2>
-            <p>Your visual AI agent workflow builder is starting up.</p>
+    <div class="dashboard">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+            <h2>System Dashboard</h2>
+            <span class="status-badge">{{ health.overall_status | default("Healthy") | title }}</span>
+        </div>
 
-            <div class="features">
-                {% for feature in features %}
-                <div class="feature">
-                    <h3>{{ feature.icon }} {{ feature.title }}</h3>
-                    <p>{{ feature.description }}</p>
-                </div>
-                {% endfor %}
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_flows | default(0) }}</div>
+                <div>Active Flows</div>
             </div>
-
-            <div class="status">
-                <p><strong>Status:</strong> <span class="status-healthy">Server Running</span></p>
-                <p><strong>Version:</strong> v{{ version }}</p>
-                <p><strong>Health Check:</strong> <a href="/health">JSON Status</a></p>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.total_tools | default(0) }}</div>
+                <div>Available Tools</div>
             </div>
-
-            <div class="actions">
-                <button class="btn btn-primary" onclick="alert('Flow designer coming soon!')">
-                    🎨 Open Flow Designer
-                </button>
-                <button class="btn btn-secondary" onclick="window.open('/health', '_blank')">
-                    🔍 Health Check
-                </button>
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.active_protocols | default(0) }}</div>
+                <div>Protocols</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ version | default("0.1.0") }}</div>
+                <div>Version</div>
             </div>
         </div>
-    </main>
 
-    <footer>
-        <p>Made with 🍁 and Rust | <a href="https://github.com/neural-chilli/aceryx">GitHub</a></p>
-    </footer>
+        <div class="actions">
+            <div class="action-card">
+                <h3>🎨 Flow Designer</h3>
+                <p>Create and manage AI workflows with our visual designer.</p>
+                <div style="margin-top: 1rem;">
+                    <a href="/flows" class="btn">Manage Flows</a>
+                    <a href="/flows/new" class="btn btn-outline" style="margin-left: 0.5rem;">Create New</a>
+                </div>
+            </div>
+            <div class="action-card">
+                <h3>🔧 Tool Registry</h3>
+                <p>Browse and test available tools for your workflows.</p>
+                <div style="margin-top: 1rem;">
+                    <a href="/tools" class="btn">Browse Tools</a>
+                    <a href="/api/v1/tools" class="btn btn-outline" style="margin-left: 0.5rem;">API</a>
+                </div>
+            </div>
+            <div class="action-card">
+                <h3>⚙️ System Status</h3>
+                <p>Monitor system health and configuration.</p>
+                <div style="margin-top: 1rem;">
+                    <a href="/system" class="btn">System Info</a>
+                    <a href="/health" class="btn btn-outline" style="margin-left: 0.5rem;">Health Check</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="links">
+            <a href="/api/v1/flows" class="btn btn-outline">API - Flows</a>
+            <a href="/api/v1/tools" class="btn btn-outline">API - Tools</a>
+            <a href="/api/v1/system/info" class="btn btn-outline">API - System</a>
+        </div>
+    </div>
+
+    <div style="text-align: center; color: white; margin-top: 2rem; opacity: 0.9;">
+        <p>Made with 🍁 and Rust | <strong>Aceryx v{{ version | default("0.1.0") }}</strong></p>
+    </div>
 </div>
 </body>
 </html>

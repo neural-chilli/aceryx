@@ -1,7 +1,8 @@
-// src/tools/mod.rs
+// src/tools/mod.rs - Fixed version with Serialize derives
 
 use anyhow::Result;
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -284,7 +285,7 @@ impl ExecutionContext {
 }
 
 /// Health information for a tool protocol
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProtocolHealth {
     pub protocol_name: String,
     pub healthy: bool,
@@ -294,7 +295,7 @@ pub struct ProtocolHealth {
 }
 
 /// Health information for the entire tool registry
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegistryHealth {
     pub healthy: bool,
     pub protocols: Vec<ProtocolHealth>,

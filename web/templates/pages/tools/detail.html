@@ -1,0 +1,216 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}{{ tool.name }} - Tool Details{% endblock %}
+
+{% block header %}
+<div class="row g-2 align-items-center">
+    <div class="col">
+        <div class="page-pretitle">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="/tools">Tools</a></li>
+                    <li class="breadcrumb-item active">{{ tool.name }}</li>
+                </ol>
+            </nav>
+        </div>
+        <h2 class="page-title">{{ tool.name }}</h2>
+        <div class="text-muted mt-1">{{ tool.description }}</div>
+    </div>
+    <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+            <span class="badge bg-blue">{{ tool.category }}</span>
+            {% if can_execute %}
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#execute-tool-modal">
+                <svg class="icon"><use xlink:href="#tabler-play"></use></svg>
+                Test Tool
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-8">
+        <!-- Tool Information -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title">Tool Information</h3>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-3">ID:</dt>
+                    <dd class="col-9"><code>{{ tool.id }}</code></dd>
+                    <dt class="col-3">Category:</dt>
+                    <dd class="col-9"><span class="badge bg-blue">{{ tool.category }}</span></dd>
+                    <dt class="col-3">Execution Mode:</dt>
+                    <dd class="col-9">{{ tool.execution_mode }}</dd>
+                    <dt class="col-3">Created:</dt>
+                    <dd class="col-9">{{ tool.created_at | date }}</dd>
+                    <dt class="col-3">Updated:</dt>
+                    <dd class="col-9">{{ tool.updated_at | date }}</dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Input/Output Schemas -->
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h3 class="card-title">Input Schema</h3>
+                    </div>
+                    <div class="card-body">
+                        <pre><code>{{ tool.input_schema | tojsonpretty }}</code></pre>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h3 class="card-title">Output Schema</h3>
+                    </div>
+                    <div class="card-body">
+                        <pre><code>{{ tool.output_schema | tojsonpretty }}</code></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Examples -->
+        {% if example_inputs %}
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Examples</h3>
+            </div>
+            <div class="card-body">
+                <div class="accordion" id="examples-accordion">
+                    {% for example in example_inputs %}
+                    <div class="accordion-item">
+                        <h2 class="accordion-header">
+                            <button class="accordion-button {% if not loop.first %}collapsed{% endif %}"
+                                    type="button"
+                                    data-bs-toggle="collapse"
+                                    data-bs-target="#example-{{ loop.index }}"
+                                    aria-expanded="{% if loop.first %}true{% else %}false{% endif %}">
+                                {{ example.name }}
+                            </button>
+                        </h2>
+                        <div id="example-{{ loop.index }}"
+                             class="accordion-collapse collapse {% if loop.first %}show{% endif %}"
+                             data-bs-parent="#examples-accordion">
+                            <div class="accordion-body">
+                                <pre><code>{{ example.input | tojsonpretty }}</code></pre>
+                                <button class="btn btn-sm btn-primary mt-2"
+                                        onclick="loadExample({{ example.input | tojson | escape }})">
+                                    Use This Example
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="col-md-4">
+        <!-- Usage Statistics -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h3 class="card-title">Usage Statistics</h3>
+            </div>
+            <div class="card-body">
+                <dl class="row">
+                    <dt class="col-6">Executions:</dt>
+                    <dd class="col-6">{{ usage_stats.total_executions }}</dd>
+                    <dt class="col-6">Success Rate:</dt>
+                    <dd class="col-6">{{ (usage_stats.success_rate * 100) | round(1) }}%</dd>
+                    <dt class="col-6">Avg Duration:</dt>
+                    <dd class="col-6">{{ usage_stats.avg_duration_ms }}ms</dd>
+                </dl>
+            </div>
+        </div>
+
+        <!-- Related Tools -->
+        <div class="card">
+            <div class="card-header">
+                <h3 class="card-title">Related Tools</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Other tools in the {{ tool.category }} category</p>
+                <a href="/tools?category={{ tool.category | lower }}" class="btn btn-outline-primary">
+                    Browse {{ tool.category }} Tools
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Tool Execution Modal -->
+<div class="modal modal-blur fade" id="execute-tool-modal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Test {{ tool.name }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Input JSON</label>
+                    <textarea class="form-control" id="tool-input" rows="10" placeholder="Enter input JSON...">{}</textarea>
+                </div>
+                <div id="execution-result" style="display: none;">
+                    <label class="form-label">Result</label>
+                    <pre id="result-output"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="executeTool()">Execute</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function loadExample(exampleInput) {
+        document.getElementById('tool-input').value = JSON.stringify(exampleInput, null, 2);
+    }
+
+    function executeTool() {
+        const input = document.getElementById('tool-input').value;
+        let parsedInput;
+
+        try {
+            parsedInput = JSON.parse(input);
+        } catch (e) {
+            alert('Invalid JSON input');
+            return;
+        }
+
+        fetch(`/api/v1/tools/execute/{{ tool.id }}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                input: parsedInput
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                document.getElementById('result-output').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('execution-result').style.display = 'block';
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error executing tool');
+            });
+    }
+</script>
+{% endblock %}

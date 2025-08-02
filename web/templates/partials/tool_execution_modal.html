@@ -1,0 +1,28 @@
+<div class="modal modal-blur fade" id="tool-test-modal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Test Tool</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label">Tool ID</label>
+          <input type="text" class="form-control" id="test-tool-id" readonly>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Input JSON</label>
+          <textarea class="form-control" id="test-tool-input" rows="8" placeholder="{}"></textarea>
+        </div>
+        <div id="test-result" class="mb-3" style="display: none;">
+          <label class="form-label">Result</label>
+          <pre class="bg-light p-3 rounded" id="test-result-output"></pre>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" onclick="executeTestTool()">Execute</button>
+      </div>
+    </div>
+  </div>
+</div>

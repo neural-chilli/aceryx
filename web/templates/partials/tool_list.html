@@ -1,0 +1,73 @@
+<div class="row row-deck row-cards">
+    {% for tool in tools %}
+    <div class="col-sm-6 col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="subheader">{{ tool.category }}</div>
+                    <div class="ms-auto">
+                        <span class="badge bg-blue">{{ tool.execution_mode }}</span>
+                    </div>
+                </div>
+                <div class="h1 mb-3">{{ tool.name }}</div>
+                <div class="d-flex mb-2">
+                    <div>{{ tool.description }}</div>
+                </div>
+                <div class="d-flex mb-2">
+                    <small class="text-muted">ID: {{ tool.id }}</small>
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <a href="/tools/{{ tool.id }}" class="btn btn-primary btn-sm">
+                            <svg class="icon"><use xlink:href="#tabler-eye"></use></svg>
+                            Details
+                        </a>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-success btn-sm"
+                                onclick="testTool('{{ tool.id }}')">
+                            <svg class="icon"><use xlink:href="#tabler-play"></use></svg>
+                            Test
+                        </button>
+                    </div>
+                    <div class="col-auto ms-auto">
+                        <div class="dropdown">
+                            <a href="#" class="btn-action" data-bs-toggle="dropdown">
+                                <svg class="icon"><use xlink:href="#tabler-dots-vertical"></use></svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a href="/tools/{{ tool.id }}" class="dropdown-item">View Details</a>
+                                <a href="#" class="dropdown-item">Add to Flow</a>
+                                <div class="dropdown-divider"></div>
+                                <a href="#" class="dropdown-item">Documentation</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if tools | length == 0 %}
+<div class="empty">
+    <div class="empty-icon">
+        <svg class="icon"><use xlink:href="#tabler-tools"></use></svg>
+    </div>
+    <p class="empty-title">No tools found</p>
+    <p class="empty-subtitle text-muted">
+        Try adjusting your search or category filter.
+    </p>
+    <div class="empty-action">
+        <button class="btn btn-primary"
+                hx-post="/api/v1/tools/refresh"
+                hx-target="#tools-container">
+            <svg class="icon"><use xlink:href="#tabler-refresh"></use></svg>
+            Refresh Tools
+        </button>
+    </div>
+</div>
+{% endif %}

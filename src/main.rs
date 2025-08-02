@@ -23,8 +23,6 @@ use tools::{native::NativeProtocol, ToolRegistry};
 #[command(long_about = r#"
 Aceryx is the visual AI workflow platform that bridges modern AI interfaces
 with enterprise systems through secure, high-performance workflow orchestration.
-
-The Apache Camel of AI - Universal bridge for enterprise AI integration.
 "#)]
 struct Cli {
     #[command(subcommand)]
@@ -117,7 +115,7 @@ async fn main() -> Result<()> {
             // Initialize logging based on config
             init_logging(&app_config, dev)?;
 
-            info!("🍁 Starting Aceryx - The Apache Camel of AI");
+            info!("🍁 Starting Aceryx - The multi-tool of AI");
             info!("Version: {}", env!("CARGO_PKG_VERSION"));
             info!("Binding to {}:{}", app_config.server.host, app_config.server.port);
             info!("Storage backend: {:?}", app_config.storage.backend);
@@ -188,7 +186,7 @@ async fn main() -> Result<()> {
 
         Commands::Version => {
             println!("aceryx {}", env!("CARGO_PKG_VERSION"));
-            println!("The Apache Camel of AI");
+            println!("The multi-tool of AI");
             println!();
             println!("Build information:");
             println!("  Built with Rust");

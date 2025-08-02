@@ -2,7 +2,7 @@
 name = "aceryx"
 version = "0.1.0"
 edition = "2021"
-description = "The Apache Camel of AI - Visual AI workflow platform for enterprise integration"
+description = "The multi-tool of AI - Visual AI workflow platform for enterprise integration"
 license = "Apache-2.0"
 repository = "https://github.com/neural-chilli/aceryx"
 homepage = "https://aceryx.org"

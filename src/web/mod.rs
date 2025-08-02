@@ -18,10 +18,10 @@ mod handlers;
 mod static_assets;
 mod templates;
 
-use handlers::create_routes;
 use crate::api;
 use crate::storage::FlowStorage;
 use crate::tools::ToolRegistry;
+use crate::error::{request_logging, error_handling};
 
 /// Start the Axum web server with storage and tools integration
 pub async fn start_server_with_storage(
@@ -42,17 +42,21 @@ pub async fn start_server_with_storage(
     if dev_mode {
         info!("🔧 Development mode: Enhanced logging and CORS enabled");
         info!("📋 Available endpoints:");
-        info!("   GET  /           - Landing page");
-        info!("   GET  /health     - Health check");
-        info!("   GET  /static/*   - Static assets");
-        info!("   GET  /api/v1/system/info - System information");
-        info!("   GET  /api/v1/flows       - List flows");
-        info!("   POST /api/v1/flows       - Create flow");
-        info!("   GET  /api/v1/tools       - List tools");
-        info!("   POST /api/v1/tools/refresh - Refresh tools");
-        info!("   POST /api/v1/tools/execute/:id - Execute tool");
+        info!("   GET  /                    - Dashboard");
+        info!("   GET  /flows               - Flow listing");
+        info!("   GET  /flows/new           - Create flow");
+        info!("   GET  /flows/:id           - Flow details");
+        info!("   GET  /flows/:id/design    - Flow designer");
+        info!("   GET  /tools               - Tool registry");
+        info!("   GET  /tools/:id           - Tool details");
+        info!("   GET  /system              - System overview");
+        info!("   GET  /health              - Health check");
+        info!("   GET  /static/*            - Static assets");
+        info!("   API  /api/v1/*            - REST API endpoints");
+        info!("   HTMX /partials/*          - Dynamic content");
         info!("");
-        info!("📖 API Documentation: http://{}:{}/api/docs", host, port);
+        info!("📖 Web UI: http://{}:{}/", host, port);
+        info!("📊 API Health: http://{}:{}/health", host, port);
     }
 
     // Log startup information
@@ -71,14 +75,17 @@ pub async fn start_server_with_storage(
 
 /// Legacy function for backward compatibility
 pub async fn start_server(host: &str, port: u16, dev_mode: bool) -> Result<()> {
-    // For backward compatibility, create minimal storage and empty tool registry
     use crate::storage::memory::MemoryStorage;
-    use crate::tools::ToolRegistry;
+    use crate::tools::{native::NativeProtocol, ToolRegistry};
+
+    warn!("Using legacy start_server function - consider upgrading to start_server_with_storage");
 
     let storage = Arc::new(MemoryStorage::new());
-    let tool_registry = Arc::new(ToolRegistry::new(storage.clone()));
+    let mut tool_registry = ToolRegistry::new(storage.clone());
+    tool_registry.add_protocol(Box::new(NativeProtocol::new()));
+    tool_registry.refresh_tools().await?;
 
-    start_server_with_storage(host, port, dev_mode, storage, tool_registry).await
+    start_server_with_storage(host, port, dev_mode, storage, Arc::new(tool_registry)).await
 }
 
 /// Create the Axum application with all routes, middleware, and integrations
@@ -88,17 +95,22 @@ fn create_app_with_storage(
     tool_registry: Arc<ToolRegistry>,
 ) -> Result<Router> {
     let mut app = Router::new()
-        // Web UI routes (landing page, static assets)
-        .merge(create_routes()?)
+        // Web UI routes (enhanced Tabler-based interface)
+        .merge(handlers::create_routes(storage.clone(), tool_registry.clone())?)
         // API routes (flows, tools, system)
         .merge(api::create_api_router(storage.clone(), tool_registry.clone()));
 
-    // Apply middleware based on mode
+    // Apply middleware stack
     let middleware_stack = ServiceBuilder::new()
+        // Request logging and error handling
+        .layer(axum::middleware::from_fn(request_logging))
+        .layer(axum::middleware::from_fn(error_handling))
+        // HTTP tracing
         .layer(TraceLayer::new_for_http())
+        // Request timeout
         .layer(TimeoutLayer::new(Duration::from_secs(60)));
 
-    // Conditional compression based on dev mode
+    // Conditional middleware based on mode
     if dev_mode {
         app = app.layer(middleware_stack);
     } else {
@@ -143,7 +155,6 @@ fn create_app_with_storage(
 
 /// Create the basic app for backward compatibility (without storage integration)
 fn create_app(dev_mode: bool) -> Result<Router> {
-    // For backward compatibility, create with minimal dependencies
     use crate::storage::memory::MemoryStorage;
     use crate::tools::ToolRegistry;
 
@@ -250,18 +261,27 @@ pub async fn handle_web_error(error: anyhow::Error) -> axum::response::Response 
         <head>
             <title>Aceryx - Error</title>
             <style>
-                body {{ font-family: Arial, sans-serif; margin: 40px; }}
-                .error {{ color: #d32f2f; }}
-                .container {{ max-width: 600px; }}
+                body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 40px; background: #f8fafc; }}
+                .error {{ color: #e53e3e; }}
+                .container {{ max-width: 600px; margin: 0 auto; background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+                .header {{ display: flex; align-items: center; margin-bottom: 1rem; }}
+                .back-link {{ color: #4299e1; text-decoration: none; font-weight: 500; }}
+                .back-link:hover {{ text-decoration: underline; }}
             </style>
         </head>
         <body>
             <div class="container">
-                <h1>🍁 Aceryx</h1>
+                <div class="header">
+                    <h1>🍁 Aceryx</h1>
+                </div>
                 <h2 class="error">Something went wrong</h2>
                 <p>The server encountered an error while processing your request.</p>
                 <p><strong>Error:</strong> {}</p>
-                <p><a href="/">← Back to Home</a></p>
+                <hr style="margin: 2rem 0; border: none; border-top: 1px solid #e2e8f0;">
+                <p>
+                    <a href="/dashboard" class="back-link">← Back to Dashboard</a> |
+                    <a href="/health" class="back-link">Check System Health</a>
+                </p>
             </div>
         </body>
         </html>
@@ -334,7 +354,7 @@ pub async fn start_server_with_config(
     let listener = TcpListener::bind(format!("{}:{}", host, port)).await?;
     info!(
         "🚀 Aceryx server starting on http://{}:{} ({})",
-        host, 
+        host,
         port,
         if config.dev_mode { "development" } else { "production" }
     );
@@ -345,6 +365,7 @@ pub async fn start_server_with_config(
         info!("   - Extended logging");
         info!("   - No static caching");
         info!("   - Debug endpoints");
+        info!("   - HTMX development tools");
     }
 
     // Log startup information
@@ -365,11 +386,13 @@ fn create_app_with_config(
     tool_registry: Arc<ToolRegistry>,
 ) -> Result<Router> {
     let mut app = Router::new()
-        .merge(create_routes()?)
+        .merge(handlers::create_routes(storage.clone(), tool_registry.clone())?)
         .merge(api::create_api_router(storage.clone(), tool_registry.clone()));
 
     // Apply middleware based on configuration
     let base_middleware = ServiceBuilder::new()
+        .layer(axum::middleware::from_fn(request_logging))
+        .layer(axum::middleware::from_fn(error_handling))
         .layer(TraceLayer::new_for_http())
         .layer(TimeoutLayer::new(config.request_timeout));
 
@@ -427,7 +450,7 @@ async fn log_startup_info(
     // Log storage information
     match storage.health_check().await {
         Ok(health) => {
-            info!("💾 Storage: {} ({} flows, {} tools)", 
+            info!("💾 Storage: {} ({} flows, {} tools)",
                 health.backend_type, health.total_flows, health.total_tools);
         }
         Err(e) => {
@@ -438,12 +461,12 @@ async fn log_startup_info(
     // Log tool registry information
     match tool_registry.health_check().await {
         Ok(health) => {
-            info!("🔧 Tools: {} protocols, {} cached tools", 
+            info!("🔧 Tools: {} protocols, {} cached tools",
                 health.protocols.len(), health.cached_tools);
 
             for protocol in &health.protocols {
                 let status = if protocol.healthy { "✅" } else { "❌" };
-                info!("   {} {}: {} tools", 
+                info!("   {} {}: {} tools",
                     status, protocol.protocol_name, protocol.tool_count);
             }
         }
@@ -452,7 +475,52 @@ async fn log_startup_info(
         }
     }
 
-    info!("🍁 Aceryx is ready to orchestrate your AI workflows!");
+    info!("🍁 Aceryx UI ready: Dashboard, Flow Designer, and Tool Registry available!");
+}
+
+/// Response helpers for consistent HTMX handling
+pub mod response_helpers {
+    use axum::{response::{Html, IntoResponse}, http::StatusCode};
+    use serde_json::Value;
+    use super::templates::Templates;
+
+    /// Render response that handles both full page and HTMX requests
+    pub fn render_response(
+        templates: &Templates,
+        template: &str,
+        context: &Value,
+        is_htmx: bool,
+    ) -> Result<impl IntoResponse, crate::error::AceryxError> {
+        let template_name = if is_htmx {
+            // For HTMX requests, use partial templates
+            &format!("partials/{}", template.replace("pages/", ""))
+        } else {
+            template
+        };
+
+        match templates.render(template_name, context) {
+            Ok(html) => Ok(Html(html)),
+            Err(e) => Err(crate::error::AceryxError::internal(format!("Template error: {}", e))),
+        }
+    }
+
+    /// Create HTMX-aware JSON response
+    pub fn htmx_json_response(data: Value, is_htmx: bool) -> impl IntoResponse {
+        if is_htmx {
+            // For HTMX, we might want to trigger specific client-side actions
+            (
+                StatusCode::OK,
+                [("HX-Trigger", "dataUpdated")],
+                axum::Json(data),
+            )
+        } else {
+            (
+                StatusCode::OK,
+                [("Content-Type", "application/json")],
+                axum::Json(data),
+            )
+        }
+    }
 }
 
 #[cfg(test)]
@@ -472,7 +540,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_app_creation_with_storage() {
+    async fn test_enhanced_app_creation() {
         let (storage, tool_registry) = create_test_setup().await;
 
         let app_result = create_app_with_storage(false, storage, tool_registry);
@@ -480,7 +548,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_dev_mode_app_creation() {
+    async fn test_dev_mode_enhanced_app() {
         let (storage, tool_registry) = create_test_setup().await;
 
         let app_result = create_app_with_storage(true, storage, tool_registry);
@@ -488,19 +556,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_backward_compatibility_app() {
-        let app_result = create_app(false);
-        assert!(app_result.is_ok());
-    }
-
-    #[tokio::test]
-    async fn test_health_endpoint() {
+    async fn test_dashboard_endpoint() {
         let (storage, tool_registry) = create_test_setup().await;
         let app = create_app_with_storage(true, storage, tool_registry).unwrap();
 
         let request = Request::builder()
             .method(Method::GET)
-            .uri("/health")
+            .uri("/dashboard")
             .body(Body::empty())
             .unwrap();
 
@@ -509,13 +571,56 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_root_endpoint() {
+    async fn test_flows_endpoint() {
         let (storage, tool_registry) = create_test_setup().await;
         let app = create_app_with_storage(true, storage, tool_registry).unwrap();
 
         let request = Request::builder()
             .method(Method::GET)
-            .uri("/")
+            .uri("/flows")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_tools_endpoint() {
+        let (storage, tool_registry) = create_test_setup().await;
+        let app = create_app_with_storage(true, storage, tool_registry).unwrap();
+
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/tools")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_htmx_partial_endpoints() {
+        let (storage, tool_registry) = create_test_setup().await;
+        let app = create_app_with_storage(true, storage, tool_registry).unwrap();
+
+        // Test HTMX flow partial
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/partials/flows")
+            .header("hx-request", "true")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Test HTMX tool partial
+        let request = Request::builder()
+            .method(Method::GET)
+            .uri("/partials/tools")
+            .header("hx-request", "true")
             .body(Body::empty())
             .unwrap();
 
@@ -528,7 +633,7 @@ mod tests {
         let (storage, tool_registry) = create_test_setup().await;
         let app = create_app_with_storage(true, storage, tool_registry).unwrap();
 
-        // Test API flows endpoint
+        // Test that API endpoints still work
         let request = Request::builder()
             .method(Method::GET)
             .uri("/api/v1/flows")
@@ -538,7 +643,6 @@ mod tests {
         let response = app.clone().oneshot(request).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK);
 
-        // Test API tools endpoint
         let request = Request::builder()
             .method(Method::GET)
             .uri("/api/v1/tools")
@@ -564,10 +668,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_web_health_check() {
+    async fn test_enhanced_web_health_check() {
         let (storage, tool_registry) = create_test_setup().await;
 
-        // Cast to trait object for the health check function
         let storage_trait: Arc<dyn FlowStorage> = storage;
         let health_result = web_health_check(&storage_trait, &tool_registry).await;
         assert!(health_result.is_ok());

@@ -1,0 +1,141 @@
+{% extends "layouts/base.html" %}
+
+{% block title %}Dashboard - Aceryx{% endblock %}
+
+{% block header %}
+<div class="row g-2 align-items-center">
+    <div class="col">
+        <h2 class="page-title">Dashboard</h2>
+        <div class="text-muted mt-1">Visual AI workflow automation platform</div>
+    </div>
+    <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+            <span class="badge bg-green fs-6">{{ health.overall_status | title }}</span>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Health Status -->
+<div class="row row-deck row-cards mb-3">
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="subheader">Storage</div>
+                    <div class="ms-auto">
+                        {% if health.storage.status == "healthy" %}
+                        <span class="status status-green">
+                            <span class="status-dot status-dot-animated"></span>
+                            Healthy
+                        </span>
+                        {% else %}
+                        <span class="status status-red">
+                            <span class="status-dot"></span>
+                            Unhealthy
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="h1 mb-3">{{ health.storage.backend | title }}</div>
+                <div class="d-flex mb-2">
+                    <div>{{ health.storage.flows }} flows, {{ health.storage.tools }} tools</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="subheader">Tool Registry</div>
+                    <div class="ms-auto">
+                        {% if health.tools.status == "healthy" %}
+                        <span class="status status-green">
+                            <span class="status-dot status-dot-animated"></span>
+                            Healthy
+                        </span>
+                        {% else %}
+                        <span class="status status-red">
+                            <span class="status-dot"></span>
+                            Unhealthy
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="h1 mb-3">{{ health.tools.protocols }} Protocols</div>
+                <div class="d-flex mb-2">
+                    <div>{{ health.tools.cached_tools }} cached tools</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="subheader">Flows</div>
+                    <div class="ms-auto">
+                        <a href="/flows" class="btn btn-sm btn-outline-primary">View All</a>
+                    </div>
+                </div>
+                <div class="h1 mb-3">{{ stats.total_flows }}</div>
+                <div class="d-flex mb-2">
+                    <div>{{ stats.recent_executions }} recent executions</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="subheader">Tools</div>
+                    <div class="ms-auto">
+                        <a href="/tools" class="btn btn-sm btn-outline-primary">Registry</a>
+                    </div>
+                </div>
+                <div class="h1 mb-3">{{ stats.total_tools }}</div>
+                <div class="d-flex mb-2">
+                    <div>{{ stats.active_protocols }} protocols active</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Features Overview -->
+<div class="row row-deck row-cards">
+    {% for feature in features %}
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="me-3">
+                        <span style="font-size: 2rem;">{{ feature.icon }}</span>
+                    </div>
+                    <div>
+                        <h3 class="card-title">{{ feature.title }}</h3>
+                        <p class="text-muted">{{ feature.description }}</p>
+                        {% if feature.count %}
+                        <div class="text-muted small">{{ feature.count }} available</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            <div class="card-footer">
+                {% if feature.title == "Visual Flow Designer" %}
+                <a href="/flows/new" class="btn btn-primary">Create Flow</a>
+                <a href="/flows" class="btn btn-outline-secondary ms-2">View Flows</a>
+                {% elif feature.title == "Universal Tool Registry" %}
+                <a href="/tools" class="btn btn-primary">Browse Tools</a>
+                {% else %}
+                <a href="/system" class="btn btn-primary">System Info</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

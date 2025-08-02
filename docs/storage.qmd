@@ -1,6 +1,6 @@
 # Aceryx Core Storage & Universal Tool System Implementation
 
-This implementation establishes the foundational storage layer and universal tool system for Aceryx - "The Apache Camel of AI". It provides a trait-first architecture that enables visual AI workflow design, enterprise system integration, and polyglot tool execution.
+This implementation establishes the foundational storage layer and universal tool system for Aceryx - "The multi-tool of AI". It provides a trait-first architecture that enables visual AI workflow design, enterprise system integration, and polyglot tool execution.
 
 ## 🏗️ Architecture Overview
 
@@ -289,7 +289,7 @@ This implementation provides the solid foundation for Aceryx. The next developme
 5. **Redis/PostgreSQL Storage**: Production storage backends
 6. **Distributed Execution**: Multi-node tool execution
 
-The trait-first design ensures that each addition integrates seamlessly with the existing system, maintaining the goal of becoming "The Apache Camel of AI" for enterprise AI integration.
+The trait-first design ensures that each addition integrates seamlessly with the existing system, maintaining the goal of becoming "The multi-tool of AI" for enterprise AI integration.
 
 ## 📊 Performance Characteristics
 

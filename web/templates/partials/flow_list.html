@@ -1,0 +1,83 @@
+<div class="row row-deck row-cards">
+    {% for flow in flows %}
+    <div class="col-sm-6 col-lg-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="d-flex align-items-center">
+                    <div class="subheader">{{ flow.created_at | date }}</div>
+                    <div class="ms-auto">
+                        <span class="status">
+                            <span class="status-dot"></span>
+                            Ready
+                        </span>
+                    </div>
+                </div>
+                <div class="h1 mb-3">{{ flow.name }}</div>
+                <div class="d-flex mb-2">
+                    <div>{{ flow.description }}</div>
+                </div>
+                <div class="d-flex mb-2">
+                    {% for tag in flow.tags %}
+                    <span class="badge bg-blue-lt me-1">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="card-footer">
+                <div class="row align-items-center">
+                    <div class="col-auto">
+                        <a href="/flows/{{ flow.id }}/design" class="btn btn-primary btn-sm">
+                            <svg class="icon"><use xlink:href="#tabler-edit"></use></svg>
+                            Design
+                        </a>
+                    </div>
+                    <div class="col-auto">
+                        <button class="btn btn-success btn-sm"
+                                hx-post="/api/v1/flows/{{ flow.id }}/execute"
+                                hx-target="#execution-{{ flow.id }}"
+                                hx-swap="outerHTML">
+                            <svg class="icon"><use xlink:href="#tabler-player-play"></use></svg>
+                            Execute
+                        </button>
+                    </div>
+                    <div class="col-auto ms-auto">
+                        <div class="dropdown">
+                            <a href="#" class="btn-action" data-bs-toggle="dropdown">
+                                <svg class="icon"><use xlink:href="#tabler-dots-vertical"></use></svg>
+                            </a>
+                            <div class="dropdown-menu dropdown-menu-end">
+                                <a href="/flows/{{ flow.id }}" class="dropdown-item">View Details</a>
+                                <a href="/flows/{{ flow.id }}/duplicate" class="dropdown-item">Duplicate</a>
+                                <div class="dropdown-divider"></div>
+                                <a href="#" class="dropdown-item text-danger"
+                                   hx-delete="/api/v1/flows/{{ flow.id }}"
+                                   hx-confirm="Are you sure you want to delete this flow?"
+                                   hx-target="closest .col-sm-6"
+                                   hx-swap="outerHTML">Delete</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="execution-{{ flow.id }}"></div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if flows | length == 0 %}
+<div class="empty">
+    <div class="empty-icon">
+        <svg class="icon"><use xlink:href="#tabler-mood-empty"></use></svg>
+    </div>
+    <p class="empty-title">No flows found</p>
+    <p class="empty-subtitle text-muted">
+        Get started by creating your first AI workflow.
+    </p>
+    <div class="empty-action">
+        <a href="/flows/new" class="btn btn-primary">
+            <svg class="icon"><use xlink:href="#tabler-plus"></use></svg>
+            Create your first flow
+        </a>
+    </div>
+</div>
+{% endif %}
