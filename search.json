@@ -70,6 +70,34 @@
     "text": "Not lame because: - ✅ Industry trend - HTMX, Turbo, LiveView all gaining popularity - ✅ Performance first - Server-side rendering beats SPAs for most content - ✅ Maintainable - Less complex than full React apps - ✅ Pragmatic - Right tool for the right job\nCompanies using similar approaches: - GitHub - Server-rendered with Turbo - Basecamp - HTMX + server templates - Discord - Hybrid approach for different UI complexity levels\nThe key insight: Most web UI is just forms, lists, and navigation. Only the flow designer needs React-level complexity.\nThis gives you the productivity of server-side development with the sophistication of modern UX where it matters! 🎯"
   },
   {
+    "objectID": "ideas.html",
+    "href": "ideas.html",
+    "title": "Aceryx",
+    "section": "",
+    "text": "The Aceryx Agent is a reusable unit of AI logic that encapsulates a tool or group of tools, maintains local or shared state, and follows a defined policy to execute actions, make decisions, or trigger workflows. Agents are first-class citizens in Aceryx and can be embedded within flows, executed on-demand, or orchestrated by other agents.\n\n\n\n\nComposable: Can be nested or called by other agents and flows\nStateful: Maintains context between invocations (via context injection)\nPolyglot: Agents can be authored in any language via WASM or container runtimes\nPolicy-Driven: Execution behavior governed by declarative or code-defined policies\nEvent-Aware: Can subscribe to event streams or polling mechanisms to trigger execution\n\n\n\n\n\nIdentity\n\nName, version, and ownership metadata\n\nBindings\n\nOne or more tools (LLMs, APIs, services, etc.)\n\nMemory/State\n\nLocal state store (key-value)\nOptionally shared state via flow context\n\nPolicy\n\nRule-based (e.g., JSON logic)\nScripted (e.g., WASM, Python)\n\nExecution Trigger\n\nOn-demand\nScheduled\nEvent-based\n\nOutput Behavior\n\nCan emit events, update state, call other agents, or trigger flows\n\n\n\n\n\n\nTrading: Anomaly detection agent for trade ingestion errors\nRetail: Agent that watches sentiment from reviews and triggers CRM alerts\nHealthcare: Diagnostic assistant agent responding to EMR updates\nDevOps: Build failure triage agent routing issues based on context"
+  },
+  {
+    "objectID": "ideas.html#aceryx-agent-pattern-specification",
+    "href": "ideas.html#aceryx-agent-pattern-specification",
+    "title": "Aceryx",
+    "section": "",
+    "text": "The Aceryx Agent is a reusable unit of AI logic that encapsulates a tool or group of tools, maintains local or shared state, and follows a defined policy to execute actions, make decisions, or trigger workflows. Agents are first-class citizens in Aceryx and can be embedded within flows, executed on-demand, or orchestrated by other agents.\n\n\n\n\nComposable: Can be nested or called by other agents and flows\nStateful: Maintains context between invocations (via context injection)\nPolyglot: Agents can be authored in any language via WASM or container runtimes\nPolicy-Driven: Execution behavior governed by declarative or code-defined policies\nEvent-Aware: Can subscribe to event streams or polling mechanisms to trigger execution\n\n\n\n\n\nIdentity\n\nName, version, and ownership metadata\n\nBindings\n\nOne or more tools (LLMs, APIs, services, etc.)\n\nMemory/State\n\nLocal state store (key-value)\nOptionally shared state via flow context\n\nPolicy\n\nRule-based (e.g., JSON logic)\nScripted (e.g., WASM, Python)\n\nExecution Trigger\n\nOn-demand\nScheduled\nEvent-based\n\nOutput Behavior\n\nCan emit events, update state, call other agents, or trigger flows\n\n\n\n\n\n\nTrading: Anomaly detection agent for trade ingestion errors\nRetail: Agent that watches sentiment from reviews and triggers CRM alerts\nHealthcare: Diagnostic assistant agent responding to EMR updates\nDevOps: Build failure triage agent routing issues based on context"
+  },
+  {
+    "objectID": "ideas.html#aceryx-flow-packs",
+    "href": "ideas.html#aceryx-flow-packs",
+    "title": "Aceryx",
+    "section": "Aceryx Flow Packs",
+    "text": "Aceryx Flow Packs\n\nOverview\nFlow Packs are curated, production-ready workflow templates targeting common enterprise AI integration scenarios. They are designed to accelerate adoption, demonstrate best practices, and provide drop-in solutions for high-value problems.\n\n\nCharacteristics\n\nPrebuilt: Fully configured flows with tools, logic, and documentation\nCustomizable: Can be modified or extended by users\nDiscoverable: Distributed via built-in marketplace or CLI\nVersioned: Support for stable releases and updates\n\n\n\nTarget Categories\n\nSmart Document Processing\n\nInvoice extraction → ERP\nKYC form parsing → Risk system\n\nChat-to-Action Workflows\n\nCopilot Studio chat → AI decision → Workflow trigger\nInternal chatbot → RAG → Task execution\n\nMonitoring and Triage\n\nLog anomaly → AI categorization → Jira/Ticketing\nTrade ingest exception → Root cause via LLM → Case creation\n\nData Augmentation Pipelines\n\nInternal data → LLM/embedding → CRM enrichment\nFile upload → AI tagging → Elasticsearch\n\n\n\n\nPackaging Format\n\nYAML manifest\nTool dependencies\nFlow graph definition (JSON or visual schema)\nREADME with usage notes and customization tips\n\n\n\nDistribution\n\nVia CLI: aceryx install flow-pack &lt;name&gt;\nVia UI: One-click import into visual designer\nEnterprise customers can host private packs\n\n\n\nLicensing\n\nOpen Flow Packs: Apache 2.0 or MIT\nPremium Flow Packs: Bundled with enterprise support\n\n\nNote: Agents and Flow Packs are complementary—Flow Packs may contain or orchestrate multiple agents, and agents can call into Flow Packs."
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this site"
+  },
+  {
     "objectID": "storage.html",
     "href": "storage.html",
     "title": "Aceryx Core Storage & Universal Tool System Implementation",
@@ -138,13 +166,6 @@
     "title": "Aceryx Core Storage & Universal Tool System Implementation",
     "section": "",
     "text": "Based on integration tests: - Flow Creation: 1000 flows in &lt;5 seconds - Flow Retrieval: 1000 flows in &lt;100ms - Concurrent Access: 50+ concurrent readers without issues - Tool Execution: HTTP tools complete in &lt;1 second - Memory Usage: Efficient with DashMap for concurrent collections\nThis implementation establishes Aceryx as a high-performance, enterprise-ready foundation for visual AI workflow orchestration."
-  },
-  {
-    "objectID": "about.html",
-    "href": "about.html",
-    "title": "About",
-    "section": "",
-    "text": "About this site"
   },
   {
     "objectID": "index.html",
