@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio;
 
 use aceryx::{
-    storage::{memory::MemoryStorage, Flow, FlowFilters, ToolCategory, ToolDefinition, ExecutionMode, WasmPermissions},
+    storage::{memory::MemoryStorage, Flow, FlowFilters, FlowStorage, ToolCategory, ToolDefinition, ExecutionMode, WasmPermissions},
     tools::{native::NativeProtocol, ExecutionContext, ToolRegistry},
     api,
 };
@@ -223,13 +223,13 @@ async fn test_error_scenarios() -> Result<()> {
     assert!(result.is_err());
 
     // Test invalid flow validation
-    let mut invalid_flow = Flow::new(
+    let invalid_flow = Flow::new(
         "".to_string(), // Empty name should fail validation
         "Description".to_string(),
         "user".to_string(),
     );
 
-    let result = storage.create_flow(invalid_flow.clone()).await;
+    let result = storage.create_flow(invalid_flow).await;
     assert!(result.is_err());
 
     Ok(())
