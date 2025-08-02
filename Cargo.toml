@@ -18,7 +18,7 @@ tokio = { version = "1.0", features = ["full"] }
 # Web framework
 axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
 tower = { version = "0.4", features = ["full"] }
-tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace", "timeout"] }
 
 # HTTP client for external integrations
 reqwest = { version = "0.12", features = ["json", "stream"] }
@@ -48,6 +48,10 @@ chrono = { version = "0.4", features = ["serde"] }
 
 # Template rendering (for server-side UI)
 minijinja = { version = "2.0", features = ["loader"] }
+
+# Static asset embedding
+rust-embed = { version = "8.0", features = ["debug-embed"] }
+mime_guess = "2.0"
 
 # Storage backends (all optional for modular compilation)
 redis = { version = "0.26", optional = true }

@@ -3,6 +3,8 @@ use clap::{Parser, Subcommand};
 use tracing::{info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod web;
+
 #[derive(Parser)]
 #[command(name = "aceryx")]
 #[command(about = "An open-source agentic flow builder for Rust")]
@@ -54,18 +56,7 @@ async fn main() -> Result<()> {
                 warn!("Development mode enabled - not for production use");
             }
 
-            // For now, just bind and hold
-            let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-            info!(
-                "Server started successfully - listening on http://{}:{}",
-                host, port
-            );
-            info!("Press Ctrl+C to stop");
-
-            // Simple holding pattern until we implement the actual server
-            loop {
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            }
+            web::start_server(&host, port, dev).await?;
         }
 
         Commands::Validate { file } => {
@@ -74,7 +65,6 @@ async fn main() -> Result<()> {
 
             // TODO: Implement flow validation
             println!("✅ Flow validation will be implemented in next iteration");
-            Ok(())
         }
 
         Commands::Version => {
@@ -83,11 +73,11 @@ async fn main() -> Result<()> {
                 "Built with Rust {}",
                 std::env::var("RUSTC_VERSION").unwrap_or_else(|_| "unknown".to_string())
             );
-            Ok(())
         }
     }
-}
 
+    Ok(())
+}
 
 /// Initialize logging/tracing with appropriate levels for development vs production
 fn init_logging(dev_mode: bool) -> Result<()> {

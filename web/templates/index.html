@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <link rel="stylesheet" href="{{ asset_url('style.css') }}">
+    <link rel="icon" href="{{ asset_url('favicon.ico') }}" type="image/x-icon">
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🍁 Aceryx Flow Designer</h1>
+        <p class="subtitle">An open-source agentic flow builder for Rust</p>
+    </header>
+
+    <main>
+        <div class="welcome-card">
+            <h2>Welcome to Aceryx</h2>
+            <p>Your visual AI agent workflow builder is starting up.</p>
+
+            <div class="features">
+                {% for feature in features %}
+                <div class="feature">
+                    <h3>{{ feature.icon }} {{ feature.title }}</h3>
+                    <p>{{ feature.description }}</p>
+                </div>
+                {% endfor %}
+            </div>
+
+            <div class="status">
+                <p><strong>Status:</strong> <span class="status-healthy">Server Running</span></p>
+                <p><strong>Version:</strong> v{{ version }}</p>
+                <p><strong>Health Check:</strong> <a href="/health">JSON Status</a></p>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" onclick="alert('Flow designer coming soon!')">
+                    🎨 Open Flow Designer
+                </button>
+                <button class="btn btn-secondary" onclick="window.open('/health', '_blank')">
+                    🔍 Health Check
+                </button>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <p>Made with 🍁 and Rust | <a href="https://github.com/neural-chilli/aceryx">GitHub</a></p>
+    </footer>
+</div>
+</body>
+</html>
