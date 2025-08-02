@@ -6,28 +6,55 @@ on:
   pull_request:
     branches: [ "main" ]
 
+env:
+  CARGO_TERM_COLOR: always
+
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-      # 1) Install Rust and build the back-end
+      # Set up Rust with cargo caching
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
 
-      - name: Test
-        run: |
-          cargo test
+      # Cache cargo registry, git db, and target directory
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
+      # Check formatting first (fast fail)
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      # Run clippy for linting
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      # Run tests
+      - name: Run tests
+        run: cargo test --all-features
+
+      # Build in release mode
       - name: Build (release mode)
-        run: |
-          cargo build --release
+        run: cargo build --release --all-features
 
-      # 2) Upload the artifact (the compiled binary) for reference
+      # Upload the artifact (the compiled binary) for reference
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: aceryx-binary
+          name: aceryx-binary-${{ github.sha }}
           path: target/release/aceryx
+          retention-days: 30
