@@ -1,0 +1,70 @@
+<!-- web/templates/pages/tools/registry.html -->
+{% extends "layouts/base.html" %}
+
+{% block header %}
+<div class="row g-2 align-items-center">
+    <div class="col">
+        <h2 class="page-title">Tool Registry</h2>
+        <div class="text-muted mt-1">Available tools for workflow automation</div>
+    </div>
+    <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+            <button class="btn btn-outline-primary"
+                    hx-post="/api/v1/tools/refresh"
+                    hx-target="#refresh-status"
+                    hx-indicator="#refresh-spinner">
+                <span id="refresh-spinner" class="spinner-border spinner-border-sm me-2 htmx-indicator" role="status"></span>
+                <svg class="icon"><use xlink:href="#tabler-refresh"></use></svg>
+                Refresh Tools
+            </button>
+        </div>
+    </div>
+</div>
+<div id="refresh-status"></div>
+{% endblock %}
+
+{% block content %}
+<!-- Tool categories tabs -->
+<div class="card">
+    <div class="card-header">
+        <ul class="nav nav-tabs card-header-tabs" data-bs-toggle="tabs">
+            <li class="nav-item">
+                <a href="#tab-all" class="nav-link active" data-bs-toggle="tab">
+                    All Tools
+                    <span class="badge bg-primary ms-2">{{ total_tools }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#tab-http" class="nav-link" data-bs-toggle="tab">
+                    HTTP
+                    <span class="badge bg-blue ms-2">{{ http_tools }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#tab-ai" class="nav-link" data-bs-toggle="tab">
+                    AI
+                    <span class="badge bg-green ms-2">{{ ai_tools }}</span>
+                </a>
+            </li>
+            <li class="nav-item">
+                <a href="#tab-enterprise" class="nav-link" data-bs-toggle="tab">
+                    Enterprise
+                    <span class="badge bg-orange ms-2">{{ enterprise_tools }}</span>
+                </a>
+            </li>
+        </ul>
+    </div>
+    <div class="card-body">
+        <div class="tab-content">
+            <div class="tab-pane active" id="tab-all">
+                <div id="tools-container"
+                     hx-get="/api/v1/tools"
+                     hx-trigger="load">
+                    <!-- Tools grid loads here -->
+                </div>
+            </div>
+            <!-- Other tab panes... -->
+        </div>
+    </div>
+</div>
+{% endblock %}

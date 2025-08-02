@@ -1,0 +1,65 @@
+<!-- web/templates/pages/flows/list.html -->
+{% extends "layouts/base.html" %}
+
+{% block header %}
+<div class="row g-2 align-items-center">
+    <div class="col">
+        <h2 class="page-title">Flows</h2>
+        <div class="text-muted mt-1">Visual AI workflow automation</div>
+    </div>
+    <div class="col-auto ms-auto d-print-none">
+        <div class="btn-list">
+            <a href="/flows/new" class="btn btn-primary d-none d-sm-inline-block">
+                <svg class="icon"><use xlink:href="#tabler-plus"></use></svg>
+                Create Flow
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<!-- Search and filters -->
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="input-icon">
+            <span class="input-icon-addon">
+                <svg class="icon"><use xlink:href="#tabler-search"></use></svg>
+            </span>
+            <input type="text"
+                   class="form-control"
+                   placeholder="Search flows..."
+                   hx-get="/api/v1/flows"
+                   hx-trigger="keyup changed delay:300ms"
+                   hx-target="#flows-container"
+                   hx-include="[name='tags'], [name='user']">
+        </div>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" name="tags"
+                hx-get="/api/v1/flows"
+                hx-trigger="change"
+                hx-target="#flows-container">
+            <option value="">All Tags</option>
+            <option value="production">Production</option>
+            <option value="development">Development</option>
+        </select>
+    </div>
+    <div class="col-md-3">
+        <select class="form-select" name="user"
+                hx-get="/api/v1/flows"
+                hx-trigger="change"
+                hx-target="#flows-container">
+            <option value="">All Users</option>
+            {% for user in users %}
+            <option value="{{ user }}">{{ user }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</div>
+
+<!-- Flow cards container -->
+<div id="flows-container" hx-get="/api/v1/flows" hx-trigger="load">
+    <!-- Server renders flow cards here -->
+</div>
+{% endblock %}
