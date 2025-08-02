@@ -1,0 +1,104 @@
+## Aceryx Agent Pattern Specification
+
+### Overview
+
+The **Aceryx Agent** is a reusable unit of AI logic that encapsulates a tool or group of tools, maintains local or shared state, and follows a defined policy to execute actions, make decisions, or trigger workflows. Agents are first-class citizens in Aceryx and can be embedded within flows, executed on-demand, or orchestrated by other agents.
+
+### Key Characteristics
+
+* **Composable**: Can be nested or called by other agents and flows
+* **Stateful**: Maintains context between invocations (via context injection)
+* **Polyglot**: Agents can be authored in any language via WASM or container runtimes
+* **Policy-Driven**: Execution behavior governed by declarative or code-defined policies
+* **Event-Aware**: Can subscribe to event streams or polling mechanisms to trigger execution
+
+### Agent Components
+
+1. **Identity**
+
+    * Name, version, and ownership metadata
+2. **Bindings**
+
+    * One or more tools (LLMs, APIs, services, etc.)
+3. **Memory/State**
+
+    * Local state store (key-value)
+    * Optionally shared state via flow context
+4. **Policy**
+
+    * Rule-based (e.g., JSON logic)
+    * Scripted (e.g., WASM, Python)
+5. **Execution Trigger**
+
+    * On-demand
+    * Scheduled
+    * Event-based
+6. **Output Behavior**
+
+    * Can emit events, update state, call other agents, or trigger flows
+
+### Example Use Cases
+
+* **Trading**: Anomaly detection agent for trade ingestion errors
+* **Retail**: Agent that watches sentiment from reviews and triggers CRM alerts
+* **Healthcare**: Diagnostic assistant agent responding to EMR updates
+* **DevOps**: Build failure triage agent routing issues based on context
+
+---
+
+## Aceryx Flow Packs
+
+### Overview
+
+**Flow Packs** are curated, production-ready workflow templates targeting common enterprise AI integration scenarios. They are designed to accelerate adoption, demonstrate best practices, and provide drop-in solutions for high-value problems.
+
+### Characteristics
+
+* **Prebuilt**: Fully configured flows with tools, logic, and documentation
+* **Customizable**: Can be modified or extended by users
+* **Discoverable**: Distributed via built-in marketplace or CLI
+* **Versioned**: Support for stable releases and updates
+
+### Target Categories
+
+1. **Smart Document Processing**
+
+    * Invoice extraction → ERP
+    * KYC form parsing → Risk system
+
+2. **Chat-to-Action Workflows**
+
+    * Copilot Studio chat → AI decision → Workflow trigger
+    * Internal chatbot → RAG → Task execution
+
+3. **Monitoring and Triage**
+
+    * Log anomaly → AI categorization → Jira/Ticketing
+    * Trade ingest exception → Root cause via LLM → Case creation
+
+4. **Data Augmentation Pipelines**
+
+    * Internal data → LLM/embedding → CRM enrichment
+    * File upload → AI tagging → Elasticsearch
+
+### Packaging Format
+
+* YAML manifest
+* Tool dependencies
+* Flow graph definition (JSON or visual schema)
+* README with usage notes and customization tips
+
+### Distribution
+
+* Via CLI: `aceryx install flow-pack <name>`
+* Via UI: One-click import into visual designer
+* Enterprise customers can host private packs
+
+### Licensing
+
+* Open Flow Packs: Apache 2.0 or MIT
+* Premium Flow Packs: Bundled with enterprise support
+
+---
+
+**Note**: Agents and Flow Packs are complementary—Flow Packs may contain or orchestrate multiple agents, and agents can call into Flow Packs.
