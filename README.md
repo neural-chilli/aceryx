@@ -241,10 +241,6 @@ spec:
           value: "redis://redis-service:6379"
 ```
 
-## 🤝 Contributing
-
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
-
 ### Development Setup
 
 ```bash
@@ -285,15 +281,6 @@ aceryx/
 ├── migrations/             # Database migrations
 └── docs/                   # Documentation
 ```
-
-## 📚 Documentation
-
-- [User Guide](docs/user-guide.md) - Complete usage documentation
-- [API Reference](docs/api.md) - REST API documentation
-- [Flow Reference](docs/flows.md) - Flow configuration guide
-- [MCP Integration](docs/mcp.md) - Model Context Protocol usage
-- [Deployment Guide](docs/deployment.md) - Production deployment
-- [Contributing](CONTRIBUTING.md) - Development and contribution guide
 
 ## 🔗 Links
 
