@@ -1,15 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://neural-chilli.github.io/aceryx/index.html</loc>
-    <lastmod>2025-08-02T17:22:27.613Z</lastmod>
-  </url>
-  <url>
-    <loc>https://neural-chilli.github.io/aceryx/about.html</loc>
-    <lastmod>2025-08-02T17:22:27.610Z</lastmod>
+    <loc>https://neural-chilli.github.io/aceryx/ui_design.html</loc>
+    <lastmod>2025-08-02T17:44:30.337Z</lastmod>
   </url>
   <url>
     <loc>https://neural-chilli.github.io/aceryx/storage.html</loc>
-    <lastmod>2025-08-02T17:22:27.613Z</lastmod>
+    <lastmod>2025-08-02T17:44:30.336Z</lastmod>
+  </url>
+  <url>
+    <loc>https://neural-chilli.github.io/aceryx/about.html</loc>
+    <lastmod>2025-08-02T17:44:30.334Z</lastmod>
+  </url>
+  <url>
+    <loc>https://neural-chilli.github.io/aceryx/index.html</loc>
+    <lastmod>2025-08-02T17:44:30.336Z</lastmod>
   </url>
 </urlset>
