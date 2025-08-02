@@ -2,12 +2,12 @@
 name = "aceryx"
 version = "0.1.0"
 edition = "2021"
-description = "An open-source agentic flow builder for Rust"
+description = "The Apache Camel of AI - Visual AI workflow platform for enterprise integration"
 license = "Apache-2.0"
 repository = "https://github.com/neural-chilli/aceryx"
 homepage = "https://aceryx.org"
 documentation = "https://docs.aceryx.org"
-keywords = ["ai", "agent", "workflow", "automation", "flow"]
+keywords = ["ai", "workflow", "automation", "enterprise", "integration"]
 categories = ["web-programming", "command-line-utilities"]
 readme = "README.md"
 
@@ -20,13 +20,14 @@ axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
 tower = { version = "0.4", features = ["full"] }
 tower-http = { version = "0.5", features = ["fs", "cors", "trace", "timeout"] }
 
-# HTTP client for external integrations
+# HTTP client for tool integrations
 reqwest = { version = "0.12", features = ["json", "stream"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+toml = "0.8"
 
 # Configuration management
 config = "0.14"
@@ -36,9 +37,12 @@ clap = { version = "4.0", features = ["derive", "env"] }
 anyhow = "1.0"
 thiserror = "1.0"
 
+# Async traits
+async-trait = "0.1"
+
 # Logging and tracing
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
 # UUID generation for flow/node IDs
 uuid = { version = "1.0", features = ["v4", "serde"] }
@@ -53,6 +57,12 @@ minijinja = { version = "2.0", features = ["loader"] }
 rust-embed = { version = "8.0", features = ["debug-embed"] }
 mime_guess = "2.0"
 
+# High-performance concurrent collections
+dashmap = "5.5"
+
+# System information
+num_cpus = "1.0"
+
 # Storage backends (all optional for modular compilation)
 redis = { version = "0.26", optional = true }
 sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"], optional = true }
@@ -63,6 +73,7 @@ rig-core = { version = "0.2", optional = true }
 [dev-dependencies]
 tempfile = "3.0"
 tokio-test = "0.4"
+tower = { version = "0.4", features = ["util"] }
 
 [features]
 default = ["memory-storage"]
@@ -87,7 +98,12 @@ opt-level = 3
 lto = true
 codegen-units = 1
 panic = "abort"
+strip = true
 
 [profile.dev]
 opt-level = 0
 debug = true
+
+# Build script environment variables for version info
+[build-dependencies]
+# These would be used in a build.rs file to inject build metadata

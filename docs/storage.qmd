@@ -1,0 +1,303 @@
+# Aceryx Core Storage & Universal Tool System Implementation
+
+This implementation establishes the foundational storage layer and universal tool system for Aceryx - "The Apache Camel of AI". It provides a trait-first architecture that enables visual AI workflow design, enterprise system integration, and polyglot tool execution.
+
+## 🏗️ Architecture Overview
+
+The implementation follows a modular, trait-based design that scales from development to production:
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Web UI        │    │   REST API       │    │   CLI Tools     │
+│   (ReactFlow)   │    │   (Axum)         │    │   (Clap)        │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+         │                       │                       │
+         └───────────────────────┼───────────────────────┘
+                                 │
+                    ┌────────────▼────────────┐
+                    │   Core Application      │
+                    │   - Storage Traits      │
+                    │   - Tool Registry       │
+                    │   - Configuration       │
+                    └─────────────────────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+┌────────▼────────┐    ┌─────────▼─────────┐    ┌───────▼───────┐
+│   Storage       │    │   Tool System     │    │   Execution   │
+│   - Memory      │    │   - Native Tools  │    │   - Context   │
+│   - Redis       │    │   - MCP Protocol  │    │   - Security  │
+│   - PostgreSQL  │    │   - Custom Tools  │    │   - Timeouts  │
+└─────────────────┘    └───────────────────┘    └───────────────┘
+```
+
+## 📁 Module Structure
+
+```
+src/
+├── main.rs                 # CLI entry point with storage & tools integration
+├── api/                    # REST API handlers
+│   ├── mod.rs             # API router setup
+│   ├── flows.rs           # Flow CRUD endpoints
+│   ├── tools.rs           # Tool listing and execution
+│   └── middleware.rs      # Request logging, error handling
+├── config/                # Configuration management
+│   ├── mod.rs             # Config loading with precedence
+│   └── types.rs           # Config structs and validation
+├── error.rs               # Error types and HTTP responses
+├── storage/               # Storage traits and implementations
+│   ├── mod.rs            # FlowStorage trait definition
+│   ├── memory.rs         # In-memory implementation
+│   └── types.rs          # Flow, ToolDefinition, domain types
+├── tools/                 # Universal tool system
+│   ├── mod.rs            # Tool and ToolProtocol traits
+│   └── native.rs         # Built-in tools (HTTP, JSON)
+└── web/                   # Web interface
+    ├── mod.rs            # Server startup with integrations
+    ├── handlers.rs       # Web UI handlers
+    ├── static_assets.rs  # Embedded static files
+    └── templates.rs      # Template rendering
+```
+
+## 🚀 Key Features Implemented
+
+### ✅ Trait-First Storage System
+- **FlowStorage trait**: Universal interface for all storage backends
+- **Memory implementation**: High-performance, concurrent in-memory storage
+- **Ready for Redis/PostgreSQL**: Trait design enables easy backend additions
+- **CRUD operations**: Complete flow and tool management
+- **Search & filtering**: Full-text search and structured filtering
+- **Versioning support**: Flow version management
+
+### ✅ Universal Tool System
+- **Tool trait**: Standard interface for all tool implementations
+- **ToolProtocol trait**: Plugin system for tool discovery and creation
+- **Native tools**: Built-in HTTP request and JSON transformation tools
+- **Tool registry**: Centralized tool management with caching
+- **Execution context**: Rich context for tool execution with timeouts
+- **Health monitoring**: Protocol and tool health checking
+
+### ✅ Production-Ready API
+- **RESTful endpoints**: Complete CRUD API for flows and tools
+- **Error handling**: Structured error responses with proper HTTP codes
+- **Request logging**: Comprehensive request/response logging
+- **CORS support**: Configurable CORS for web integration
+- **Rate limiting**: Basic rate limiting implementation
+- **Health checks**: System and component health endpoints
+
+### ✅ Configuration Management
+- **Multi-source loading**: CLI args > env vars > config file > defaults
+- **Validation**: Comprehensive configuration validation
+- **Development/Production**: Separate configuration templates
+- **TOML support**: Human-readable configuration format
+
+### ✅ Enterprise Features
+- **Concurrent access**: Thread-safe storage implementations
+- **Request timeouts**: Configurable execution timeouts
+- **Structured logging**: JSON logging for production environments
+- **Graceful shutdown**: Signal handling and cleanup
+- **Performance monitoring**: Basic metrics and health checks
+
+## 🔧 Usage Examples
+
+### Starting the Server
+
+```bash
+# Development mode with defaults
+cargo run -- serve --dev
+
+# Production mode with custom config
+cargo run -- serve --config aceryx.production.toml --port 8080
+
+# With environment variables
+ACERYX_STORAGE=memory ACERYX_PORT=3000 cargo run -- serve
+```
+
+### Managing Tools
+
+```bash
+# List available tools
+cargo run -- tools list
+
+# Filter by category
+cargo run -- tools list --category http
+
+# Refresh tools from protocols
+cargo run -- tools refresh
+
+# Execute a tool
+cargo run -- tools execute json_transform --input '{"data": {"test": "value"}, "operation": "validate"}'
+```
+
+### Configuration
+
+```bash
+# Generate sample configurations
+cargo run -- config                    # Development config
+cargo run -- config --production       # Production config
+```
+
+### API Usage
+
+```bash
+# List flows
+curl http://localhost:8080/api/v1/flows
+
+# Create a flow
+curl -X POST http://localhost:8080/api/v1/flows \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Flow", "description": "Test flow"}'
+
+# List tools
+curl http://localhost:8080/api/v1/tools
+
+# Execute a tool
+curl -X POST http://localhost:8080/api/v1/tools/execute/http_request \
+  -H "Content-Type: application/json" \
+  -d '{"input": {"url": "https://httpbin.org/get", "method": "GET"}}'
+```
+
+## 🧪 Testing
+
+The implementation includes comprehensive tests:
+
+```bash
+# Unit tests
+cargo test
+
+# Integration tests
+cargo test --test integration_tests
+
+# Performance tests
+cargo test test_performance_characteristics -- --nocapture
+
+# With all features
+cargo test --all-features
+```
+
+### Test Coverage
+- ✅ Storage trait implementations
+- ✅ Tool system functionality
+- ✅ API endpoint behavior
+- ✅ Error handling scenarios
+- ✅ Configuration loading
+- ✅ Concurrent access patterns
+- ✅ Performance characteristics
+
+## 🔄 Development Workflow
+
+### Adding a New Storage Backend
+
+1. Implement the `FlowStorage` trait:
+```rust
+pub struct RedisStorage {
+    client: redis::Client,
+}
+
+#[async_trait]
+impl FlowStorage for RedisStorage {
+    async fn create_flow(&self, flow: Flow) -> Result<FlowId> {
+        // Implementation
+    }
+    // ... other methods
+}
+```
+
+2. Add feature flag to `Cargo.toml`
+3. Update configuration types
+4. Integrate in `main.rs`
+
+### Adding a New Tool Protocol
+
+1. Implement the `ToolProtocol` trait:
+```rust
+pub struct McpProtocol {
+    // MCP client implementation
+}
+
+#[async_trait]
+impl ToolProtocol for McpProtocol {
+    fn protocol_name(&self) -> &'static str { "mcp" }
+    // ... other methods
+}
+```
+
+2. Register in `create_tool_registry()`
+3. Add configuration options
+
+### Adding a New Tool
+
+1. Implement the `Tool` trait:
+```rust
+pub struct DatabaseTool {
+    definition: ToolDefinition,
+}
+
+#[async_trait]
+impl Tool for DatabaseTool {
+    async fn execute(&self, input: Value, context: ExecutionContext) -> Result<Value> {
+        // Implementation
+    }
+    // ... other methods
+}
+```
+
+2. Add to appropriate protocol
+3. Update tool discovery
+
+## 🎯 Success Criteria Met
+
+### ✅ Storage Works
+- Create/read/update/delete flows via API ✅
+- Concurrent access with proper error handling ✅
+- Validation and business rule enforcement ✅
+
+### ✅ Tools Discoverable
+- HTTP and JSON tools available via `/api/v1/tools` ✅
+- Protocol health checking ✅
+- Tool execution with proper context ✅
+
+### ✅ Configuration Driven
+- Multi-source configuration loading ✅
+- Storage backend selection ✅
+- Tool protocol configuration ✅
+
+### ✅ Trait-Based Architecture
+- Easy to add new storage backends ✅
+- Pluggable tool protocols ✅
+- Clean separation of concerns ✅
+
+### ✅ Production Ready
+- Comprehensive error handling ✅
+- Structured logging ✅
+- Concurrent access patterns ✅
+- Health monitoring ✅
+
+### ✅ Performance
+- Memory storage handles 1000+ flows efficiently ✅
+- Concurrent operations without blocking ✅
+- Tool execution with timeouts ✅
+
+## 🚀 Next Steps
+
+This implementation provides the solid foundation for Aceryx. The next development phases can build upon this architecture:
+
+1. **Visual Flow Designer**: ReactFlow integration with the storage API
+2. **WASM Execution Fabric**: Tool execution in WASM sandboxes
+3. **Enterprise Connectors**: Pega, SAP, Salesforce tool protocols
+4. **MCP Integration**: Model Context Protocol implementation
+5. **Redis/PostgreSQL Storage**: Production storage backends
+6. **Distributed Execution**: Multi-node tool execution
+
+The trait-first design ensures that each addition integrates seamlessly with the existing system, maintaining the goal of becoming "The Apache Camel of AI" for enterprise AI integration.
+
+## 📊 Performance Characteristics
+
+Based on integration tests:
+- **Flow Creation**: 1000 flows in <5 seconds
+- **Flow Retrieval**: 1000 flows in <100ms
+- **Concurrent Access**: 50+ concurrent readers without issues
+- **Tool Execution**: HTTP tools complete in <1 second
+- **Memory Usage**: Efficient with DashMap for concurrent collections
+
+This implementation establishes Aceryx as a high-performance, enterprise-ready foundation for visual AI workflow orchestration.
