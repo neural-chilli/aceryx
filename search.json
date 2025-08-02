@@ -1,0 +1,139 @@
+[
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "About this site"
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "An open-source agentic flow builder for Rust\n\nAceryx is a modern, scalable platform for building and orchestrating AI agent workflows. Named after the maple tree, it embodies the principle of natural coordination - multiple agents branching, merging, and collaborating toward common goals with elegant simplicity.\n\n\n\nVisual Flow Designer - Intuitive drag-and-drop interface powered by ReactFlow\nMCP Integration - Native Model Context Protocol support for seamless tool connectivity\nScalable Architecture - From single binary to distributed clusters\nMultiple Backends - In-memory, Redis, and PostgreSQL storage options\nAI-First - Built on Rig for robust AI tooling and agent coordination\nProduction Ready - Designed for enterprise deployment with clustering and resilience\n\n\n\n\n\n\n# Download and run - no setup required\ncurl -L https://github.com/yourusername/aceryx/releases/latest/download/aceryx-linux-x64 -o aceryx\nchmod +x aceryx\n./aceryx serve\nOpen http://localhost:8080 to access the flow designer.\n\n\n\ndocker run -p 8080:8080 aceryx/aceryx:latest\n\n\n\ngit clone https://github.com/yourusername/aceryx.git\ncd aceryx\ncargo run -- serve\n\n\n\n\nAceryx is built with a modular, trait-based architecture that scales from development to production:\n\n\nAll backends implement the same FlowStorage trait, enabling seamless transitions between deployment modes:\n\nIn-Memory - Perfect for development and single-node deployments\nRedis - Distributed coordination with persistence and pub/sub\nPostgreSQL - Enterprise-grade persistence with ACID guarantees\n\n\n\n\nBackend (Rust) - Axum - High-performance web framework - Rig - AI agent tooling and orchestration - MCP - Model Context Protocol integration - Tokio - Async runtime\nFrontend - ReactFlow - Visual flow designer - HTMX + Alpine.js - Interactive UI - Minijinja - Server-side templating - Tabler - UI components and styling - Tabulator.js - Advanced data tables - Cytoscape.js - Graph visualization - Timeline.js - Timeline components\n\n\n\n\n\n\n# Server Configuration\nACERYX_PORT=8080\nACERYX_HOST=0.0.0.0\n\n# Storage Backend\nACERYX_STORAGE=memory  # memory | redis | postgres\n\n# Redis Configuration (when using Redis backend)\nREDIS_URL=redis://localhost:6379\n\n# PostgreSQL Configuration (when using PostgreSQL backend)\nDATABASE_URL=postgresql://user:pass@localhost/aceryx\n\n# AI Configuration\nOPENAI_API_KEY=your_openai_key\nANTHROPIC_API_KEY=your_anthropic_key\n\n\n\nCreate aceryx.toml in your working directory:\n[server]\nport = 8080\nhost = \"0.0.0.0\"\n\n[storage]\nbackend = \"memory\"  # memory | redis | postgres\n\n[storage.redis]\nurl = \"redis://localhost:6379\"\npool_size = 10\n\n[storage.postgres]\nurl = \"postgresql://user:pass@localhost/aceryx\"\nmax_connections = 20\n\n[ai]\ndefault_provider = \"openai\"\nmax_tokens = 4096\ntimeout = 30\n\n[clustering]\nnode_id = \"node-1\"\ndiscovery_interval = 30\nheartbeat_interval = 10\n\n\n\n\n\n\nname: \"Document Processor\"\ndescription: \"Processes uploaded documents with AI analysis\"\n\nnodes:\n  - id: \"upload\"\n    type: \"trigger\"\n    config:\n      trigger_type: \"file_upload\"\n      accepted_types: [\"pdf\", \"docx\", \"txt\"]\n\n  - id: \"extract\"\n    type: \"mcp_tool\"\n    config:\n      tool: \"document_extractor\"\n      input_mapping:\n        file: \"{{upload.file}}\"\n\n  - id: \"analyze\"\n    type: \"ai_agent\"\n    config:\n      provider: \"openai\"\n      model: \"gpt-4\"\n      prompt: \"Analyze this document and extract key insights: {{extract.content}}\"\n\n  - id: \"store\"\n    type: \"database\"\n    config:\n      operation: \"insert\"\n      table: \"documents\"\n      data:\n        content: \"{{extract.content}}\"\n        analysis: \"{{analyze.result}}\"\n        processed_at: \"{{now()}}\"\n\nedges:\n  - from: \"upload\"\n    to: \"extract\"\n  - from: \"extract\"\n    to: \"analyze\"\n  - from: \"analyze\"\n    to: \"store\"\n\n\n\n\nConditional Branching - Route flow execution based on data or AI decisions\nParallel Execution - Run multiple agents simultaneously\nError Handling - Automatic retries and fallback strategies\nState Management - Persistent context across distributed nodes\nReal-time Monitoring - Live flow execution tracking\n\n\n\n\n\n\nDocument Processing - AI-powered document analysis and transformation\nCustomer Support - Automated ticket routing and response generation\nData Pipelines - AI-enhanced data processing and enrichment\nContent Creation - Multi-step content generation workflows\nResearch Automation - Automated research and synthesis tasks\nIntegration Workflows - Connect disparate systems with AI orchestration\n\n\n\n\n\n\n# Production single-node deployment\nACERYX_STORAGE=postgres \\\nDATABASE_URL=postgresql://user:pass@localhost/aceryx \\\n./aceryx serve --port 8080\n\n\n\n# Node 1\nACERYX_STORAGE=redis \\\nREDIS_URL=redis://redis-cluster:6379 \\\nACERYX_NODE_ID=node-1 \\\n./aceryx serve --port 8080\n\n# Node 2\nACERYX_STORAGE=redis \\\nREDIS_URL=redis://redis-cluster:6379 \\\nACERYX_NODE_ID=node-2 \\\n./aceryx serve --port 8081\n\n\n\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: aceryx\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: aceryx\n  template:\n    metadata:\n      labels:\n        app: aceryx\n    spec:\n      containers:\n      - name: aceryx\n        image: aceryx/aceryx:latest\n        ports:\n        - containerPort: 8080\n        env:\n        - name: ACERYX_STORAGE\n          value: \"redis\"\n        - name: REDIS_URL\n          value: \"redis://redis-service:6379\"\n\n\n\n\nWe welcome contributions! Please see our Contributing Guide for details.\n\n\n# Clone the repository\ngit clone https://github.com/yourusername/aceryx.git\ncd aceryx\n\n# Install dependencies\ncargo build\n\n# Run tests\ncargo test\n\n# Start development server\ncargo run -- serve --dev\n\n# Build frontend assets\nnpm install\nnpm run build\n\n\n\naceryx/\n├── src/\n│   ├── main.rs              # Application entry point\n│   ├── server/              # Axum web server\n│   ├── storage/             # Storage trait and implementations\n│   ├── agents/              # AI agent coordination\n│   ├── flows/               # Flow execution engine\n│   ├── mcp/                 # Model Context Protocol integration\n│   └── config/              # Configuration management\n├── web/                     # Frontend assets\n│   ├── components/          # React components\n│   ├── flows/              # ReactFlow designer\n│   └── static/             # Static assets\n├── migrations/             # Database migrations\n└── docs/                   # Documentation\n\n\n\n\n\nUser Guide - Complete usage documentation\nAPI Reference - REST API documentation\nFlow Reference - Flow configuration guide\nMCP Integration - Model Context Protocol usage\nDeployment Guide - Production deployment\nContributing - Development and contribution guide\n\n\n\n\n\nWebsite: aceryx.org\nDocumentation: docs.aceryx.org\nDiscord: Join our community\nTwitter: @aceryx\n\n\n\n\nThis project is licensed under the Apache License 2.0 - see the LICENSE file for details.\n\n\n\n\nThe Rust community for amazing tooling and libraries\nReactFlow for the excellent flow designer foundation\nRig for AI agent orchestration\nThe MCP team for standardizing AI tool integration\n\n\nMade with 🍁 and Rust",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#features",
+    "href": "index.html#features",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "Visual Flow Designer - Intuitive drag-and-drop interface powered by ReactFlow\nMCP Integration - Native Model Context Protocol support for seamless tool connectivity\nScalable Architecture - From single binary to distributed clusters\nMultiple Backends - In-memory, Redis, and PostgreSQL storage options\nAI-First - Built on Rig for robust AI tooling and agent coordination\nProduction Ready - Designed for enterprise deployment with clustering and resilience",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#quick-start",
+    "href": "index.html#quick-start",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "# Download and run - no setup required\ncurl -L https://github.com/yourusername/aceryx/releases/latest/download/aceryx-linux-x64 -o aceryx\nchmod +x aceryx\n./aceryx serve\nOpen http://localhost:8080 to access the flow designer.\n\n\n\ndocker run -p 8080:8080 aceryx/aceryx:latest\n\n\n\ngit clone https://github.com/yourusername/aceryx.git\ncd aceryx\ncargo run -- serve",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#architecture",
+    "href": "index.html#architecture",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "Aceryx is built with a modular, trait-based architecture that scales from development to production:\n\n\nAll backends implement the same FlowStorage trait, enabling seamless transitions between deployment modes:\n\nIn-Memory - Perfect for development and single-node deployments\nRedis - Distributed coordination with persistence and pub/sub\nPostgreSQL - Enterprise-grade persistence with ACID guarantees\n\n\n\n\nBackend (Rust) - Axum - High-performance web framework - Rig - AI agent tooling and orchestration - MCP - Model Context Protocol integration - Tokio - Async runtime\nFrontend - ReactFlow - Visual flow designer - HTMX + Alpine.js - Interactive UI - Minijinja - Server-side templating - Tabler - UI components and styling - Tabulator.js - Advanced data tables - Cytoscape.js - Graph visualization - Timeline.js - Timeline components",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#configuration",
+    "href": "index.html#configuration",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "# Server Configuration\nACERYX_PORT=8080\nACERYX_HOST=0.0.0.0\n\n# Storage Backend\nACERYX_STORAGE=memory  # memory | redis | postgres\n\n# Redis Configuration (when using Redis backend)\nREDIS_URL=redis://localhost:6379\n\n# PostgreSQL Configuration (when using PostgreSQL backend)\nDATABASE_URL=postgresql://user:pass@localhost/aceryx\n\n# AI Configuration\nOPENAI_API_KEY=your_openai_key\nANTHROPIC_API_KEY=your_anthropic_key\n\n\n\nCreate aceryx.toml in your working directory:\n[server]\nport = 8080\nhost = \"0.0.0.0\"\n\n[storage]\nbackend = \"memory\"  # memory | redis | postgres\n\n[storage.redis]\nurl = \"redis://localhost:6379\"\npool_size = 10\n\n[storage.postgres]\nurl = \"postgresql://user:pass@localhost/aceryx\"\nmax_connections = 20\n\n[ai]\ndefault_provider = \"openai\"\nmax_tokens = 4096\ntimeout = 30\n\n[clustering]\nnode_id = \"node-1\"\ndiscovery_interval = 30\nheartbeat_interval = 10",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#creating-flows",
+    "href": "index.html#creating-flows",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "name: \"Document Processor\"\ndescription: \"Processes uploaded documents with AI analysis\"\n\nnodes:\n  - id: \"upload\"\n    type: \"trigger\"\n    config:\n      trigger_type: \"file_upload\"\n      accepted_types: [\"pdf\", \"docx\", \"txt\"]\n\n  - id: \"extract\"\n    type: \"mcp_tool\"\n    config:\n      tool: \"document_extractor\"\n      input_mapping:\n        file: \"{{upload.file}}\"\n\n  - id: \"analyze\"\n    type: \"ai_agent\"\n    config:\n      provider: \"openai\"\n      model: \"gpt-4\"\n      prompt: \"Analyze this document and extract key insights: {{extract.content}}\"\n\n  - id: \"store\"\n    type: \"database\"\n    config:\n      operation: \"insert\"\n      table: \"documents\"\n      data:\n        content: \"{{extract.content}}\"\n        analysis: \"{{analyze.result}}\"\n        processed_at: \"{{now()}}\"\n\nedges:\n  - from: \"upload\"\n    to: \"extract\"\n  - from: \"extract\"\n    to: \"analyze\"\n  - from: \"analyze\"\n    to: \"store\"\n\n\n\n\nConditional Branching - Route flow execution based on data or AI decisions\nParallel Execution - Run multiple agents simultaneously\nError Handling - Automatic retries and fallback strategies\nState Management - Persistent context across distributed nodes\nReal-time Monitoring - Live flow execution tracking",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#use-cases",
+    "href": "index.html#use-cases",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "Document Processing - AI-powered document analysis and transformation\nCustomer Support - Automated ticket routing and response generation\nData Pipelines - AI-enhanced data processing and enrichment\nContent Creation - Multi-step content generation workflows\nResearch Automation - Automated research and synthesis tasks\nIntegration Workflows - Connect disparate systems with AI orchestration",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#deployment",
+    "href": "index.html#deployment",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "# Production single-node deployment\nACERYX_STORAGE=postgres \\\nDATABASE_URL=postgresql://user:pass@localhost/aceryx \\\n./aceryx serve --port 8080\n\n\n\n# Node 1\nACERYX_STORAGE=redis \\\nREDIS_URL=redis://redis-cluster:6379 \\\nACERYX_NODE_ID=node-1 \\\n./aceryx serve --port 8080\n\n# Node 2\nACERYX_STORAGE=redis \\\nREDIS_URL=redis://redis-cluster:6379 \\\nACERYX_NODE_ID=node-2 \\\n./aceryx serve --port 8081\n\n\n\napiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: aceryx\nspec:\n  replicas: 3\n  selector:\n    matchLabels:\n      app: aceryx\n  template:\n    metadata:\n      labels:\n        app: aceryx\n    spec:\n      containers:\n      - name: aceryx\n        image: aceryx/aceryx:latest\n        ports:\n        - containerPort: 8080\n        env:\n        - name: ACERYX_STORAGE\n          value: \"redis\"\n        - name: REDIS_URL\n          value: \"redis://redis-service:6379\"",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#contributing",
+    "href": "index.html#contributing",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "We welcome contributions! Please see our Contributing Guide for details.\n\n\n# Clone the repository\ngit clone https://github.com/yourusername/aceryx.git\ncd aceryx\n\n# Install dependencies\ncargo build\n\n# Run tests\ncargo test\n\n# Start development server\ncargo run -- serve --dev\n\n# Build frontend assets\nnpm install\nnpm run build\n\n\n\naceryx/\n├── src/\n│   ├── main.rs              # Application entry point\n│   ├── server/              # Axum web server\n│   ├── storage/             # Storage trait and implementations\n│   ├── agents/              # AI agent coordination\n│   ├── flows/               # Flow execution engine\n│   ├── mcp/                 # Model Context Protocol integration\n│   └── config/              # Configuration management\n├── web/                     # Frontend assets\n│   ├── components/          # React components\n│   ├── flows/              # ReactFlow designer\n│   └── static/             # Static assets\n├── migrations/             # Database migrations\n└── docs/                   # Documentation",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#documentation",
+    "href": "index.html#documentation",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "User Guide - Complete usage documentation\nAPI Reference - REST API documentation\nFlow Reference - Flow configuration guide\nMCP Integration - Model Context Protocol usage\nDeployment Guide - Production deployment\nContributing - Development and contribution guide",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#links",
+    "href": "index.html#links",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "Website: aceryx.org\nDocumentation: docs.aceryx.org\nDiscord: Join our community\nTwitter: @aceryx",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#license",
+    "href": "index.html#license",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "This project is licensed under the Apache License 2.0 - see the LICENSE file for details.",
+    "crumbs": [
+      "Introduction"
+    ]
+  },
+  {
+    "objectID": "index.html#acknowledgments",
+    "href": "index.html#acknowledgments",
+    "title": "Aceryx 🍁",
+    "section": "",
+    "text": "The Rust community for amazing tooling and libraries\nReactFlow for the excellent flow designer foundation\nRig for AI agent orchestration\nThe MCP team for standardizing AI tool integration\n\n\nMade with 🍁 and Rust",
+    "crumbs": [
+      "Introduction"
+    ]
+  }
+]
