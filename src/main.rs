@@ -88,6 +88,7 @@ async fn main() -> Result<()> {
     }
 }
 
+
 /// Initialize logging/tracing with appropriate levels for development vs production
 fn init_logging(dev_mode: bool) -> Result<()> {
     let filter = if dev_mode {
