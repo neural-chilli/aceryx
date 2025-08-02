@@ -9,7 +9,7 @@ website:
     brand:
       text: "Aceryx"
       href: index.qmd
-    logo: "images/aceryx_logo.png"
+    logo: "images/logo.png"
     search: true
     right:
       - icon: github

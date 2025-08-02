@@ -1,0 +1,89 @@
+[package]
+name = "aceryx"
+version = "0.1.0"
+edition = "2021"
+description = "An open-source agentic flow builder for Rust"
+license = "Apache-2.0"
+repository = "https://github.com/neural-chilli/aceryx"
+homepage = "https://aceryx.org"
+documentation = "https://docs.aceryx.org"
+keywords = ["ai", "agent", "workflow", "automation", "flow"]
+categories = ["web-programming", "command-line-utilities"]
+readme = "README.md"
+
+[dependencies]
+# Core async runtime
+tokio = { version = "1.0", features = ["full"] }
+
+# Web framework
+axum = { version = "0.7", features = ["macros", "multipart", "ws"] }
+tower = { version = "0.4", features = ["full"] }
+tower-http = { version = "0.5", features = ["fs", "cors", "trace"] }
+
+# HTTP client for external integrations
+reqwest = { version = "0.12", features = ["json", "stream"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Configuration management
+config = "0.14"
+clap = { version = "4.0", features = ["derive", "env"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# UUID generation for flow/node IDs
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Template rendering (for server-side UI)
+minijinja = { version = "2.0", features = ["loader"] }
+
+# Storage backends (all optional for modular compilation)
+redis = { version = "0.26", optional = true }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid"], optional = true }
+
+# AI integration foundation
+rig-core = { version = "0.2", optional = true }
+
+[dev-dependencies]
+tempfile = "3.0"
+tokio-test = "0.4"
+
+[features]
+default = ["memory-storage"]
+
+# Storage backend features
+memory-storage = []
+redis-storage = ["dep:redis"]
+postgres-storage = ["dep:sqlx"]
+
+# AI integration
+ai-agents = ["dep:rig-core"]
+
+# All features for development/testing
+full = ["redis-storage", "postgres-storage", "ai-agents"]
+
+[[bin]]
+name = "aceryx"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.dev]
+opt-level = 0
+debug = true
