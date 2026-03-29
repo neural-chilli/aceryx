@@ -42,7 +42,7 @@ var defaultRoleSeeds = map[string]roleSeed{
 	},
 	"workflow_designer": {
 		description: "Design and deploy workflows",
-		permissions: []string{"workflows:view", "workflows:deploy", "workflows:edit", "cases:read"},
+		permissions: []string{"workflows:*", "cases:read"},
 	},
 	"case_worker": {
 		description: "Work assigned cases and tasks",

@@ -3,6 +3,7 @@ package api
 import (
 	"database/sql"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/neural-chilli/aceryx/api/handlers"
@@ -26,32 +27,67 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	ctSvc := cases.NewCaseTypeService(db)
 	caseSvc := cases.NewCaseService(db, eng)
 	reportSvc := cases.NewReportsService(db, 5*time.Minute)
-	h := handlers.NewCaseHandlers(ctSvc, caseSvc, reportSvc)
-	rbacSvc := rbac.NewService(db)
+	caseHandlers := handlers.NewCaseHandlers(ctSvc, caseSvc, reportSvc)
 
-	wrap := func(permission string, fn http.HandlerFunc) http.Handler {
-		return middleware.Auth(middleware.RequirePermission(rbacSvc, permission)(http.HandlerFunc(fn)))
+	authzSvc := rbac.NewService(db)
+	authSvc := rbac.NewAuthService(db, os.Getenv("ACERYX_JWT_SECRET"), parseDurationOrDefault(os.Getenv("ACERYX_SESSION_TTL"), 24*time.Hour))
+	principalSvc := rbac.NewPrincipalService(db, authzSvc)
+	roleSvc := rbac.NewRoleService(db, authzSvc)
+	authHandlers := handlers.NewAuthHandlers(authSvc, principalSvc, roleSvc)
+
+	authMW := middleware.AuthMiddleware(authSvc)
+	withAuth := func(h http.HandlerFunc) http.Handler {
+		return authMW(http.HandlerFunc(h))
+	}
+	withPerm := func(permission string, h http.HandlerFunc) http.Handler {
+		return authMW(middleware.RequirePermission(authzSvc, authSvc, permission)(http.HandlerFunc(h)))
 	}
 
-	mux.Handle("POST /case-types", wrap("cases:create", h.RegisterCaseType))
-	mux.Handle("GET /case-types", wrap("cases:read", h.ListCaseTypes))
-	mux.Handle("GET /case-types/{id}", wrap("cases:read", h.GetCaseType))
+	mux.HandleFunc("POST /auth/login", authHandlers.Login)
+	mux.Handle("POST /auth/logout", withAuth(authHandlers.Logout))
+	mux.Handle("POST /auth/password", withAuth(authHandlers.ChangePassword))
+	mux.Handle("GET /auth/preferences", withAuth(authHandlers.GetPreferences))
+	mux.Handle("PUT /auth/preferences", withAuth(authHandlers.PutPreferences))
 
-	mux.Handle("POST /cases", wrap("cases:create", h.CreateCase))
-	mux.Handle("GET /cases/{id}", wrap("cases:read", h.GetCase))
-	mux.Handle("GET /cases", wrap("cases:read", h.ListCases))
-	mux.Handle("PATCH /cases/{id}/data", wrap("cases:update", h.PatchCaseData))
-	mux.Handle("POST /cases/{id}/close", wrap("cases:close", h.CloseCase))
-	mux.Handle("POST /cases/{id}/cancel", wrap("cases:close", h.CancelCase))
-	mux.Handle("GET /cases/search", wrap("cases:read", h.SearchCases))
-	mux.Handle("GET /cases/dashboard", wrap("cases:read", h.Dashboard))
+	mux.Handle("POST /admin/principals", withPerm("admin:users", authHandlers.CreatePrincipal))
+	mux.Handle("GET /admin/principals", withPerm("admin:users", authHandlers.ListPrincipals))
+	mux.Handle("PUT /admin/principals/{id}", withPerm("admin:users", authHandlers.UpdatePrincipal))
+	mux.Handle("POST /admin/principals/{id}/disable", withPerm("admin:users", authHandlers.DisablePrincipal))
 
-	mux.Handle("GET /reports/cases/summary", wrap("cases:read", h.ReportCasesSummary))
-	mux.Handle("GET /reports/cases/ageing", wrap("cases:read", h.ReportAgeing))
-	mux.Handle("GET /reports/sla/compliance", wrap("cases:read", h.ReportSLACompliance))
-	mux.Handle("GET /reports/cases/by-stage", wrap("cases:read", h.ReportCasesByStage))
-	mux.Handle("GET /reports/workload", wrap("cases:read", h.ReportWorkload))
-	mux.Handle("GET /reports/decisions", wrap("cases:read", h.ReportDecisions))
+	mux.Handle("POST /admin/roles", withPerm("admin:roles", authHandlers.CreateRole))
+	mux.Handle("GET /admin/roles", withPerm("admin:roles", authHandlers.ListRoles))
+	mux.Handle("PUT /admin/roles/{id}/permissions", withPerm("admin:roles", authHandlers.UpdateRolePermissions))
+
+	mux.Handle("POST /case-types", withPerm("cases:create", caseHandlers.RegisterCaseType))
+	mux.Handle("GET /case-types", withPerm("cases:read", caseHandlers.ListCaseTypes))
+	mux.Handle("GET /case-types/{id}", withPerm("cases:read", caseHandlers.GetCaseType))
+
+	mux.Handle("POST /cases", withPerm("cases:create", caseHandlers.CreateCase))
+	mux.Handle("GET /cases/{id}", withPerm("cases:read", caseHandlers.GetCase))
+	mux.Handle("GET /cases", withPerm("cases:read", caseHandlers.ListCases))
+	mux.Handle("PATCH /cases/{id}/data", withPerm("cases:update", caseHandlers.PatchCaseData))
+	mux.Handle("POST /cases/{id}/close", withPerm("cases:close", caseHandlers.CloseCase))
+	mux.Handle("POST /cases/{id}/cancel", withPerm("cases:close", caseHandlers.CancelCase))
+	mux.Handle("GET /cases/search", withPerm("cases:read", caseHandlers.SearchCases))
+	mux.Handle("GET /cases/dashboard", withPerm("cases:read", caseHandlers.Dashboard))
+
+	mux.Handle("GET /reports/cases/summary", withPerm("cases:read", caseHandlers.ReportCasesSummary))
+	mux.Handle("GET /reports/cases/ageing", withPerm("cases:read", caseHandlers.ReportAgeing))
+	mux.Handle("GET /reports/sla/compliance", withPerm("cases:read", caseHandlers.ReportSLACompliance))
+	mux.Handle("GET /reports/cases/by-stage", withPerm("cases:read", caseHandlers.ReportCasesByStage))
+	mux.Handle("GET /reports/workload", withPerm("cases:read", caseHandlers.ReportWorkload))
+	mux.Handle("GET /reports/decisions", withPerm("cases:read", caseHandlers.ReportDecisions))
 
 	return mux
+}
+
+func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {
+	if raw == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
 }

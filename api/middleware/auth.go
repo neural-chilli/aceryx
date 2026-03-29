@@ -2,14 +2,22 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/rbac"
 )
 
 type Principal struct {
-	ID       uuid.UUID
-	TenantID uuid.UUID
+	ID        uuid.UUID
+	TenantID  uuid.UUID
+	SessionID *uuid.UUID
+	Type      string
+	Name      string
+	Email     string
+	Roles     []string
 }
 
 type principalCtxKey struct{}
@@ -19,20 +27,36 @@ func PrincipalFromContext(ctx context.Context) *Principal {
 	return v
 }
 
-// Auth extracts principal identity from request headers.
-func Auth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		pid := r.Header.Get("X-Principal-ID")
-		tid := r.Header.Get("X-Tenant-ID")
-		if pid != "" && tid != "" {
-			principalID, perr := uuid.Parse(pid)
-			tenantID, terr := uuid.Parse(tid)
-			if perr == nil && terr == nil {
-				ctx := context.WithValue(r.Context(), principalCtxKey{}, &Principal{ID: principalID, TenantID: tenantID})
-				next.ServeHTTP(w, r.WithContext(ctx))
+func AuthMiddleware(auth *rbac.AuthService) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authz := strings.TrimSpace(r.Header.Get("Authorization"))
+			if !strings.HasPrefix(strings.ToLower(authz), "bearer ") {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthenticated"})
 				return
 			}
-		}
-		next.ServeHTTP(w, r)
-	})
+
+			token := strings.TrimSpace(authz[len("Bearer "):])
+			ap, err := auth.AuthenticateBearer(r.Context(), token)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				_ = json.NewEncoder(w).Encode(map[string]string{"error": "unauthenticated"})
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), principalCtxKey{}, &Principal{
+				ID:        ap.ID,
+				TenantID:  ap.TenantID,
+				SessionID: ap.SessionID,
+				Type:      ap.Type,
+				Name:      ap.Name,
+				Email:     ap.Email,
+				Roles:     ap.Roles,
+			})
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
 }
