@@ -1,0 +1,31 @@
+languageCode = 'en-gb'
+title = 'Aceryx'
+enableRobotsTXT = true
+
+[module]
+  [[module.imports]]
+    path = 'github.com/imfing/hextra'
+
+[menu]
+
+  [[menu.main]]
+    name = 'Docs'
+    pageRef = '/docs'
+    weight = 1
+
+  [[menu.main]]
+    name = 'GitHub'
+    url = 'https://github.com/neural-chilli/aceryx'
+    weight = 2
+
+[params]
+  [params.navbar]
+    displayTitle = true
+    displayLogo = false
+
+  [params.page]
+    width = 'normal'
+
+  [params.theme]
+    default = 'system'
+    displayToggle = true
