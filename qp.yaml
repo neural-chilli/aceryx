@@ -1,0 +1,207 @@
+# qp.yaml — Aceryx development workflow
+# Usage: qp <task>
+
+tasks:
+  # ── Infrastructure ─────────────────────────────────────────
+
+  db:up:
+    desc: Start Postgres in Docker
+    cmd: docker compose up -d postgres
+    check: docker compose ps postgres | grep -q running
+
+  db:down:
+    desc: Stop Postgres
+    cmd: docker compose down
+
+  db:reset:
+    desc: Drop and recreate database
+    deps: [db:up]
+    cmd: |
+      docker compose exec postgres psql -U aceryx -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+      docker compose exec postgres psql -U aceryx -c "CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS vector;"
+
+  db:migrate:
+    desc: Run database migrations
+    deps: [db:up]
+    cmd: go run ./cmd/aceryx migrate
+
+  db:seed:
+    desc: Seed database with dev data (default tenant, admin user, sample workflow)
+    deps: [db:migrate]
+    cmd: go run ./cmd/aceryx seed
+
+  db:psql:
+    desc: Open psql shell
+    deps: [db:up]
+    cmd: docker compose exec postgres psql -U aceryx
+
+  db:fresh:
+    desc: Full reset — drop, migrate, seed
+    deps: [db:reset, db:migrate, db:seed]
+
+  # ── Build ──────────────────────────────────────────────────
+
+  build:
+    desc: Build Go binary
+    cmd: go build -o aceryx ./cmd/aceryx
+
+  build:frontend:
+    desc: Build Vue frontend for production
+    cmd: cd frontend && npm run build
+
+  build:all:
+    desc: Build everything
+    deps: [build, build:frontend]
+
+  # ── Run ────────────────────────────────────────────────────
+
+  serve:
+    desc: Run backend server
+    deps: [db:up, build]
+    cmd: ./aceryx serve
+
+  dev:backend:
+    desc: Run backend with hot reload (requires air)
+    deps: [db:up]
+    cmd: air -c .air.toml
+
+  dev:frontend:
+    desc: Run Vite dev server with HMR
+    cmd: cd frontend && npm run dev
+
+  dev:
+    desc: Run backend + frontend dev servers
+    deps: [db:up]
+    parallel:
+      - cmd: air -c .air.toml
+      - cmd: cd frontend && npm run dev
+
+  # ── Test ───────────────────────────────────────────────────
+
+  test:
+    desc: Run Go unit tests
+    cmd: go test ./internal/... -count=1 -race
+
+  test:integration:
+    desc: Run Go integration tests (uses testcontainers — no external Postgres needed)
+    cmd: go test ./tests/integration/... -count=1 -tags=integration -race
+
+  test:bdd:
+    desc: Run BDD scenarios
+    deps: [db:up]
+    cmd: go test ./tests/bdd/... -count=1 -tags=bdd
+
+  test:frontend:
+    desc: Run Vitest unit tests
+    cmd: cd frontend && npm run test:unit
+
+  test:e2e:
+    desc: Run Playwright e2e tests against full stack
+    deps: [db:up]
+    cmd: cd frontend && npx playwright test
+
+  test:all:
+    desc: Run all tests
+    deps: [test, test:integration, test:bdd, test:frontend]
+
+  # ── Lint ───────────────────────────────────────────────────
+
+  fmt:
+    desc: Format Go code
+    cmd: gofmt -w .
+
+  lint:
+    desc: Lint Go code
+    cmd: golangci-lint run ./...
+
+  lint:frontend:
+    desc: Lint and type-check frontend
+    cmd: cd frontend && npm run lint && npm run type-check
+
+  lint:all:
+    desc: Lint everything
+    deps: [fmt, lint, lint:frontend]
+
+  # ── Guards (AGENTS.md verification protocol) ───────────────
+
+  guards:
+    desc: Run all guards — must pass before any merge
+    deps: [fmt, lint, test]
+    cmd: echo "✓ All guards passed"
+
+  guards:full:
+    desc: Run all guards including integration and frontend
+    deps: [fmt, lint:all, test:all]
+    cmd: echo "✓ All guards passed (full suite)"
+
+  # ── Code Generation ────────────────────────────────────────
+
+  generate:
+    desc: Run all code generators (if any)
+    cmd: go generate ./...
+
+  # ── Dependencies ───────────────────────────────────────────
+
+  deps:
+    desc: Install Go dependencies
+    cmd: go mod tidy
+
+  deps:frontend:
+    desc: Install frontend dependencies
+    cmd: cd frontend && npm install
+
+  deps:all:
+    desc: Install all dependencies
+    deps: [deps, deps:frontend]
+
+  deps:tools:
+    desc: Install development tools
+    cmd: |
+      go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      go install github.com/air-verse/air@latest
+      echo "✓ Tools installed"
+
+  # ── Docker ─────────────────────────────────────────────────
+
+  docker:build:
+    desc: Build Docker image
+    cmd: docker build -t aceryx:dev .
+
+  docker:run:
+    desc: Run full stack in Docker
+    cmd: docker compose --profile full up -d
+
+  docker:stop:
+    desc: Stop all Docker services
+    cmd: docker compose --profile full down
+
+  # ── Utility ────────────────────────────────────────────────
+
+  clean:
+    desc: Remove build artifacts
+    cmd: |
+      rm -f aceryx
+      rm -rf frontend/dist
+      rm -rf data/
+
+  loc:
+    desc: Count lines of code
+    cmd: |
+      echo "=== Go ==="
+      find . -name '*.go' -not -path './vendor/*' | xargs wc -l | tail -1
+      echo "=== Vue/TS ==="
+      find frontend/src -name '*.vue' -o -name '*.ts' | xargs wc -l | tail -1
+      echo "=== SQL ==="
+      find migrations -name '*.sql' | xargs wc -l | tail -1
+
+  check:imports:
+    desc: Verify no cross-package internal imports (AGENTS.md rule)
+    cmd: |
+      echo "Checking for forbidden internal imports..."
+      VIOLATIONS=$(grep -rn 'internal/.*/' internal/ --include='*.go' | grep -v '_test.go' | grep -v 'internal/engine/' | grep 'internal/[a-z]*/[a-z]' || true)
+      if [ -n "$VIOLATIONS" ]; then
+        echo "❌ Cross-package internal imports found:"
+        echo "$VIOLATIONS"
+        exit 1
+      fi
+      echo "✓ No cross-package internal imports"

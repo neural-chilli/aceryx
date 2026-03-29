@@ -152,6 +152,7 @@ After implementing a feature or fixing a bug, verify the following guards:
 - [ ] All database writes within a step transition occur in a single transaction
 - [ ] RBAC check exists on every new API endpoint
 - [ ] Audit event is recorded for every state-changing operation
+- [ ] Every query on a tenant-scoped table includes `WHERE tenant_id = $tenant_id`
 - [ ] Error cases return appropriate HTTP status codes (not 500 for expected errors)
 
 **If any guard fails, fix it before proceeding to the next task.**
@@ -165,11 +166,15 @@ These invariants (from design doc Section 7.1) must never be violated by any cha
 1. A step activates at most once per workflow execution.
 2. A task completes at most once.
 3. A workflow does not progress after cancellation.
-4. Case version increments strictly monotonically.
+4. Case version increments strictly monotonically on case data changes (not on internal engine operations).
 5. Step state transitions are monotonic (forward only).
 6. The audit trail is append-only.
 7. Case data is always valid against its case type schema.
 8. RBAC is enforced on every state-changing operation.
+
+**Retry boundary:** retries are internal to the executor. The step remains in `active` state throughout. The engine never sets a step back to `ready` or `pending`. Do not implement retries by re-entering a step into the DAG.
+
+**Non-deterministic boundary:** agent steps produce non-deterministic output. Do not build logic that assumes agent step reproducibility. The engine treats agent output as opaque and final.
 
 When implementing engine logic, explicitly consider how each invariant is preserved. If you cannot explain how a change maintains all eight invariants, stop and ask.
 
@@ -184,12 +189,14 @@ tx, err := db.Begin(ctx)
 // 1. Update case_steps.state
 // 2. Write case_steps.result (if completing)
 // 3. Insert case_events audit record
-// 4. Update cases.version and cases.updated_at
-// 5. Any case.data updates from step output
+// 4. Update cases.updated_at (always)
+// 5. If step output writes to case.data: update cases.data AND increment cases.version
 err = tx.Commit(ctx)
 ```
 
 **This is mandatory.** Never split these writes across separate transactions. Never commit a subset. If any write fails, the entire transaction rolls back and the step transition does not occur.
+
+**Case version rule:** `cases.version` increments only when `cases.data` changes. Step state transitions, DAG evaluations, and task operations do not touch the case version. The version exists for API-level optimistic locking (PATCH with `If-Match`), not for internal engine bookkeeping.
 
 ---
 
