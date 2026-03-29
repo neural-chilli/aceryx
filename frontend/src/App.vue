@@ -55,7 +55,7 @@ async function onLogout() {
       </RouterLink>
       <nav class="main-nav">
         <RouterLink to="/inbox">{{ t('Inbox') }}</RouterLink>
-        <RouterLink to="/cases/preview">{{ t('Cases') }}</RouterLink>
+        <RouterLink to="/cases">{{ t('Cases') }}</RouterLink>
       </nav>
       <details class="profile-menu">
         <summary>{{ currentUser?.name ?? 'User' }}</summary>

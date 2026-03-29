@@ -62,3 +62,44 @@ export type LoginResponse = {
   themes: Theme[]
   expires_at: string
 }
+
+export type TaskItem = {
+  case_id: string
+  step_id: string
+  case_number: string
+  case_type: string
+  step_name: string
+  assigned_to?: string
+  priority: number
+  sla_deadline?: string
+  sla_status: 'on_track' | 'warning' | 'breached'
+}
+
+export type TaskDetail = {
+  case_id: string
+  step_id: string
+  case_number: string
+  case_type: string
+  case_data: Record<string, unknown>
+  state: string
+  assigned_to?: string
+  draft_data?: Record<string, unknown>
+  form: string
+  form_schema: {
+    fields: Array<{ id: string; type: string; required?: boolean; bind?: string }>
+  }
+  outcomes: string[]
+}
+
+export type DashboardCase = {
+  id: string
+  case_number: string
+  case_type: string
+  status: string
+  priority: number
+  created_at: string
+  updated_at: string
+  assigned_to?: string
+  sla_status?: string
+  current_stage?: string
+}

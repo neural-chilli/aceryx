@@ -1,16 +1,20 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/rbac"
+	"github.com/neural-chilli/aceryx/internal/tasks"
 	"github.com/neural-chilli/aceryx/internal/tenants"
 )
 
@@ -35,6 +39,20 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	principalSvc := rbac.NewPrincipalService(db, authzSvc)
 	roleSvc := rbac.NewRoleService(db, authzSvc)
 	authHandlers := handlers.NewAuthHandlers(authSvc, principalSvc, roleSvc)
+	wsHub := notify.NewHub(db, notify.DefaultTokenValidator(func(ctx context.Context, token string) (uuid.UUID, uuid.UUID, error) {
+		ap, err := authSvc.AuthenticateBearer(ctx, token)
+		if err != nil {
+			return uuid.Nil, uuid.Nil, err
+		}
+		return ap.ID, ap.TenantID, nil
+	}))
+	notifySvc := notify.NewService(db, wsHub)
+	taskSvc := tasks.NewTaskService(db, eng, notifySvc)
+	taskHandlers := handlers.NewTaskHandlers(taskSvc)
+	if eng != nil {
+		eng.RegisterExecutor("human_task", tasks.NewHumanTaskExecutor(taskSvc))
+		eng.SetEscalationCallback(taskSvc.HandleOverdue)
+	}
 	tenantSvc := tenants.NewTenantService(db)
 	themeSvc := tenants.NewThemeService(db)
 	tenantHandlers := handlers.NewTenantHandlers(tenantSvc, themeSvc)
@@ -90,6 +108,14 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("GET /reports/cases/by-stage", withPerm("cases:read", caseHandlers.ReportCasesByStage))
 	mux.Handle("GET /reports/workload", withPerm("cases:read", caseHandlers.ReportWorkload))
 	mux.Handle("GET /reports/decisions", withPerm("cases:read", caseHandlers.ReportDecisions))
+	mux.Handle("GET /tasks", withAuth(taskHandlers.Inbox))
+	mux.Handle("GET /tasks/{case_id}/{step_id}", withAuth(taskHandlers.GetTask))
+	mux.Handle("POST /tasks/{case_id}/{step_id}/claim", withAuth(taskHandlers.Claim))
+	mux.Handle("POST /tasks/{case_id}/{step_id}/complete", withAuth(taskHandlers.Complete))
+	mux.Handle("PUT /tasks/{case_id}/{step_id}/draft", withAuth(taskHandlers.SaveDraft))
+	mux.Handle("POST /tasks/{case_id}/{step_id}/reassign", withPerm("tasks:reassign", taskHandlers.Reassign))
+	mux.Handle("POST /tasks/{case_id}/{step_id}/escalate", withPerm("tasks:escalate", taskHandlers.Escalate))
+	mux.HandleFunc("GET /ws", wsHub.HandleWS)
 
 	return mux
 }
