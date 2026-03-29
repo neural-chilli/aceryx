@@ -1,6 +1,6 @@
 module github.com/neural-chilli/aceryx
 
-go 1.26
+go 1.26.1
 
 require (
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
