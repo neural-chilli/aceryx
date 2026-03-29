@@ -1,80 +1,80 @@
-name: Deploy manual to GitHub Pages
-
-on:
-  push:
-    branches: [main]
-    paths:
-      - "manual/**"
-      - ".github/workflows/manual.yml"
-  workflow_dispatch:
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-
-    defaults:
-      run:
-        shell: bash
-        working-directory: manual
-
-    env:
-      HUGO_VERSION: 0.156.0
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Setup Pages
-        id: pages
-        uses: actions/configure-pages@v5
-
-      - name: Setup Hugo
-        uses: peaceiris/actions-hugo@v3
-        with:
-          hugo-version: ${{ env.HUGO_VERSION }}
-          extended: true
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: stable
-          cache: false
-
-      - name: Download Hugo modules
-        run: hugo mod get ./...
-
-      - name: Build
-        run: |
-          hugo \
-            --gc \
-            --minify \
-            --baseURL "${{ steps.pages.outputs.base_url }}/" \
-            --cacheDir "${{ runner.temp }}/hugo_cache"
-
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: manual/public
-
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+#name: Deploy manual to GitHub Pages
+#
+#on:
+#  push:
+#    branches: [main]
+#    paths:
+#      - "manual/**"
+#      - ".github/workflows/manual.yml"
+#  workflow_dispatch:
+#
+#permissions:
+#  contents: read
+#  pages: write
+#  id-token: write
+#
+#concurrency:
+#  group: pages
+#  cancel-in-progress: false
+#
+#jobs:
+#  build:
+#    runs-on: ubuntu-latest
+#
+#    defaults:
+#      run:
+#        shell: bash
+#        working-directory: manual
+#
+#    env:
+#      HUGO_VERSION: 0.156.0
+#
+#    steps:
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#        with:
+#          fetch-depth: 0
+#          submodules: recursive
+#
+#      - name: Setup Pages
+#        id: pages
+#        uses: actions/configure-pages@v5
+#
+#      - name: Setup Hugo
+#        uses: peaceiris/actions-hugo@v3
+#        with:
+#          hugo-version: ${{ env.HUGO_VERSION }}
+#          extended: true
+#
+#      - name: Setup Go
+#        uses: actions/setup-go@v5
+#        with:
+#          go-version: stable
+#          cache: false
+#
+#      - name: Download Hugo modules
+#        run: hugo mod get ./...
+#
+#      - name: Build
+#        run: |
+#          hugo \
+#            --gc \
+#            --minify \
+#            --baseURL "${{ steps.pages.outputs.base_url }}/" \
+#            --cacheDir "${{ runner.temp }}/hugo_cache"
+#
+#      - name: Upload Pages artifact
+#        uses: actions/upload-pages-artifact@v3
+#        with:
+#          path: manual/public
+#
+#  deploy:
+#    environment:
+#      name: github-pages
+#      url: ${{ steps.deployment.outputs.page_url }}
+#    runs-on: ubuntu-latest
+#    needs: build
+#    steps:
+#      - name: Deploy to GitHub Pages
+#        id: deployment
+#        uses: actions/deploy-pages@v4
