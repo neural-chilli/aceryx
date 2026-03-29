@@ -32,6 +32,7 @@ var allPermissions = []string{
 	"vault:delete",
 	"admin:users",
 	"admin:roles",
+	"admin:tenant",
 	"admin:audit",
 }
 

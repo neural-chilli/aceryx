@@ -79,10 +79,12 @@ type LoginRequest struct {
 }
 
 type LoginResponse struct {
-	Token     string        `json:"token"`
-	Principal Principal     `json:"principal"`
-	Tenant    TenantContext `json:"tenant"`
-	ExpiresAt time.Time     `json:"expires_at"`
+	Token       string          `json:"token"`
+	Principal   Principal       `json:"principal"`
+	Tenant      TenantContext   `json:"tenant"`
+	Preferences UserPreferences `json:"preferences"`
+	Themes      []ThemeOption   `json:"themes"`
+	ExpiresAt   time.Time       `json:"expires_at"`
 }
 
 type ChangePasswordRequest struct {
@@ -104,6 +106,17 @@ type UserPreferences struct {
 	Notifications json.RawMessage `json:"notifications"`
 	Preferences   json.RawMessage `json:"preferences"`
 	UpdatedAt     time.Time       `json:"updated_at"`
+}
+
+type ThemeOption struct {
+	ID        uuid.UUID       `json:"id"`
+	TenantID  uuid.UUID       `json:"tenant_id"`
+	Name      string          `json:"name"`
+	Key       string          `json:"key"`
+	Mode      string          `json:"mode"`
+	Overrides json.RawMessage `json:"overrides"`
+	IsDefault bool            `json:"is_default"`
+	SortOrder int             `json:"sort_order"`
 }
 
 type AuthPrincipal struct {

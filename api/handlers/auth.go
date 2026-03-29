@@ -120,7 +120,7 @@ func (h *AuthHandlers) PutPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	pref, err := h.Auth.UpdatePreferences(r.Context(), principal.TenantID, principal.ID, req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, pref)

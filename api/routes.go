@@ -11,6 +11,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/rbac"
+	"github.com/neural-chilli/aceryx/internal/tenants"
 )
 
 // NewRouter creates and configures the HTTP router.
@@ -34,6 +35,9 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	principalSvc := rbac.NewPrincipalService(db, authzSvc)
 	roleSvc := rbac.NewRoleService(db, authzSvc)
 	authHandlers := handlers.NewAuthHandlers(authSvc, principalSvc, roleSvc)
+	tenantSvc := tenants.NewTenantService(db)
+	themeSvc := tenants.NewThemeService(db)
+	tenantHandlers := handlers.NewTenantHandlers(tenantSvc, themeSvc)
 
 	authMW := middleware.AuthMiddleware(authSvc)
 	withAuth := func(h http.HandlerFunc) http.Handler {
@@ -48,6 +52,15 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("POST /auth/password", withAuth(authHandlers.ChangePassword))
 	mux.Handle("GET /auth/preferences", withAuth(authHandlers.GetPreferences))
 	mux.Handle("PUT /auth/preferences", withAuth(authHandlers.PutPreferences))
+
+	mux.HandleFunc("GET /tenant/branding", tenantHandlers.GetBranding)
+	mux.Handle("PUT /tenant/branding", withPerm("admin:tenant", tenantHandlers.PutBranding))
+	mux.Handle("GET /tenant/terminology", withAuth(tenantHandlers.GetTerminology))
+	mux.Handle("PUT /tenant/terminology", withPerm("admin:tenant", tenantHandlers.PutTerminology))
+	mux.Handle("GET /tenant/themes", withAuth(tenantHandlers.ListThemes))
+	mux.Handle("POST /tenant/themes", withPerm("admin:tenant", tenantHandlers.CreateTheme))
+	mux.Handle("PUT /tenant/themes/{id}", withPerm("admin:tenant", tenantHandlers.UpdateTheme))
+	mux.Handle("DELETE /tenant/themes/{id}", withPerm("admin:tenant", tenantHandlers.DeleteTheme))
 
 	mux.Handle("POST /admin/principals", withPerm("admin:users", authHandlers.CreatePrincipal))
 	mux.Handle("GET /admin/principals", withPerm("admin:users", authHandlers.ListPrincipals))

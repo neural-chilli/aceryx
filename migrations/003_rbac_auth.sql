@@ -44,6 +44,7 @@ BEGIN
     INSERT INTO role_permissions (role_id, permission)
     VALUES
         (admin_role_id, '*'),
+        (admin_role_id, 'admin:tenant'),
         (workflow_role_id, 'workflows:*'),
         (workflow_role_id, 'cases:read'),
         (worker_role_id, 'cases:read'),

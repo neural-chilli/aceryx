@@ -89,9 +89,25 @@ RETURNING id
 	}
 	principal.Roles = roles
 
+	themes, err := a.listThemesForTenant(ctx, tenant.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list tenant themes: %w", err)
+	}
+	prefs, err := a.GetPreferences(ctx, tenant.ID, principal.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load user preferences: %w", err)
+	}
+
 	_ = recordAuthEvent(ctx, a.db, authEvent{TenantID: &tenant.ID, PrincipalID: &principal.ID, EventType: "login", Success: true, IPAddress: req.IPAddress, UserAgent: req.UserAgent})
 
-	return &LoginResponse{Token: jwtToken, Principal: principal, Tenant: tenant, ExpiresAt: expiresAt}, nil
+	return &LoginResponse{
+		Token:       jwtToken,
+		Principal:   principal,
+		Tenant:      tenant,
+		Preferences: prefs,
+		Themes:      themes,
+		ExpiresAt:   expiresAt,
+	}, nil
 }
 
 func (a *AuthService) AuthenticateBearer(ctx context.Context, bearerToken string) (*AuthPrincipal, error) {
@@ -265,26 +281,50 @@ WHERE up.principal_id = $1
 `, principalID, tenantID).Scan(&pref.PrincipalID, &pref.ThemeID, &pref.Locale, &pref.Notifications, &pref.Preferences, &pref.UpdatedAt)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			pref = UserPreferences{PrincipalID: principalID, Locale: "en", Notifications: []byte("{}"), Preferences: []byte("{}")}
+			defaultThemeID, derr := a.getTenantDefaultThemeID(ctx, tenantID)
+			if derr != nil {
+				return UserPreferences{}, fmt.Errorf("load tenant default theme: %w", derr)
+			}
+			pref = UserPreferences{PrincipalID: principalID, ThemeID: defaultThemeID, Locale: "en", Notifications: []byte("{}"), Preferences: []byte("{}")}
 			return pref, nil
 		}
 		return UserPreferences{}, fmt.Errorf("load user preferences: %w", err)
+	}
+	if pref.ThemeID == nil {
+		defaultThemeID, derr := a.getTenantDefaultThemeID(ctx, tenantID)
+		if derr != nil {
+			return UserPreferences{}, fmt.Errorf("load tenant default theme: %w", derr)
+		}
+		pref.ThemeID = defaultThemeID
 	}
 	return pref, nil
 }
 
 func (a *AuthService) UpdatePreferences(ctx context.Context, tenantID, principalID uuid.UUID, req UpdatePreferencesRequest) (UserPreferences, error) {
-	locale := req.Locale
-	if locale == "" {
-		locale = "en"
+	existing, err := a.GetPreferences(ctx, tenantID, principalID)
+	if err != nil {
+		return UserPreferences{}, err
 	}
-	notifications := req.Notifications
-	if len(notifications) == 0 {
-		notifications = []byte("{}")
+
+	themeID := existing.ThemeID
+	if req.ThemeID != nil {
+		if err := a.ensureThemeBelongsToTenant(ctx, tenantID, *req.ThemeID); err != nil {
+			return UserPreferences{}, err
+		}
+		themeID = req.ThemeID
 	}
-	preferences := req.Preferences
-	if len(preferences) == 0 {
-		preferences = []byte("{}")
+
+	locale := existing.Locale
+	if req.Locale != "" {
+		locale = req.Locale
+	}
+	notifications := existing.Notifications
+	if len(req.Notifications) > 0 {
+		notifications = req.Notifications
+	}
+	preferences := existing.Preferences
+	if len(req.Preferences) > 0 {
+		preferences = req.Preferences
 	}
 
 	if _, err := a.db.ExecContext(ctx, `
@@ -298,7 +338,7 @@ SET
     notifications = EXCLUDED.notifications,
     preferences = EXCLUDED.preferences,
     updated_at = now()
-`, principalID, req.ThemeID, locale, string(notifications), string(preferences), tenantID); err != nil {
+`, principalID, themeID, locale, string(notifications), string(preferences), tenantID); err != nil {
 		return UserPreferences{}, fmt.Errorf("upsert user preferences: %w", err)
 	}
 
@@ -307,6 +347,61 @@ SET
 
 func (a *AuthService) RecordDenied(ctx context.Context, principal AuthPrincipal, permission, path string) {
 	_ = recordAuthEvent(ctx, a.db, authEvent{TenantID: &principal.TenantID, PrincipalID: &principal.ID, EventType: "permission_denied", Success: false, Permission: permission, Path: path})
+}
+
+func (a *AuthService) listThemesForTenant(ctx context.Context, tenantID uuid.UUID) ([]ThemeOption, error) {
+	rows, err := a.db.QueryContext(ctx, `
+SELECT id, tenant_id, name, key, mode, overrides, is_default, sort_order
+FROM themes
+WHERE tenant_id = $1
+ORDER BY sort_order, name
+`, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := make([]ThemeOption, 0)
+	for rows.Next() {
+		var item ThemeOption
+		if err := rows.Scan(&item.ID, &item.TenantID, &item.Name, &item.Key, &item.Mode, &item.Overrides, &item.IsDefault, &item.SortOrder); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (a *AuthService) getTenantDefaultThemeID(ctx context.Context, tenantID uuid.UUID) (*uuid.UUID, error) {
+	var id uuid.UUID
+	err := a.db.QueryRowContext(ctx, `
+SELECT id
+FROM themes
+WHERE tenant_id = $1
+ORDER BY is_default DESC, sort_order, name
+LIMIT 1
+`, tenantID).Scan(&id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &id, nil
+}
+
+func (a *AuthService) ensureThemeBelongsToTenant(ctx context.Context, tenantID, themeID uuid.UUID) error {
+	var exists bool
+	if err := a.db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM themes WHERE id = $1 AND tenant_id = $2)`, themeID, tenantID).Scan(&exists); err != nil {
+		return fmt.Errorf("validate theme id: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("theme not found")
+	}
+	return nil
 }
 
 func (a *AuthService) resolveTenant(ctx context.Context, tenantID *uuid.UUID, tenantSlug string) (TenantContext, error) {
