@@ -38,6 +38,7 @@ tasks:
   db:fresh:
     desc: Full reset — drop, migrate, seed
     deps: [db:reset, db:migrate, db:seed]
+    cmd: echo "✓ Database fresh"
 
   # ── Build ──────────────────────────────────────────────────
 
@@ -52,6 +53,7 @@ tasks:
   build:all:
     desc: Build everything
     deps: [build, build:frontend]
+    cmd: echo "✓ Build complete"
 
   # ── Run ────────────────────────────────────────────────────
 
@@ -71,10 +73,9 @@ tasks:
 
   dev:
     desc: Run backend + frontend dev servers
-    deps: [db:up]
-    parallel:
-      - cmd: air -c .air.toml
-      - cmd: cd frontend && npm run dev
+    deps: [db:up, dev:backend, dev:frontend]
+    parallel: true
+    cmd: echo "✓ Dev servers running"
 
   # ── Test ───────────────────────────────────────────────────
 
@@ -103,6 +104,7 @@ tasks:
   test:all:
     desc: Run all tests
     deps: [test, test:integration, test:bdd, test:frontend]
+    cmd: echo "✓ All tests passed"
 
   # ── Lint ───────────────────────────────────────────────────
 
@@ -121,6 +123,7 @@ tasks:
   lint:all:
     desc: Lint everything
     deps: [fmt, lint, lint:frontend]
+    cmd: echo "✓ All linting passed"
 
   # ── Guards (AGENTS.md verification protocol) ───────────────
 
@@ -153,6 +156,7 @@ tasks:
   deps:all:
     desc: Install all dependencies
     deps: [deps, deps:frontend]
+    cmd: echo "✓ All dependencies installed"
 
   deps:tools:
     desc: Install development tools
