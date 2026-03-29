@@ -120,17 +120,16 @@ type OverdueTask struct {
 }
 
 type Engine struct {
-	db             *sql.DB
-	evaluations    *WorkerPool
-	executions     *WorkerPool
-	evaluators     ExpressionEvaluator
-	executors      map[string]StepExecutor
-	escalation     EscalationCallback
-	systemActorID  uuid.UUID
-	mu             sync.RWMutex
-	defaultPolicy  ErrorPolicy
-	slaInterval    time.Duration
-	recoveryActive bool
+	db            *sql.DB
+	evaluations   *WorkerPool
+	executions    *WorkerPool
+	evaluators    ExpressionEvaluator
+	executors     map[string]StepExecutor
+	escalation    EscalationCallback
+	systemActorID uuid.UUID
+	mu            sync.RWMutex
+	defaultPolicy ErrorPolicy
+	slaInterval   time.Duration
 }
 
 type ExpressionEvaluator interface {

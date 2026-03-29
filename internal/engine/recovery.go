@@ -40,7 +40,7 @@ func (e *Engine) recoverCase(ctx context.Context, caseID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("begin recover case tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	ast, err := loadWorkflowASTTx(ctx, tx, caseID)
 	if err != nil {

@@ -21,7 +21,7 @@ func (e *Engine) evaluateDAG(ctx context.Context, caseID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("begin dag evaluation tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var caseStatus string
 	var caseData []byte
@@ -237,7 +237,7 @@ func (e *Engine) incrementRetryCount(ctx context.Context, caseID uuid.UUID, step
 	if err != nil {
 		return 0, fmt.Errorf("begin retry update tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var retryCount int
 	err = tx.QueryRowContext(ctx, `
@@ -297,7 +297,7 @@ func (e *Engine) activateFallbackStep(ctx context.Context, caseID uuid.UUID, ste
 	if err != nil {
 		return fmt.Errorf("begin fallback activation tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE case_steps
@@ -328,7 +328,7 @@ func (e *Engine) completeStep(ctx context.Context, caseID uuid.UUID, stepID stri
 	if err != nil {
 		return fmt.Errorf("begin complete step tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var caseStatus string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, caseID).Scan(&caseStatus); err != nil {
@@ -394,7 +394,7 @@ func (e *Engine) failStep(ctx context.Context, caseID uuid.UUID, stepID string, 
 	if err != nil {
 		return fmt.Errorf("begin fail step tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var caseStatus string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, caseID).Scan(&caseStatus); err != nil {
@@ -436,7 +436,7 @@ func (e *Engine) skipStepTerminal(ctx context.Context, caseID uuid.UUID, stepID 
 	if err != nil {
 		return fmt.Errorf("begin skip step tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE case_steps
@@ -472,7 +472,7 @@ func (e *Engine) cancelCase(ctx context.Context, caseID uuid.UUID, actorID uuid.
 	if err != nil {
 		return fmt.Errorf("begin cancel case tx: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	ast, err := loadWorkflowASTTx(ctx, tx, caseID)
 	if err != nil {
