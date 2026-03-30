@@ -212,6 +212,9 @@ func (e *Engine) executeWithRetry(ctx context.Context, caseID uuid.UUID, step Wo
 	for {
 		attempt++
 		result, execErr := exec.Execute(ctx, caseID, step.ID, step.Config)
+		if errors.Is(execErr, ErrStepAwaitingReview) {
+			return nil
+		}
 		if execErr == nil {
 			if result == nil {
 				result = &StepResult{}
@@ -347,11 +350,16 @@ SET
     completed_at = now(),
     result = $3::jsonb,
     error = NULL,
-    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(
+    events = COALESCE(events, '[]'::jsonb)
+      || CASE
+            WHEN NULLIF($5, '') IS NULL THEN '[]'::jsonb
+            ELSE jsonb_build_array($5::jsonb)
+         END
+      || jsonb_build_array(
         jsonb_build_object('type', 'completed', 'attempts', $4, 'at', now())
     )
 WHERE case_id = $1 AND step_id = $2 AND state = 'active'
-`, caseID, stepID, string(resultJSON), result.Attempts); err != nil {
+`, caseID, stepID, string(resultJSON), result.Attempts, string(result.ExecutionEvent)); err != nil {
 		return fmt.Errorf("update completed step state: %w", err)
 	}
 
@@ -372,7 +380,11 @@ WHERE id = $1
 		}
 	}
 
-	if err := e.insertCaseEventTx(ctx, tx, caseID, stepID, "step_completed", "system", "complete_step", map[string]interface{}{"attempts": result.Attempts, "outcome": result.Outcome}); err != nil {
+	auditEventType := "step_completed"
+	if result.AuditEventType != "" {
+		auditEventType = result.AuditEventType
+	}
+	if err := e.insertCaseEventTx(ctx, tx, caseID, stepID, auditEventType, "system", "complete_step", map[string]interface{}{"attempts": result.Attempts, "outcome": result.Outcome}); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

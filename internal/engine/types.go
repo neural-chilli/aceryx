@@ -24,6 +24,7 @@ const (
 var (
 	ErrNotFound            = errors.New("engine: not found")
 	ErrCaseDataConflict    = errors.New("engine: case data optimistic lock conflict")
+	ErrStepAwaitingReview  = errors.New("engine: step awaiting external human review")
 	ErrExpressionTooLarge  = errors.New("engine: expression exceeds maximum size")
 	ErrExpressionTimedOut  = errors.New("engine: expression evaluation timeout")
 	ErrCycleDetectedInAST  = errors.New("engine: cycle detected in workflow AST")
@@ -87,6 +88,8 @@ type StepResult struct {
 	Output         json.RawMessage `json:"output,omitempty"`
 	WritesCaseData bool            `json:"writes_case_data,omitempty"`
 	CaseDataPatch  json.RawMessage `json:"case_data_patch,omitempty"`
+	ExecutionEvent json.RawMessage `json:"execution_event,omitempty"`
+	AuditEventType string          `json:"audit_event_type,omitempty"`
 	Attempts       int             `json:"attempts,omitempty"`
 }
 

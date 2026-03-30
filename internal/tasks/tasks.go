@@ -65,6 +65,8 @@ type AssignmentConfig struct {
 	Escalation   EscalationConfig `json:"escalation"`
 	Form         string           `json:"form"`
 	FormSchema   FormSchema       `json:"form_schema"`
+	Outcomes     []string         `json:"outcomes"`
+	Metadata     map[string]any   `json:"metadata"`
 }
 
 type FormSchema struct {
@@ -160,6 +162,15 @@ func (s *TaskService) CreateTaskFromActivation(ctx context.Context, caseID uuid.
 	}
 
 	metadata := map[string]any{"role": cfg.AssignToRole, "form": cfg.Form, "sla_hours": cfg.SLAHours, "escalation": cfg.Escalation}
+	if len(cfg.FormSchema.Fields) > 0 {
+		metadata["form_schema"] = cfg.FormSchema
+	}
+	if len(cfg.Outcomes) > 0 {
+		metadata["outcomes"] = cfg.Outcomes
+	}
+	for k, v := range cfg.Metadata {
+		metadata[k] = v
+	}
 	rawMeta, _ := json.Marshal(metadata)
 	if _, err := tx.ExecContext(ctx, `
 UPDATE case_steps
@@ -332,6 +343,18 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 		d.Form = cfg.Form
 		d.FormSchema = cfg.FormSchema
 	}
+	if outcomes := configuredOutcomes(d.Metadata); len(outcomes) > 0 {
+		d.Outcomes = outcomes
+		d.AvailableActions = append([]string(nil), outcomes...)
+	}
+	if schema := configuredFormSchema(d.Metadata); len(schema.Fields) > 0 {
+		d.FormSchema = schema
+		if d.Form == "" {
+			if v, ok := d.Metadata["form"].(string); ok {
+				d.Form = v
+			}
+		}
+	}
 
 	d.StepResults = map[string]any{}
 	rows, qerr := s.db.QueryContext(ctx, `SELECT step_id, COALESCE(result, '{}'::jsonb) FROM case_steps WHERE case_id = $1 AND state = 'completed'`, caseID)
@@ -430,7 +453,11 @@ func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, c
 	if !contains(taskDetail.Outcomes, req.Outcome) {
 		return ErrInvalidOutcome
 	}
-	validation := ValidateFormData(taskDetail.FormSchema, req.Data)
+	payload := req.Data
+	if taskDetail.Form == "agent_review" && strings.EqualFold(req.Outcome, "accept") && len(payload) == 0 {
+		payload = extractAgentOriginalOutput(taskDetail.Metadata)
+	}
+	validation := ValidateFormData(taskDetail.FormSchema, payload)
 	if len(validation) > 0 {
 		return fmt.Errorf("validation_failed: %s", validation[0].Message)
 	}
@@ -441,7 +468,7 @@ func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, c
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	resultRaw, _ := json.Marshal(map[string]any{"outcome": req.Outcome, "data": req.Data})
+	resultRaw, _ := json.Marshal(map[string]any{"outcome": req.Outcome, "data": payload})
 	res, err := tx.ExecContext(ctx, `
 UPDATE case_steps cs
 SET state='completed', completed_at=now(), result=$6::jsonb, draft_data=NULL,
@@ -462,7 +489,7 @@ WHERE cs.case_id=$1 AND cs.step_id=$2 AND c.id=cs.case_id AND c.tenant_id=$3 AND
 		return ErrForbidden
 	}
 
-	decisionPatch := buildDecisionPatch(taskDetail.FormSchema, req.Data)
+	decisionPatch := buildDecisionPatch(taskDetail.FormSchema, payload)
 	if len(decisionPatch) > 0 {
 		patchRaw, _ := json.Marshal(decisionPatch)
 		if _, err := tx.ExecContext(ctx, `
@@ -480,7 +507,7 @@ WHERE id = $1
 		}
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task_completed", principalID, "human", "task_complete", map[string]any{"outcome": req.Outcome, "data": req.Data}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task_completed", principalID, "human", "task_complete", map[string]any{"outcome": req.Outcome, "data": payload}); err != nil {
 		return err
 	}
 
@@ -854,6 +881,56 @@ func selectLeastLoaded(candidates []userLoad) uuid.UUID {
 	return candidates[0].PrincipalID
 }
 
+func configuredOutcomes(metadata map[string]any) []string {
+	raw, ok := metadata["outcomes"]
+	if !ok {
+		return nil
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+func configuredFormSchema(metadata map[string]any) FormSchema {
+	raw, ok := metadata["form_schema"]
+	if !ok {
+		return FormSchema{}
+	}
+	buf, err := json.Marshal(raw)
+	if err != nil {
+		return FormSchema{}
+	}
+	var schema FormSchema
+	if err := json.Unmarshal(buf, &schema); err != nil {
+		return FormSchema{}
+	}
+	return schema
+}
+
+func extractAgentOriginalOutput(metadata map[string]any) map[string]any {
+	reviewRaw, ok := metadata["agent_review"]
+	if !ok {
+		return map[string]any{}
+	}
+	reviewMap, ok := reviewRaw.(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	orig, ok := reviewMap["original_output"].(map[string]any)
+	if !ok {
+		return map[string]any{}
+	}
+	return orig
+}
+
 // HumanTaskExecutor activates a long-running human task and returns immediately.
 type HumanTaskExecutor struct {
 	svc *TaskService
@@ -871,7 +948,7 @@ func (e *HumanTaskExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepI
 	if err := e.svc.CreateTaskFromActivation(ctx, caseID, stepID, cfg); err != nil {
 		return nil, err
 	}
-	return &engine.StepResult{Output: json.RawMessage(`{"task_created":true}`)}, nil
+	return nil, engine.ErrStepAwaitingReview
 }
 
 // minimal pg text[] array wrapper without new dependency

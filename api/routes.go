@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
+	"github.com/neural-chilli/aceryx/internal/agents"
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/connectors"
 	"github.com/neural-chilli/aceryx/internal/connectors/docgenconn"
@@ -72,9 +73,16 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	notifySvc := notify.NewService(db, wsHub)
 	taskSvc := tasks.NewTaskService(db, eng, notifySvc)
 	taskHandlers := handlers.NewTaskHandlers(taskSvc)
+	promptTemplateSvc := agents.NewPromptTemplateService(db)
+	promptTemplateHandlers := handlers.NewPromptTemplateHandlers(promptTemplateSvc)
 	if eng != nil {
 		eng.RegisterExecutor("human_task", tasks.NewHumanTaskExecutor(taskSvc))
 		eng.RegisterExecutor("integration", connectors.NewExecutor(db, connectorRegistry, secretStore))
+		eng.RegisterExecutor("agent", agents.NewAgentExecutor(agents.ExecutorConfig{
+			DB:          db,
+			TaskCreator: taskSvc,
+			LLMClient:   agents.NewLLMClientFromEnv(120 * time.Second),
+		}))
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
 	tenantSvc := tenants.NewTenantService(db)
@@ -134,6 +142,10 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("GET /reports/decisions", withPerm("cases:read", caseHandlers.ReportDecisions))
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
+	mux.Handle("GET /prompt-templates", withPerm("workflows:view", promptTemplateHandlers.List))
+	mux.Handle("POST /prompt-templates", withPerm("workflows:edit", promptTemplateHandlers.Create))
+	mux.Handle("GET /prompt-templates/{name}/versions/{version}", withPerm("workflows:view", promptTemplateHandlers.GetVersion))
+	mux.Handle("PUT /prompt-templates/{name}", withPerm("workflows:edit", promptTemplateHandlers.Update))
 	mux.Handle("POST /webhooks/{path...}", http.HandlerFunc(webhookHandler.ServeHTTP))
 	mux.Handle("GET /tasks", withAuth(taskHandlers.Inbox))
 	mux.Handle("GET /tasks/{case_id}/{step_id}", withAuth(taskHandlers.GetTask))
