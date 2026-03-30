@@ -45,7 +45,7 @@ func runMigrate() error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	runner := internalmigrations.NewRunner(db)
 	if err := runner.Apply(ctx); err != nil {
@@ -64,7 +64,7 @@ func runSeed() error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	runner := internalmigrations.NewRunner(db)
 	if err := runner.Apply(ctx); err != nil {
@@ -94,7 +94,7 @@ func openDatabase(ctx context.Context) (*sql.DB, error) {
 	}
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("ping database: %w", err)
 	}
 

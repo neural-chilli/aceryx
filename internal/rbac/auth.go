@@ -359,7 +359,7 @@ ORDER BY sort_order, name
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]ThemeOption, 0)
 	for rows.Next() {

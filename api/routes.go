@@ -11,6 +11,16 @@ import (
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
 	"github.com/neural-chilli/aceryx/internal/cases"
+	"github.com/neural-chilli/aceryx/internal/connectors"
+	"github.com/neural-chilli/aceryx/internal/connectors/docgenconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/emailconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/gchatconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/httpconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/jiraconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/slackconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/teamsconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/webhookreceiver"
+	"github.com/neural-chilli/aceryx/internal/connectors/webhooksender"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/rbac"
@@ -39,6 +49,19 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	principalSvc := rbac.NewPrincipalService(db, authzSvc)
 	roleSvc := rbac.NewRoleService(db, authzSvc)
 	authHandlers := handlers.NewAuthHandlers(authSvc, principalSvc, roleSvc)
+	secretStore := connectors.NewChainedSecretStore(connectors.NewDBSecretStore(db), &connectors.EnvSecretStore{})
+	connectorRegistry := connectors.NewRegistry()
+	connectorRegistry.Register(httpconn.New())
+	connectorRegistry.Register(webhookreceiver.New())
+	connectorRegistry.Register(webhooksender.New())
+	connectorRegistry.Register(emailconn.New())
+	connectorRegistry.Register(slackconn.New())
+	connectorRegistry.Register(teamsconn.New())
+	connectorRegistry.Register(gchatconn.New())
+	connectorRegistry.Register(jiraconn.New())
+	connectorRegistry.Register(docgenconn.New(db, nil))
+	connectorHandlers := handlers.NewConnectorHandlers(connectorRegistry, secretStore)
+	webhookHandler := webhookreceiver.NewHandler(db, secretStore)
 	wsHub := notify.NewHub(db, notify.DefaultTokenValidator(func(ctx context.Context, token string) (uuid.UUID, uuid.UUID, error) {
 		ap, err := authSvc.AuthenticateBearer(ctx, token)
 		if err != nil {
@@ -51,6 +74,7 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	taskHandlers := handlers.NewTaskHandlers(taskSvc)
 	if eng != nil {
 		eng.RegisterExecutor("human_task", tasks.NewHumanTaskExecutor(taskSvc))
+		eng.RegisterExecutor("integration", connectors.NewExecutor(db, connectorRegistry, secretStore))
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
 	tenantSvc := tenants.NewTenantService(db)
@@ -108,6 +132,9 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("GET /reports/cases/by-stage", withPerm("cases:read", caseHandlers.ReportCasesByStage))
 	mux.Handle("GET /reports/workload", withPerm("cases:read", caseHandlers.ReportWorkload))
 	mux.Handle("GET /reports/decisions", withPerm("cases:read", caseHandlers.ReportDecisions))
+	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
+	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
+	mux.Handle("POST /webhooks/{path...}", http.HandlerFunc(webhookHandler.ServeHTTP))
 	mux.Handle("GET /tasks", withAuth(taskHandlers.Inbox))
 	mux.Handle("GET /tasks/{case_id}/{step_id}", withAuth(taskHandlers.GetTask))
 	mux.Handle("POST /tasks/{case_id}/{step_id}/claim", withAuth(taskHandlers.Claim))

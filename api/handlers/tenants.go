@@ -170,7 +170,7 @@ func (h *TenantHandlers) maybeUpload(r *http.Request, tenantID, principalID uuid
 		}
 		return "", err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	buf, err := io.ReadAll(io.LimitReader(file, 10<<20))
 	if err != nil {
 		return "", err

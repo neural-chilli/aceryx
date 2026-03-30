@@ -175,7 +175,7 @@ ORDER BY sort_order, name
 	if err != nil {
 		return nil, fmt.Errorf("list themes: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	themes := make([]Theme, 0)
 	for rows.Next() {
