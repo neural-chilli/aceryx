@@ -131,6 +131,9 @@ go test ./tests/integration/... -count=1 -tags=integration
 # BDD scenarios
 go test ./tests/bdd/... -count=1 -tags=bdd
 
+# Overall guard checks
+qp check
+
 # Frontend (if frontend files changed)
 cd frontend && npm run lint && npm run type-check && npm run test:unit
 ```
