@@ -44,7 +44,7 @@ onMounted(async () => {
   if (!tenantSlug.value) {
     return
   }
-  const res = await fetch(`/tenant/branding?slug=${encodeURIComponent(tenantSlug.value)}`)
+  const res = await fetch(`/api/tenant/branding?slug=${encodeURIComponent(tenantSlug.value)}`)
   if (!res.ok) {
     return
   }

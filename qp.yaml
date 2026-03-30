@@ -52,7 +52,14 @@ tasks:
   # ── Build ──────────────────────────────────────────────────
 
   build:
-    desc: Build Go binary
+    desc: Build Go binary with embedded frontend
+    cmd: |
+      cd frontend && npm run build
+      cd ..
+      go build -o aceryx ./cmd/aceryx
+
+  build:backend:
+    desc: Build Go binary only (requires frontend/dist to exist)
     cmd: go build -o aceryx ./cmd/aceryx
 
   build:frontend:

@@ -5,6 +5,7 @@ import { useTheme } from './useTheme'
 import type { Branding, LoginResponse, Principal, Theme, UserPreferences } from '../types'
 
 const TOKEN_KEY = 'acx_session_token'
+const API_BASE = import.meta.env.MODE === 'test' ? '' : '/api'
 const token = ref<string | null>(sessionStorage.getItem(TOKEN_KEY))
 const currentUser = ref<Principal | null>(null)
 const tenantBranding = ref<Branding | null>(null)
@@ -27,6 +28,16 @@ function clearSession() {
   themes.value = []
   preferences.value = null
   sessionStorage.removeItem(TOKEN_KEY)
+}
+
+function apiURL(input: string): string {
+  if (input.startsWith('http://') || input.startsWith('https://')) {
+    return input
+  }
+  if (!input.startsWith('/')) {
+    return `${API_BASE}/${input}`
+  }
+  return `${API_BASE}${input}`
 }
 
 export function useAuth() {
@@ -52,7 +63,7 @@ export function useAuth() {
 
   const login = async (email: string, password: string, tenantSlug = ''): Promise<LoginResponse> => {
     sessionExpired.value = false
-    const res = await fetch('/auth/login', {
+    const res = await fetch(apiURL('/auth/login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password, tenant_slug: tenantSlug }),
@@ -73,7 +84,7 @@ export function useAuth() {
     if (token.value) {
       headers.set('Authorization', `Bearer ${token.value}`)
     }
-    const res = await fetch(input, { ...init, headers, credentials: 'include' })
+    const res = await fetch(apiURL(input), { ...init, headers, credentials: 'include' })
     if (res.status === 401) {
       clearSession()
       sessionExpired.value = true

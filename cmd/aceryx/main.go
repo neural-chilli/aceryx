@@ -7,14 +7,19 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"time"
 
 	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	frontendassets "github.com/neural-chilli/aceryx/frontend"
 	"github.com/neural-chilli/aceryx/internal/backup"
+	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/expressions"
 	internalmigrations "github.com/neural-chilli/aceryx/internal/migrations"
 	"github.com/neural-chilli/aceryx/internal/observability"
+	"github.com/neural-chilli/aceryx/internal/server"
 )
 
 func main() {
@@ -60,7 +65,10 @@ func main() {
 			os.Exit(1)
 		}
 	case "serve":
-		fmt.Println("aceryx - case orchestration engine")
+		if err := runServe(); err != nil {
+			slog.Error("serve failed", "error", err)
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 	}
@@ -241,6 +249,29 @@ func runRestore(args []string) error {
 	}
 	fmt.Printf("Vault files verified: %d/%d\n", result.VaultFilesVerified, result.VaultFilesSampled)
 	return nil
+}
+
+func runServe() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	db, err := openDatabase(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = db.Close() }()
+
+	evaluator := expressions.NewEvaluator()
+	eng := engine.New(db, evaluator, engine.Config{})
+	handler := server.NewHandler(db, eng, frontendassets.DistFS())
+
+	addr := os.Getenv("ACERYX_HTTP_ADDR")
+	if addr == "" {
+		addr = ":8080"
+	}
+
+	slog.Info("starting server", "addr", addr)
+	return http.ListenAndServe(addr, handler)
 }
 
 func openDatabase(ctx context.Context) (*sql.DB, error) {

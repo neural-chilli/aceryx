@@ -32,7 +32,7 @@ describe('Login view', () => {
   it('renders and handles invalid credentials', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.startsWith('/tenant/branding')) {
+      if (url.startsWith('/api/tenant/branding')) {
         return new Response('{}', { status: 404 })
       }
       return new Response(JSON.stringify({ error: 'invalid credentials' }), { status: 401 })
@@ -52,7 +52,7 @@ describe('Login view', () => {
   it('applies branding from slug endpoint', async () => {
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
-      if (url.startsWith('/tenant/branding')) {
+      if (url.startsWith('/api/tenant/branding')) {
         return new Response(
           JSON.stringify({
             company_name: 'Acme Lending',
