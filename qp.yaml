@@ -1,5 +1,6 @@
-# qp.yaml — Aceryx development workflow
-# Usage: qp <task>
+project: aceryx
+description: workflow tool
+default: check
 
 tasks:
   # ── Infrastructure ─────────────────────────────────────────
@@ -81,7 +82,7 @@ tasks:
 
   test:
     desc: Run Go unit tests
-    cmd: go test ./internal/... -count=1 -race
+    cmd: go test ./... -count=1 -race
 
   test:integration:
     desc: Run Go integration tests (uses testcontainers — no external Postgres needed)
@@ -209,3 +210,133 @@ tasks:
         exit 1
       fi
       echo "✓ No cross-package internal imports"
+
+  vet:
+    desc: Run go vet
+    scope: cli
+    cmd: go vet ./...
+    safety: idempotent
+
+  vulncheck:
+    desc: Run go vulncheck
+    scope: cli
+    cmd: govulncheck ./...
+    safety: idempotent
+
+  check:
+    desc: Run the default local verification pipeline
+    scope: cli
+    needs:
+      - fmt
+      - lint
+    steps:
+      - test
+      - vet
+      - build
+      - arch-check
+      - vulncheck
+    safety: idempotent
+
+  arch-check:
+    desc: Enforce internal package boundaries
+    cmd: qp arch-check --json
+    scope: cli
+    safety: idempotent
+
+scopes:
+  cli:
+    desc: Main CLI commands and closely-related execution packages.
+    paths:
+      - cmd/aceryx/
+      - internal/engine/
+      - internal/connectors/
+      - internal/expressions/
+      - internal/migrations/
+      - internal/search/
+      - internal/rbac/
+
+guards:
+  default:
+    steps:
+      - test
+      - vet
+      - build
+
+architecture:
+  layers:
+    - foundation
+    - core
+    - features
+    - cli
+
+  domains:
+    foundation:
+      root: internal/ordered
+      layers: [foundation]
+
+    cel:
+      root: internal/cel
+      layers: [foundation]
+
+    config:
+      root: internal/config
+      layers: [core]
+
+    runner:
+      root: internal/runner
+      layers: [core]
+
+    guard:
+      root: internal/guard
+      layers: [features]
+
+    repair:
+      root: internal/repair
+      layers: [features]
+
+    plan:
+      root: internal/plan
+      layers: [features]
+
+    context:
+      root: internal/context
+      layers: [features]
+
+    brief:
+      root: internal/brief
+      layers: [features]
+
+    scope:
+      root: internal/scope
+      layers: [features]
+
+    prompt:
+      root: internal/prompt
+      layers: [features]
+
+    codemap:
+      root: internal/codemap
+      layers: [features]
+
+    initcmd:
+      root: internal/initcmd
+      layers: [features]
+
+    archcheck:
+      root: internal/archcheck
+      layers: [features]
+
+    watch:
+      root: internal/watch
+      layers: [features]
+
+    mcp:
+      root: internal/mcp
+      layers: [features]
+
+    cli:
+      root: cmd/qp
+      layers: [cli]
+
+  rules:
+    - direction: forward

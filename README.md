@@ -222,8 +222,11 @@ Community Edition is [MIT licensed](LICENSE). See [LICENSING.md](LICENSING.md) f
 
 Aceryx is built and maintained by [Neural Chilli](https://github.com/neural-chilli). We welcome contributions — please open an issue before starting work on a major change.
 
-## Links
+[//]: # (## Links)
 
-- [Design Document](docs/design/aceryx-design-v0.4.md) — product design and architecture
-- [Feature Specifications](docs/specs/) — detailed specs for every capability
-- [AGENTS.md](AGENTS.md) — architecture rules and development constitution
+[//]: # ()
+[//]: # (- [Design Document]&#40;docs/design/aceryx-design-v0.4.md&#41; — product design and architecture)
+
+[//]: # (- [Feature Specifications]&#40;docs/specs/&#41; — detailed specs for every capability)
+
+[//]: # (- [AGENTS.md]&#40;AGENTS.md&#41; — architecture rules and development constitution)
