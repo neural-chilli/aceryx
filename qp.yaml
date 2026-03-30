@@ -198,6 +198,8 @@ tasks:
       find frontend/src -name '*.vue' -o -name '*.ts' | xargs wc -l | tail -1
       echo "=== SQL ==="
       find migrations -name '*.sql' | xargs wc -l | tail -1
+      echo "=== Markdown ==="
+      find . -name '*.md' | xargs wc -l | tail -1
 
   check:imports:
     desc: Verify no cross-package internal imports (AGENTS.md rule)
