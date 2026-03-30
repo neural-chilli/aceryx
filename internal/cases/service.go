@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/notify"
 )
 
 type Engine interface {
@@ -29,6 +30,11 @@ type CaseTypeService struct {
 type CaseService struct {
 	db     *sql.DB
 	engine Engine
+	notify Notifier
+}
+
+type Notifier interface {
+	Notify(ctx context.Context, event notify.NotifyEvent) error
 }
 
 type ReportsService struct {
@@ -42,6 +48,10 @@ func NewCaseTypeService(db *sql.DB) *CaseTypeService {
 
 func NewCaseService(db *sql.DB, eng Engine) *CaseService {
 	return &CaseService{db: db, engine: eng}
+}
+
+func (s *CaseService) SetNotifier(n Notifier) {
+	s.notify = n
 }
 
 func NewReportsService(db *sql.DB, refreshInterval time.Duration) *ReportsService {
@@ -470,7 +480,23 @@ WHERE tenant_id = $1 AND id = $2
 		return err
 	}
 
-	return audit.CommitTx(tx)
+	if err := audit.CommitTx(tx); err != nil {
+		return err
+	}
+	if s.notify != nil {
+		caseNumber, creator, creatorEmail, nerr := s.caseCreator(ctx, tenantID, caseID)
+		if nerr == nil {
+			_ = s.notify.Notify(ctx, notify.NotifyEvent{
+				Type:       "case_completed",
+				TenantID:   tenantID,
+				CaseID:     caseID,
+				CaseNumber: caseNumber,
+				Recipients: []notify.Recipient{{PrincipalID: creator, Email: creatorEmail, Channels: []string{"email", "websocket"}}},
+				Data:       map[string]any{"reason": reason},
+			})
+		}
+	}
+	return nil
 }
 
 func (s *CaseService) CancelCase(ctx context.Context, tenantID, caseID, actorID uuid.UUID, reason string) error {
@@ -484,7 +510,23 @@ func (s *CaseService) CancelCase(ctx context.Context, tenantID, caseID, actorID 
 	if exists == 0 {
 		return sql.ErrNoRows
 	}
-	return s.engine.CancelCase(ctx, caseID, actorID, reason)
+	if err := s.engine.CancelCase(ctx, caseID, actorID, reason); err != nil {
+		return err
+	}
+	if s.notify != nil {
+		caseNumber, recipients, nerr := s.caseCancellationRecipients(ctx, tenantID, caseID)
+		if nerr == nil && len(recipients) > 0 {
+			_ = s.notify.Notify(ctx, notify.NotifyEvent{
+				Type:       "case_cancelled",
+				TenantID:   tenantID,
+				CaseID:     caseID,
+				CaseNumber: caseNumber,
+				Recipients: recipients,
+				Data:       map[string]any{"reason": reason},
+			})
+		}
+	}
+	return nil
 }
 
 func (s *CaseService) SearchCases(ctx context.Context, tenantID uuid.UUID, allowedCaseTypeIDs []uuid.UUID, filter SearchFilter) ([]SearchResult, error) {
@@ -1133,6 +1175,59 @@ ORDER BY uploaded_at DESC
 		out = append(out, d)
 	}
 	return out, rows.Err()
+}
+
+func (s *CaseService) caseCreator(ctx context.Context, tenantID, caseID uuid.UUID) (caseNumber string, creatorID uuid.UUID, creatorEmail string, err error) {
+	err = s.db.QueryRowContext(ctx, `
+SELECT c.case_number, c.created_by, COALESCE(p.email, '')
+FROM cases c
+JOIN principals p ON p.id = c.created_by
+WHERE c.tenant_id = $1 AND c.id = $2
+`, tenantID, caseID).Scan(&caseNumber, &creatorID, &creatorEmail)
+	return caseNumber, creatorID, creatorEmail, err
+}
+
+func (s *CaseService) caseCancellationRecipients(ctx context.Context, tenantID, caseID uuid.UUID) (string, []notify.Recipient, error) {
+	caseNumber, creatorID, creatorEmail, err := s.caseCreator(ctx, tenantID, caseID)
+	if err != nil {
+		return "", nil, err
+	}
+	recipients := []notify.Recipient{{PrincipalID: creatorID, Email: creatorEmail, Channels: []string{"email", "websocket"}}}
+
+	rows, err := s.db.QueryContext(ctx, `
+SELECT DISTINCT p.id, COALESCE(p.email, '')
+FROM case_steps cs
+JOIN principals p ON p.id = cs.assigned_to
+JOIN cases c ON c.id = cs.case_id
+WHERE c.tenant_id = $1
+  AND cs.case_id = $2
+  AND cs.assigned_to IS NOT NULL
+  AND p.status = 'active'
+`, tenantID, caseID)
+	if err != nil {
+		return "", nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	seen := map[uuid.UUID]struct{}{creatorID: {}}
+	for rows.Next() {
+		var (
+			id    uuid.UUID
+			email string
+		)
+		if err := rows.Scan(&id, &email); err != nil {
+			return "", nil, err
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		recipients = append(recipients, notify.Recipient{PrincipalID: id, Email: email, Channels: []string{"email", "websocket"}})
+	}
+	if err := rows.Err(); err != nil {
+		return "", nil, err
+	}
+	return caseNumber, recipients, nil
 }
 
 type pqStringArray []string

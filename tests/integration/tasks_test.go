@@ -13,26 +13,19 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/expressions"
+	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/tasks"
 )
 
 type notifySpy struct {
-	mu       sync.Mutex
-	userMsgs []map[string]any
-	roleMsgs []map[string]any
+	mu     sync.Mutex
+	events []notify.NotifyEvent
 }
 
-func (n *notifySpy) NotifyUser(_ context.Context, _ uuid.UUID, payload map[string]any) error {
+func (n *notifySpy) Notify(_ context.Context, event notify.NotifyEvent) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
-	n.userMsgs = append(n.userMsgs, payload)
-	return nil
-}
-
-func (n *notifySpy) NotifyRole(_ context.Context, _ uuid.UUID, _ string, payload map[string]any) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	n.roleMsgs = append(n.roleMsgs, payload)
+	n.events = append(n.events, event)
 	return nil
 }
 
@@ -140,8 +133,24 @@ WHERE case_id=$1 AND event_type='task' AND action IN ('created','claimed','compl
 		t.Fatalf("expected at least 3 task audit events, got %d", eventCount)
 	}
 
-	if len(notify.roleMsgs) == 0 {
+	if len(notify.events) == 0 {
 		t.Fatal("expected role notifications to be sent")
+	}
+	hasAssigned := false
+	hasClaimed := false
+	hasCompleted := false
+	for _, ev := range notify.events {
+		switch ev.Type {
+		case "task_assigned":
+			hasAssigned = true
+		case "task_claimed":
+			hasClaimed = true
+		case "task_completed":
+			hasCompleted = true
+		}
+	}
+	if !hasAssigned || !hasClaimed || !hasCompleted {
+		t.Fatalf("expected task_assigned/task_claimed/task_completed notifications, got %+v", notify.events)
 	}
 }
 
@@ -310,6 +319,15 @@ WHERE case_id=$1 AND step_id='review' AND event_type='task' AND action='escalati
 		Data:    map[string]any{"notes": "already done"},
 	}); !errors.Is(err, tasks.ErrAlreadyCompleted) {
 		t.Fatalf("expected already completed error, got %v", err)
+	}
+	hasEscalated := false
+	for _, ev := range notify.events {
+		if ev.Type == "task_escalated" {
+			hasEscalated = true
+		}
+	}
+	if !hasEscalated {
+		t.Fatalf("expected task_escalated notification, got %+v", notify.events)
 	}
 }
 

@@ -1,0 +1,5 @@
+{{define "content"}}
+<h2 style="margin:0 0 10px 0;">{{.Terminology.Get "Case"}} cancelled</h2>
+<p style="margin:0 0 8px 0;">{{.Terminology.Get "Case"}} {{.CaseNumber}} has been cancelled.</p>
+{{if .Reason}}<p style="margin:0;">Reason: {{.Reason}}</p>{{end}}
+{{end}}

@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+  <body style="margin:0;padding:0;background:#f5f7fb;font-family:Arial,sans-serif;color:#1f2937;">
+    <div style="max-width:640px;margin:0 auto;padding:20px;">
+      <div style="background:{{.Branding.Colors.Primary}};padding:16px;border-radius:10px 10px 0 0;color:#ffffff;">
+        {{if .Branding.LogoURL}}<img src="{{.Branding.LogoURL}}" alt="{{.Branding.CompanyName}}" style="height:28px;vertical-align:middle;margin-right:8px;" />{{end}}
+        <strong>{{.Branding.CompanyName}}</strong>
+      </div>
+      <div style="background:#ffffff;padding:20px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 10px 10px;">
+        {{template "content" .}}
+        <div style="margin-top:18px;">
+          <a href="{{.CaseURL}}" style="display:inline-block;background:{{.Branding.Colors.Accent}};color:#ffffff;padding:10px 16px;text-decoration:none;border-radius:6px;">View in {{.Branding.CompanyName}}</a>
+        </div>
+      </div>
+      {{if .Branding.PoweredBy}}
+      <div style="margin-top:12px;color:#6b7280;font-size:12px;">Powered by Aceryx</div>
+      {{end}}
+    </div>
+  </body>
+</html>

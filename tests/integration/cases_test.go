@@ -16,6 +16,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/expressions"
+	"github.com/neural-chilli/aceryx/internal/notify"
 )
 
 func TestCasesIntegration_CreateGetAndValidation(t *testing.T) {
@@ -319,9 +320,26 @@ func TestCasesIntegration_ListSearchPatchCloseCancel(t *testing.T) {
 		}
 	})
 
+	t.Run("close case sends completion notification", func(t *testing.T) {
+		if _, err := db.ExecContext(ctx, `UPDATE case_steps SET state='completed', completed_at=now() WHERE case_id=$1`, c2.ID); err != nil {
+			t.Fatalf("complete steps before close: %v", err)
+		}
+		n := &caseNotifySpy{}
+		svc := cases.NewCaseService(db, nil)
+		svc.SetNotifier(n)
+		if err := svc.CloseCase(ctx, tenantID, c2.ID, principalID, "all done"); err != nil {
+			t.Fatalf("close case with notifier: %v", err)
+		}
+		if len(n.events) == 0 || n.events[0].Type != "case_completed" {
+			t.Fatalf("expected case_completed notification, got %+v", n.events)
+		}
+	})
+
 	t.Run("cancel case delegates to engine", func(t *testing.T) {
 		stub := &stubCaseEngine{}
 		svc := cases.NewCaseService(db, stub)
+		n := &caseNotifySpy{}
+		svc.SetNotifier(n)
 		if err := svc.CancelCase(ctx, tenantID, c3.ID, principalID, "withdrawn"); err != nil {
 			t.Fatalf("cancel case: %v", err)
 		}
@@ -330,6 +348,9 @@ func TestCasesIntegration_ListSearchPatchCloseCancel(t *testing.T) {
 		}
 		if stub.cancelReason != "withdrawn" {
 			t.Fatalf("expected cancel reason 'withdrawn', got %q", stub.cancelReason)
+		}
+		if len(n.events) == 0 || n.events[0].Type != "case_cancelled" {
+			t.Fatalf("expected case_cancelled notification, got %+v", n.events)
 		}
 	})
 }
@@ -691,6 +712,15 @@ ORDER BY step_id
 type stubCaseEngine struct {
 	cancelCalled bool
 	cancelReason string
+}
+
+type caseNotifySpy struct {
+	events []notify.NotifyEvent
+}
+
+func (s *caseNotifySpy) Notify(_ context.Context, event notify.NotifyEvent) error {
+	s.events = append(s.events, event)
+	return nil
 }
 
 func (s *stubCaseEngine) EvaluateDAG(_ context.Context, _ uuid.UUID) error {

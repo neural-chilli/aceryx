@@ -77,6 +77,7 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	}))
 	notifySvc := notify.NewService(db, wsHub)
 	taskSvc := tasks.NewTaskService(db, eng, notifySvc)
+	caseSvc.SetNotifier(notifySvc)
 	taskHandlers := handlers.NewTaskHandlers(taskSvc)
 	promptTemplateSvc := agents.NewPromptTemplateService(db)
 	promptTemplateHandlers := handlers.NewPromptTemplateHandlers(promptTemplateSvc)

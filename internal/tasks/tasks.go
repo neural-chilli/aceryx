@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/notify"
 )
 
 var (
@@ -24,8 +25,7 @@ var (
 )
 
 type Notifier interface {
-	NotifyUser(ctx context.Context, principalID uuid.UUID, payload map[string]any) error
-	NotifyRole(ctx context.Context, tenantID uuid.UUID, role string, payload map[string]any) error
+	Notify(ctx context.Context, event notify.NotifyEvent) error
 }
 
 type Engine interface {
@@ -37,6 +37,7 @@ type TaskService struct {
 	notify   Notifier
 	engine   Engine
 	now      func() time.Time
+	after    func(time.Duration, func()) *time.Timer
 	sysActor uuid.UUID
 }
 
@@ -132,7 +133,16 @@ type DraftRequest struct {
 }
 
 func NewTaskService(db *sql.DB, eng Engine, notify Notifier) *TaskService {
-	return &TaskService{db: db, engine: eng, notify: notify, now: func() time.Time { return time.Now().UTC() }, sysActor: uuid.Nil}
+	return &TaskService{
+		db:     db,
+		engine: eng,
+		notify: notify,
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
+		after:    time.AfterFunc,
+		sysActor: uuid.Nil,
+	}
 }
 
 func (s *TaskService) SetSystemActorID(id uuid.UUID) {
@@ -197,15 +207,42 @@ WHERE case_id = $1 AND step_id = $2
 	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit task creation: %w", err)
 	}
+	tenantID, _ := s.lookupTenantID(ctx, caseID)
 
-	payload := map[string]any{"type": "task_update", "action": "created", "case_id": caseID, "step_id": stepID}
 	if s.notify != nil {
-		if assignedTo != nil {
-			_ = s.notify.NotifyUser(ctx, *assignedTo, payload)
-		} else if cfg.AssignToRole != "" {
-			tenantID, _ := s.lookupTenantID(ctx, caseID)
-			_ = s.notify.NotifyRole(ctx, tenantID, cfg.AssignToRole, payload)
+		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		stepLabel := stepID
+		if v, ok := metadata["label"].(string); ok && strings.TrimSpace(v) != "" {
+			stepLabel = v
 		}
+		if assignedTo != nil {
+			email, _ := s.lookupPrincipalEmail(ctx, *assignedTo)
+			_ = s.notify.Notify(ctx, notify.NotifyEvent{
+				Type:       "task_assigned",
+				TenantID:   tenantID,
+				CaseID:     caseID,
+				CaseNumber: caseNumber,
+				StepID:     stepID,
+				StepLabel:  stepLabel,
+				Recipients: []notify.Recipient{{PrincipalID: *assignedTo, Email: email, Channels: []string{"email", "websocket"}}},
+				Data:       map[string]any{},
+			})
+		} else if cfg.AssignToRole != "" {
+			recipients, _ := s.resolveRoleRecipients(ctx, tenantID, cfg.AssignToRole, []string{"websocket"})
+			_ = s.notify.Notify(ctx, notify.NotifyEvent{
+				Type:       "task_assigned",
+				TenantID:   tenantID,
+				CaseID:     caseID,
+				CaseNumber: caseNumber,
+				StepID:     stepID,
+				StepLabel:  stepLabel,
+				Recipients: recipients,
+				Data:       map[string]any{},
+			})
+		}
+	}
+	if assignedTo != nil && cfg.SLAHours > 0 {
+		s.scheduleSLAWarning(caseID, stepID, tenantID, *assignedTo, cfg.SLAHours)
 	}
 	return nil
 }
@@ -416,7 +453,22 @@ SELECT EXISTS(SELECT 1 FROM claim)
 	}
 
 	if s.notify != nil {
-		_ = s.notify.NotifyRole(ctx, tenantID, "*", map[string]any{"type": "task_update", "action": "claimed", "case_id": caseID, "step_id": stepID})
+		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		roleName, _ := s.lookupStepRole(ctx, caseID, stepID)
+		recipients := make([]notify.Recipient, 0)
+		if roleName != "" {
+			recipients, _ = s.resolveRoleRecipients(ctx, tenantID, roleName, []string{"websocket"})
+		}
+		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+			Type:       "task_claimed",
+			TenantID:   tenantID,
+			CaseID:     caseID,
+			CaseNumber: caseNumber,
+			StepID:     stepID,
+			StepLabel:  stepID,
+			Recipients: recipients,
+			Data:       map[string]any{"claimed_by": principalID.String()},
+		})
 	}
 	return nil
 }
@@ -519,7 +571,23 @@ WHERE id = $1
 		_ = s.engine.EvaluateDAG(ctx, caseID)
 	}
 	if s.notify != nil {
-		_ = s.notify.NotifyRole(ctx, tenantID, "*", map[string]any{"type": "task_update", "action": "completed", "case_id": caseID, "step_id": stepID})
+		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		caseAssignee, _ := s.lookupCaseAssignee(ctx, tenantID, caseID)
+		recipients := make([]notify.Recipient, 0)
+		if caseAssignee != nil && *caseAssignee != principalID {
+			email, _ := s.lookupPrincipalEmail(ctx, *caseAssignee)
+			recipients = append(recipients, notify.Recipient{PrincipalID: *caseAssignee, Email: email, Channels: []string{"websocket"}})
+		}
+		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+			Type:       "task_completed",
+			TenantID:   tenantID,
+			CaseID:     caseID,
+			CaseNumber: caseNumber,
+			StepID:     stepID,
+			StepLabel:  stepID,
+			Recipients: recipients,
+			Data:       map[string]any{"outcome": req.Outcome, "completed_by": principalID.String()},
+		})
 	}
 	return nil
 }
@@ -555,7 +623,18 @@ FOR UPDATE
 		return fmt.Errorf("commit reassign task tx: %w", err)
 	}
 	if s.notify != nil {
-		_ = s.notify.NotifyUser(ctx, req.AssignTo, map[string]any{"type": "task_update", "action": "reassigned", "case_id": caseID, "step_id": stepID})
+		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		email, _ := s.lookupPrincipalEmail(ctx, req.AssignTo)
+		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+			Type:       "task_reassigned",
+			TenantID:   tenantID,
+			CaseID:     caseID,
+			CaseNumber: caseNumber,
+			StepID:     stepID,
+			StepLabel:  stepID,
+			Recipients: []notify.Recipient{{PrincipalID: req.AssignTo, Email: email, Channels: []string{"email", "websocket"}}},
+			Data:       map[string]any{"reason": req.Reason},
+		})
 	}
 	return nil
 }
@@ -607,11 +686,27 @@ FOR UPDATE
 		return fmt.Errorf("commit escalate tx: %w", err)
 	}
 
-	if s.notify != nil && cfg.ToRole != "" {
-		_ = s.notify.NotifyRole(ctx, tenantID, cfg.ToRole, map[string]any{"type": "task_update", "action": "escalated", "case_id": caseID, "step_id": stepID})
-	}
-	if s.notify != nil && reassignedTo != nil {
-		_ = s.notify.NotifyUser(ctx, *reassignedTo, map[string]any{"type": "task_update", "action": "escalated_reassign", "case_id": caseID, "step_id": stepID})
+	if s.notify != nil {
+		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		recipients := make([]notify.Recipient, 0)
+		if cfg.ToRole != "" {
+			roleRecipients, _ := s.resolveRoleRecipients(ctx, tenantID, cfg.ToRole, []string{"email", "websocket"})
+			recipients = append(recipients, roleRecipients...)
+		}
+		if reassignedTo != nil {
+			email, _ := s.lookupPrincipalEmail(ctx, *reassignedTo)
+			recipients = append(recipients, notify.Recipient{PrincipalID: *reassignedTo, Email: email, Channels: []string{"email", "websocket"}})
+		}
+		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+			Type:       "task_escalated",
+			TenantID:   tenantID,
+			CaseID:     caseID,
+			CaseNumber: caseNumber,
+			StepID:     stepID,
+			StepLabel:  stepID,
+			Recipients: dedupeRecipients(recipients),
+			Data:       map[string]any{"to_role": cfg.ToRole, "action": cfg.Action},
+		})
 	}
 	return nil
 }
@@ -620,6 +715,28 @@ func (s *TaskService) HandleOverdue(ctx context.Context, task engine.OverdueTask
 	cfg, tenantID, err := s.loadEscalationConfig(ctx, task.CaseID, task.StepID)
 	if err != nil {
 		return err
+	}
+	if s.notify != nil {
+		caseNumber, _ := s.lookupCaseNumber(ctx, task.CaseID)
+		recipients := make([]notify.Recipient, 0)
+		if task.AssignedTo != nil {
+			email, _ := s.lookupPrincipalEmail(ctx, *task.AssignedTo)
+			recipients = append(recipients, notify.Recipient{PrincipalID: *task.AssignedTo, Email: email, Channels: []string{"email", "websocket"}})
+		}
+		if cfg.ToRole != "" {
+			roleRecipients, _ := s.resolveRoleRecipients(ctx, tenantID, cfg.ToRole, []string{"email", "websocket"})
+			recipients = append(recipients, roleRecipients...)
+		}
+		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+			Type:       "sla_breach",
+			TenantID:   tenantID,
+			CaseID:     task.CaseID,
+			CaseNumber: caseNumber,
+			StepID:     task.StepID,
+			StepLabel:  task.StepID,
+			Recipients: dedupeRecipients(recipients),
+			Data:       map[string]any{"sla_deadline": task.SLADeadline.UTC().Format(time.RFC3339Nano)},
+		})
 	}
 	if cfg.Action == "" {
 		return nil
@@ -704,6 +821,111 @@ func (s *TaskService) lookupTenantID(ctx context.Context, caseID uuid.UUID) (uui
 	return tenantID, err
 }
 
+func (s *TaskService) lookupCaseNumber(ctx context.Context, caseID uuid.UUID) (string, error) {
+	var caseNumber string
+	err := s.db.QueryRowContext(ctx, `SELECT case_number FROM cases WHERE id = $1`, caseID).Scan(&caseNumber)
+	return caseNumber, err
+}
+
+func (s *TaskService) lookupPrincipalEmail(ctx context.Context, principalID uuid.UUID) (string, error) {
+	var email sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT email FROM principals WHERE id = $1 AND status = 'active'`, principalID).Scan(&email); err != nil {
+		return "", err
+	}
+	return email.String, nil
+}
+
+func (s *TaskService) lookupCaseAssignee(ctx context.Context, tenantID, caseID uuid.UUID) (*uuid.UUID, error) {
+	var assigned sql.NullString
+	if err := s.db.QueryRowContext(ctx, `SELECT assigned_to FROM cases WHERE tenant_id = $1 AND id = $2`, tenantID, caseID).Scan(&assigned); err != nil {
+		return nil, err
+	}
+	if !assigned.Valid {
+		return nil, nil
+	}
+	id, err := uuid.Parse(assigned.String)
+	if err != nil {
+		return nil, err
+	}
+	return &id, nil
+}
+
+func (s *TaskService) lookupStepRole(ctx context.Context, caseID uuid.UUID, stepID string) (string, error) {
+	var role string
+	err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(metadata->>'role', '')
+FROM case_steps
+WHERE case_id = $1 AND step_id = $2
+`, caseID, stepID).Scan(&role)
+	if err != nil {
+		return "", err
+	}
+	return role, nil
+}
+
+func (s *TaskService) resolveRoleRecipients(ctx context.Context, tenantID uuid.UUID, role string, channels []string) ([]notify.Recipient, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT p.id, COALESCE(p.email, '')
+FROM principals p
+JOIN principal_roles pr ON pr.principal_id = p.id
+JOIN roles r ON r.id = pr.role_id
+WHERE p.tenant_id = $1
+  AND p.status = 'active'
+  AND r.name = $2
+`, tenantID, role)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	out := make([]notify.Recipient, 0)
+	for rows.Next() {
+		var (
+			id    uuid.UUID
+			email string
+		)
+		if err := rows.Scan(&id, &email); err != nil {
+			return nil, err
+		}
+		out = append(out, notify.Recipient{PrincipalID: id, Email: email, Channels: channels})
+	}
+	return out, rows.Err()
+}
+
+func dedupeRecipients(in []notify.Recipient) []notify.Recipient {
+	type key struct {
+		id uuid.UUID
+	}
+	merged := map[key]notify.Recipient{}
+	for _, rec := range in {
+		k := key{id: rec.PrincipalID}
+		cur, ok := merged[k]
+		if !ok {
+			merged[k] = rec
+			continue
+		}
+		channelSet := map[string]struct{}{}
+		for _, ch := range cur.Channels {
+			channelSet[ch] = struct{}{}
+		}
+		for _, ch := range rec.Channels {
+			if _, exists := channelSet[ch]; !exists {
+				cur.Channels = append(cur.Channels, ch)
+				channelSet[ch] = struct{}{}
+			}
+		}
+		if cur.Email == "" {
+			cur.Email = rec.Email
+		}
+		merged[k] = cur
+	}
+	out := make([]notify.Recipient, 0, len(merged))
+	for _, rec := range merged {
+		out = append(out, rec)
+	}
+	return out
+}
+
 func (s *TaskService) loadWorkflowStep(ctx context.Context, caseID uuid.UUID, stepID string) (engine.WorkflowStep, error) {
 	var raw []byte
 	err := s.db.QueryRowContext(ctx, `
@@ -732,6 +954,50 @@ func (s *TaskService) systemActor() uuid.UUID {
 		return s.sysActor
 	}
 	return uuid.MustParse("00000000-0000-0000-0000-000000000000")
+}
+
+func (s *TaskService) scheduleSLAWarning(caseID uuid.UUID, stepID string, tenantID uuid.UUID, assignedTo uuid.UUID, slaHours int) {
+	if s.notify == nil || s.after == nil || slaHours <= 0 {
+		return
+	}
+	total := time.Duration(slaHours) * time.Hour
+	delay := total - (total / 4)
+	if delay <= 0 {
+		return
+	}
+	s.after(delay, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var (
+			state      string
+			caseNumber string
+			current    sql.NullString
+		)
+		err := s.db.QueryRowContext(ctx, `
+SELECT cs.state, c.case_number, cs.assigned_to
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE c.tenant_id = $1 AND cs.case_id = $2 AND cs.step_id = $3
+`, tenantID, caseID, stepID).Scan(&state, &caseNumber, &current)
+		if err != nil || state != engine.StateActive || !current.Valid {
+			return
+		}
+		currentID, err := uuid.Parse(current.String)
+		if err != nil || currentID != assignedTo {
+			return
+		}
+		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+			Type:       "sla_warning",
+			TenantID:   tenantID,
+			CaseID:     caseID,
+			CaseNumber: caseNumber,
+			StepID:     stepID,
+			StepLabel:  stepID,
+			Recipients: []notify.Recipient{{PrincipalID: assignedTo, Channels: []string{"websocket"}}},
+			Data:       map[string]any{},
+		})
+	})
 }
 
 func extractSLAHours(metaRaw []byte) int {
