@@ -6,6 +6,7 @@ import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
 import { useAuth } from '../composables/useAuth'
+import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useTerminology } from '../composables/useTerminology'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -16,10 +17,16 @@ const { authFetch } = useAuth()
 const { t } = useTerminology()
 const { messages, open } = useWebSocket()
 const { register, unregister } = useKeyboard()
+const { isDesktop, isMobileOrTablet } = useBreakpoint()
 
 const tasks = ref<TaskItem[]>([])
 const loading = ref(false)
 const selectedIndex = ref(0)
+const mobileList = ref<HTMLElement | null>(null)
+const swipedID = ref<string>('')
+const pullStartY = ref(0)
+const pullDistance = ref(0)
+const swipeStartX = ref(0)
 
 const emptyMessage = computed(() => `No ${t('tasks')} right now`)
 
@@ -54,6 +61,31 @@ async function claim(item: TaskItem) {
 
 function openTask(item: TaskItem) {
   void router.push(`/cases/${item.case_id}?step=${encodeURIComponent(item.step_id)}`)
+}
+
+function taskKey(item: TaskItem): string {
+  return `${item.case_id}:${item.step_id}`
+}
+
+function slaDotClass(status: string): string {
+  if (status === 'breached') return 'dot-breached'
+  if (status === 'warning') return 'dot-warning'
+  return 'dot-on-track'
+}
+
+function summary(item: TaskItem): string {
+  return `${item.case_type} • Priority ${item.priority}`
+}
+
+function timeRemaining(item: TaskItem): string {
+  if (!item.sla_deadline) return 'No SLA'
+  const target = new Date(item.sla_deadline).getTime()
+  const mins = Math.round((target - Date.now()) / 60000)
+  if (mins < 0) return `${Math.abs(mins)}m overdue`
+  if (mins < 60) return `${mins}m left`
+  const hours = Math.floor(mins / 60)
+  const rem = mins % 60
+  return `${hours}h ${rem}m left`
 }
 
 function clampSelection() {
@@ -108,6 +140,32 @@ function onRowClick(event: { data: TaskItem }) {
   }
 }
 
+function onTouchStart(event: TouchEvent) {
+  pullStartY.value = event.touches[0].clientY
+  swipeStartX.value = event.touches[0].clientX
+  pullDistance.value = 0
+}
+
+function onTouchMove(event: TouchEvent, item: TaskItem) {
+  const deltaX = event.touches[0].clientX - swipeStartX.value
+  const deltaY = event.touches[0].clientY - pullStartY.value
+  if (mobileList.value && mobileList.value.scrollTop <= 0 && deltaY > 0) {
+    pullDistance.value = deltaY
+  }
+  if (deltaX < -50) {
+    swipedID.value = taskKey(item)
+  } else if (deltaX > 20 && swipedID.value === taskKey(item)) {
+    swipedID.value = ''
+  }
+}
+
+async function onTouchEnd() {
+  if (pullDistance.value > 80) {
+    await load()
+  }
+  pullDistance.value = 0
+}
+
 onMounted(async () => {
   await load()
   open()
@@ -146,7 +204,40 @@ watch(tasks, () => {
   <section class="inbox">
     <h1>{{ t('Inbox') }}</h1>
 
-    <DataTable :value="tasks" :loading="loading" data-key="step_id" striped-rows :row-class="rowClass" @row-click="onRowClick">
+    <div v-if="isMobileOrTablet" ref="mobileList" class="mobile-list">
+      <div v-if="pullDistance > 0" class="pull-indicator">Pull to refresh</div>
+      <p v-if="loading" class="mobile-loading">Loading...</p>
+      <p v-else-if="tasks.length === 0" class="mobile-empty">{{ emptyMessage }}</p>
+      <article
+        v-for="item in tasks"
+        :key="taskKey(item)"
+        class="task-card"
+        data-testid="inbox-task-card"
+        :class="{ selected: taskKey(item) === taskKey(tasks[selectedIndex] || item) }"
+        @click="openTask(item)"
+        @touchstart.passive="onTouchStart($event)"
+        @touchmove.passive="onTouchMove($event, item)"
+        @touchend="onTouchEnd"
+      >
+        <header class="card-header">
+          <strong>{{ item.case_number }}</strong>
+          <span data-testid="sla-dot" class="sla-dot" :class="slaDotClass(item.sla_status)" />
+        </header>
+        <p class="step" data-testid="task-step-label">{{ item.step_name }}</p>
+        <p class="summary">{{ summary(item) }}</p>
+        <p class="time">{{ timeRemaining(item) }}</p>
+        <div class="card-actions">
+          <Button
+            v-if="!item.assigned_to && swipedID === taskKey(item)"
+            size="small"
+            label="Claim"
+            @click.stop="claim(item)"
+          />
+        </div>
+      </article>
+    </div>
+
+    <DataTable v-else-if="isDesktop" :value="tasks" :loading="loading" data-key="step_id" striped-rows :row-class="rowClass" @row-click="onRowClick">
       <template #empty>{{ emptyMessage }}</template>
       <Column field="case_number" :header="t('Case')" />
       <Column field="case_type" :header="t('Cases')" />
@@ -197,5 +288,64 @@ h1 {
 
 :deep(tr.row-selected > td) {
   background: color-mix(in oklab, var(--acx-brand-primary), white 90%);
+}
+
+.mobile-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pull-indicator {
+  font-size: 0.82rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.task-card {
+  border: 1px solid #dbe3ef;
+  border-radius: 0.65rem;
+  padding: 0.65rem;
+  background: #fff;
+}
+
+.task-card.selected {
+  border-color: color-mix(in oklab, var(--acx-brand-primary), white 50%);
+  background: color-mix(in oklab, var(--acx-brand-primary), white 95%);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sla-dot {
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+}
+
+.dot-breached { background: #dc2626; }
+.dot-warning { background: #d97706; }
+.dot-on-track { background: #16a34a; }
+
+.step,
+.summary,
+.time {
+  margin: 0.3rem 0 0;
+}
+
+.step {
+  font-weight: 600;
+}
+
+.summary,
+.time {
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+.card-actions {
+  margin-top: 0.5rem;
 }
 </style>

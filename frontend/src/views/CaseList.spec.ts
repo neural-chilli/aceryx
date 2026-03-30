@@ -6,20 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../composables/useAuth'
 import CaseListView from './CaseList.vue'
 
+function setViewport(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
 describe('Case list view', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     setActivePinia(createPinia())
-    vi.stubGlobal('matchMedia', vi.fn().mockImplementation(() => ({
-      matches: false,
-      media: '',
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(),
-    })))
+    setViewport(1280)
     const auth = useAuth()
     auth.token.value = 'test-token'
     auth.currentUser.value = { id: 'p1', tenant_id: 't1', type: 'human', name: 'Case User' }
@@ -49,6 +45,11 @@ describe('Case list view', () => {
     const wrapper = mount(CaseListView, {
       global: {
         plugins: [[PrimeVue, { theme: { preset: Aura } }]],
+        stubs: {
+          teleport: true,
+          transition: false,
+          Dialog: true,
+        },
       },
     })
     await flushPromises()
@@ -57,5 +58,40 @@ describe('Case list view', () => {
     expect(wrapper.text()).toContain('review')
     expect(wrapper.find('.p-paginator').exists()).toBe(true)
     expect(wrapper.find('.filters').exists()).toBe(true)
+  })
+
+  it('renders card layout at sm and opens filter bottom sheet', async () => {
+    setViewport(375)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([
+      {
+        id: 'case-1',
+        case_number: 'LA-000001',
+        case_type: 'loan',
+        status: 'open',
+        priority: 2,
+        created_at: '2026-03-29T10:00:00Z',
+      },
+    ]), { status: 200 })))
+
+    const wrapper = mount(CaseListView, {
+      global: {
+        plugins: [[PrimeVue, { theme: { preset: Aura } }]],
+        stubs: {
+          teleport: true,
+          transition: false,
+          Dialog: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.case-cards').exists()).toBe(true)
+    expect(wrapper.findComponent({ name: 'DataTable' }).exists()).toBe(false)
+
+    const filterButton = wrapper.findAll('button').find((button) => button.text().includes('Filters'))
+    expect(filterButton).toBeTruthy()
+    await filterButton!.trigger('click')
+    await flushPromises()
+    expect((wrapper.vm as unknown as { showFilters: boolean }).showFilters).toBe(true)
   })
 })

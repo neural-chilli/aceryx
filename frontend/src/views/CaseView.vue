@@ -7,6 +7,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import FormRenderer from '../components/forms/FormRenderer.vue'
 import { useAuth } from '../composables/useAuth'
+import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useTerminology } from '../composables/useTerminology'
 import type { TaskDetail, TaskFormAction, TaskFormSchema } from '../types'
@@ -26,6 +27,7 @@ const route = useRoute()
 const { authFetch } = useAuth()
 const { t } = useTerminology()
 const { register, unregister, prettyShortcut } = useKeyboard()
+const { isMobileOrTablet } = useBreakpoint()
 
 type FormRendererExposed = {
   submitPrimaryAction: () => void
@@ -47,6 +49,8 @@ const csvColumns = ref<string[]>([])
 const caseID = computed(() => String(route.params.id ?? ''))
 const stepID = computed(() => String(route.query.step ?? ''))
 const submitHint = computed(() => prettyShortcut('mod+enter'))
+const caseSummaryOpen = ref(true)
+const aiOpen = ref(false)
 
 const formSchema = computed<TaskFormSchema>(() => {
   if (!task.value) {
@@ -221,6 +225,11 @@ async function previewDocument(doc: VaultDocument) {
     return
   }
 
+  if (doc.mime_type === 'application/pdf' && isMobileOrTablet.value) {
+    await downloadDocument(doc)
+    return
+  }
+
   if (doc.mime_type === 'application/pdf' || doc.mime_type.startsWith('image/')) {
     selectedBlobURL.value = await fetchSignedURL(doc)
     return
@@ -304,6 +313,29 @@ watch([caseID, stepID], async () => {
         <Tag :value="task.state" />
       </div>
 
+      <details class="mobile-collapse" :open="caseSummaryOpen">
+        <summary>{{ t('Case') }} Summary</summary>
+        <dl class="summary-list">
+          <div>
+            <dt>{{ t('Case') }}</dt>
+            <dd>{{ task.case_number }}</dd>
+          </div>
+          <div>
+            <dt>Type</dt>
+            <dd>{{ task.case_type }}</dd>
+          </div>
+          <div>
+            <dt>Status</dt>
+            <dd>{{ task.state }}</dd>
+          </div>
+        </dl>
+      </details>
+
+      <details class="mobile-collapse" :open="aiOpen">
+        <summary>AI Assessment</summary>
+        <pre class="ai-summary">{{ JSON.stringify(task.step_results ?? {}, null, 2) }}</pre>
+      </details>
+
       <FormRenderer
         ref="formRef"
         :schema="formSchema"
@@ -329,7 +361,19 @@ watch([caseID, stepID], async () => {
         </label>
       </div>
 
-      <DataTable :value="documents" data-key="id" :loading="docsLoading" class="document-table">
+      <div v-if="isMobileOrTablet" class="mobile-doc-list">
+        <article v-for="doc in documents" :key="doc.id" class="mobile-doc-card">
+          <strong>{{ doc.filename }}</strong>
+          <p>{{ doc.mime_type }} • {{ humanSize(doc.size_bytes) }}</p>
+          <div class="doc-actions">
+            <Button size="small" :label="t('Open')" @click="previewDocument(doc)" />
+            <Button v-if="doc.display_mode === 'download'" size="small" severity="secondary" :label="t('Download')" @click="downloadDocument(doc)" />
+            <Button size="small" severity="danger" :label="t('Delete')" @click="deleteDocument(doc)" />
+          </div>
+        </article>
+      </div>
+
+      <DataTable v-else :value="documents" data-key="id" :loading="docsLoading" class="document-table">
         <Column field="filename" :header="t('Filename')" />
         <Column field="mime_type" header="MIME" />
         <Column :header="t('Size')">
@@ -354,7 +398,7 @@ watch([caseID, stepID], async () => {
         <h3>{{ t('Preview') }}: {{ selectedDocument.filename }}</h3>
 
         <iframe
-          v-if="selectedDocument.mime_type === 'application/pdf'"
+          v-if="selectedDocument.mime_type === 'application/pdf' && !isMobileOrTablet"
           data-testid="pdf-preview"
           :src="selectedBlobURL"
           title="PDF preview"
@@ -403,6 +447,46 @@ h3 {
   max-width: 52rem;
 }
 
+.mobile-collapse {
+  border: 1px solid #dbe3ef;
+  border-radius: 0.6rem;
+  background: #fff;
+  padding: 0.5rem 0.65rem;
+}
+
+.mobile-collapse summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.summary-list {
+  margin: 0.5rem 0 0;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.summary-list div {
+  display: grid;
+  grid-template-columns: 7rem 1fr;
+  gap: 0.4rem;
+}
+
+.summary-list dt {
+  color: #64748b;
+}
+
+.summary-list dd {
+  margin: 0;
+}
+
+.ai-summary {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.82rem;
+  color: #334155;
+}
+
 .task-header {
   display: inline-flex;
   align-items: center;
@@ -438,6 +522,26 @@ h3 {
   flex-wrap: wrap;
 }
 
+.mobile-doc-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.mobile-doc-card {
+  border: 1px solid #dbe3ef;
+  border-radius: 0.65rem;
+  background: #fff;
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.mobile-doc-card p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
 .preview {
   display: grid;
   gap: 0.5rem;
@@ -461,5 +565,15 @@ h3 {
   background: var(--p-surface-100, #f6f6f6);
   border: 1px solid var(--p-surface-300, #d4d4d4);
   overflow: auto;
+}
+
+@media (max-width: 1024px) {
+  .task-form {
+    max-width: none;
+  }
+
+  .doc-actions {
+    display: grid;
+  }
 }
 </style>

@@ -7,6 +7,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../composables/useAuth'
 import ReportsView from './Reports.vue'
 
+function setViewport(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
 function mountReports() {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -17,6 +22,11 @@ function mountReports() {
     const wrapper = mount(ReportsView, {
       global: {
         plugins: [createPinia(), router, [PrimeVue, { theme: { preset: Aura } }]],
+        stubs: {
+          teleport: true,
+          transition: false,
+          Dialog: true,
+        },
       },
     })
     return { wrapper, router }
@@ -38,6 +48,7 @@ const reportPayload = {
 describe('Reports view', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    setViewport(1280)
     const pinia = createPinia()
     setActivePinia(pinia)
     const auth = useAuth()
@@ -106,5 +117,12 @@ describe('Reports view', () => {
     expect(wrapper.find('.number').exists()).toBe(true)
     const afterFetchCalls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls.length
     expect(afterFetchCalls).toBe(initialFetchCalls)
+  })
+
+  it('shows desktop-only message on mobile', async () => {
+    setViewport(375)
+    const { wrapper } = await mountReports()
+    await flushPromises()
+    expect(wrapper.text()).toContain('Please use a desktop browser for this feature.')
   })
 })

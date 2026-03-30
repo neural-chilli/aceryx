@@ -8,7 +8,9 @@ import MultiSelect from 'primevue/multiselect'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import { useAuth } from '../composables/useAuth'
+import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useTerminology } from '../composables/useTerminology'
 import type { DashboardCase } from '../types'
@@ -17,6 +19,7 @@ const router = useRouter()
 const { authFetch } = useAuth()
 const { t } = useTerminology()
 const { register, unregister } = useKeyboard()
+const { isDesktop, isMobileOrTablet } = useBreakpoint()
 
 const rows = ref<DashboardCase[]>([])
 const loading = ref(false)
@@ -34,6 +37,10 @@ const page = ref(1)
 const perPage = ref(25)
 const sortBy = ref('created_at')
 const sortDir = ref<'asc' | 'desc'>('desc')
+const showFilters = ref(false)
+const mobileList = ref<HTMLElement | null>(null)
+const pullStartY = ref(0)
+const pullDistance = ref(0)
 
 async function load() {
   loading.value = true
@@ -119,6 +126,34 @@ function onRowClick(event: { data: DashboardCase }) {
   }
 }
 
+function formatCreated(value?: string): string {
+  if (!value) return ''
+  return new Date(value).toLocaleDateString()
+}
+
+function statusClass(status: string): string {
+  return `status-${status}`
+}
+
+function onPullStart(event: TouchEvent) {
+  pullStartY.value = event.touches[0].clientY
+  pullDistance.value = 0
+}
+
+function onPullMove(event: TouchEvent) {
+  const deltaY = event.touches[0].clientY - pullStartY.value
+  if (mobileList.value && mobileList.value.scrollTop <= 0 && deltaY > 0) {
+    pullDistance.value = deltaY
+  }
+}
+
+async function onPullEnd() {
+  if (pullDistance.value > 80) {
+    await load()
+  }
+  pullDistance.value = 0
+}
+
 onMounted(() => {
   void load()
   register('j', () => moveSelection(1), 'Next case', 'case_list')
@@ -145,7 +180,9 @@ watch(rows, () => {
   <section class="case-list">
     <h1>{{ t('Cases') }}</h1>
 
-    <div ref="filterPanel" class="filters">
+    <Button v-if="isMobileOrTablet" label="Filters" icon="pi pi-filter" @click="showFilters = true" />
+
+    <div v-if="isDesktop" ref="filterPanel" class="filters">
       <InputText ref="searchInput" v-model="search" placeholder="Search" />
       <MultiSelect v-model="statuses" :options="['open', 'in_progress', 'completed', 'cancelled']" placeholder="Status" />
       <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" />
@@ -154,7 +191,26 @@ watch(rows, () => {
       <Button label="Apply" @click="load" />
     </div>
 
-    <DataTable :value="rows" :loading="loading" paginator :rows="perPage" :row-class="rowClass" @row-click="onRowClick">
+    <div
+      v-if="isMobileOrTablet"
+      ref="mobileList"
+      class="case-cards"
+      @touchstart.passive="onPullStart"
+      @touchmove.passive="onPullMove"
+      @touchend="onPullEnd"
+    >
+      <div v-if="pullDistance > 0" class="pull-indicator">Pull to refresh</div>
+      <article v-for="item in rows" :key="item.id" class="case-card" @click="router.push(`/cases/${item.id}`)">
+        <header class="card-header">
+          <strong>{{ item.case_number }}</strong>
+          <span class="status-badge" :class="statusClass(item.status)">{{ item.status }}</span>
+        </header>
+        <p class="meta">{{ item.case_type }}</p>
+        <p class="meta">Created: {{ formatCreated(item.created_at) }} • P{{ item.priority }}</p>
+      </article>
+    </div>
+
+    <DataTable v-else-if="isDesktop" :value="rows" :loading="loading" paginator :rows="perPage" :row-class="rowClass" @row-click="onRowClick">
       <Column field="case_number" :header="t('Case')" sortable />
       <Column field="case_type" :header="t('Cases')" />
       <Column field="status" header="Status" sortable />
@@ -164,6 +220,17 @@ watch(rows, () => {
       <Column field="created_at" header="Created" sortable />
       <Column field="sla_status" header="SLA" />
     </DataTable>
+
+    <Dialog v-model:visible="showFilters" header="Filters" modal position="bottom">
+      <div ref="filterPanel" class="filters filters-mobile">
+        <InputText ref="searchInput" v-model="search" placeholder="Search" />
+        <MultiSelect v-model="statuses" :options="['open', 'in_progress', 'completed', 'cancelled']" placeholder="Status" />
+        <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" />
+        <InputNumber v-model="olderThanDays" placeholder="Older than days" />
+        <InputNumber v-model="priority" placeholder="Priority" />
+        <Button label="Apply" @click="showFilters = false; load()" />
+      </div>
+    </Dialog>
   </section>
 </template>
 
@@ -185,5 +252,61 @@ h1 {
 
 :deep(tr.row-selected > td) {
   background: color-mix(in oklab, var(--acx-brand-primary), white 90%);
+}
+
+.case-cards {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.pull-indicator {
+  font-size: 0.82rem;
+  color: #64748b;
+  text-align: center;
+}
+
+.case-card {
+  border: 1px solid #dbe3ef;
+  border-radius: 0.65rem;
+  padding: 0.65rem;
+  background: #fff;
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-badge {
+  padding: 0.15rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-transform: capitalize;
+}
+
+.status-open, .status-in_progress {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-completed {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.status-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.meta {
+  margin: 0.35rem 0 0;
+  color: #64748b;
+}
+
+.filters-mobile {
+  grid-template-columns: 1fr;
 }
 </style>

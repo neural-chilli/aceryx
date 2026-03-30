@@ -8,6 +8,7 @@ import WorkflowCanvas from '../components/builder/WorkflowCanvas.vue'
 import StepConfigPanel from '../components/builder/StepConfigPanel.vue'
 import WorkflowToolbar from '../components/builder/WorkflowToolbar.vue'
 import ValidationPanel from '../components/builder/ValidationPanel.vue'
+import DesktopOnlyNotice from '../components/DesktopOnlyNotice.vue'
 import {
   addStep,
   applyAutoLayout,
@@ -21,6 +22,7 @@ import {
   validateAST,
 } from '../components/builder/model'
 import { useAuth } from '../composables/useAuth'
+import { useBreakpoint } from '../composables/useBreakpoint'
 
 type WorkflowSummary = {
   id: string
@@ -30,6 +32,7 @@ type WorkflowSummary = {
 }
 
 const { authFetch } = useAuth()
+const { isDesktop } = useBreakpoint()
 
 const workflows = ref<WorkflowSummary[]>([])
 const selectedWorkflowID = ref<string>('')
@@ -232,7 +235,8 @@ if (ast.steps.length === 0) {
 </script>
 
 <template>
-  <section class="builder-page">
+  <DesktopOnlyNotice v-if="!isDesktop" title="Builder" />
+  <section v-else class="builder-page">
     <WorkflowToolbar
       :unsaved="unsaved"
       @save="saveDraft"

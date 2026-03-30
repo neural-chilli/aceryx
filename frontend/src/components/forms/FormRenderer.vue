@@ -595,4 +595,16 @@ defineExpose({
   border: 1px solid color-mix(in oklab, currentColor, white 50%);
   border-radius: 0.45rem;
 }
+
+@media (max-width: 1024px) {
+  .actions {
+    display: grid;
+  }
+
+  .actions :deep(.p-button) {
+    width: 100%;
+    justify-content: space-between;
+    min-height: 2.8rem;
+  }
+}
 </style>

@@ -39,9 +39,15 @@ function mountInbox(pinia = createPinia()) {
   })
 }
 
+function setViewport(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
 describe('Inbox view', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    setViewport(1280)
     const pinia = createPinia()
     setActivePinia(pinia)
     const auth = useAuth()
@@ -52,6 +58,7 @@ describe('Inbox view', () => {
   })
 
   it('renders task list and claim button for role-assigned tasks', async () => {
+    setViewport(375)
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/tasks') {
@@ -77,9 +84,30 @@ describe('Inbox view', () => {
     const { wrapper } = await mountInbox(pinia)
     await flushPromises()
 
+    const card = wrapper.get('[data-testid="inbox-task-card"]')
+    await card.trigger('touchstart', { touches: [{ clientY: 0, clientX: 200 }] })
+    await card.trigger('touchmove', { touches: [{ clientY: 0, clientX: 120 }] })
+    await card.trigger('touchend')
+    await flushPromises()
+
     expect(wrapper.text()).toContain('TSK-000001')
     expect(wrapper.text()).toContain('Claim')
-    expect(wrapper.find('.p-tag-danger').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="sla-dot"]').exists()).toBe(true)
+  })
+
+  it('renders card list at sm and DataTable at lg', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify([]), { status: 200 })))
+
+    setViewport(375)
+    const { wrapper: mobile } = await mountInbox()
+    await flushPromises()
+    expect(mobile.find('.mobile-list').exists()).toBe(true)
+    expect(mobile.findComponent({ name: 'DataTable' }).exists()).toBe(false)
+
+    setViewport(1280)
+    const { wrapper: desktop } = await mountInbox()
+    await flushPromises()
+    expect(desktop.findComponent({ name: 'DataTable' }).exists()).toBe(true)
   })
 
   it('uses terminology labels in headings', async () => {
@@ -100,6 +128,7 @@ describe('Inbox view', () => {
   })
 
   it('supports J/K selection and Enter opens selected task', async () => {
+    setViewport(1280)
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url === '/tasks') {
@@ -144,6 +173,7 @@ describe('Inbox view', () => {
   })
 
   it('C claims selected task', async () => {
+    setViewport(1280)
     const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
       if (url === '/tasks') {
@@ -174,5 +204,39 @@ describe('Inbox view', () => {
 
     const claimCall = fetchSpy.mock.calls.find(([url, init]) => String(url).includes('/tasks/c1/review/claim') && init?.method === 'POST')
     expect(claimCall).toBeTruthy()
+  })
+
+  it('pull-to-refresh triggers inbox reload on mobile', async () => {
+    setViewport(375)
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/tasks') {
+        return new Response(JSON.stringify([
+          {
+            case_id: 'c1',
+            step_id: 'review',
+            case_number: 'TSK-000001',
+            case_type: 'loan',
+            step_name: 'Review',
+            priority: 2,
+            sla_status: 'on_track',
+          },
+        ]), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { wrapper } = await mountInbox()
+    await flushPromises()
+    const initialCalls = fetchSpy.mock.calls.length
+
+    const card = wrapper.get('[data-testid="inbox-task-card"]')
+    await card.trigger('touchstart', { touches: [{ clientY: 0, clientX: 0 }] })
+    await card.trigger('touchmove', { touches: [{ clientY: 120, clientX: 0 }] })
+    await card.trigger('touchend')
+    await flushPromises()
+
+    expect(fetchSpy.mock.calls.length).toBeGreaterThan(initialCalls)
   })
 })

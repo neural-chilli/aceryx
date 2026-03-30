@@ -35,6 +35,11 @@ function mountCaseView(path = '/cases/case-1?step=review', pinia = createPinia()
   })
 }
 
+function setViewport(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
 function defaultTaskPayload() {
   return {
     case_id: 'case-1',
@@ -93,6 +98,7 @@ function installFetchMock(docs: DocFixture[]) {
 describe('CaseView document panel', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    setViewport(1280)
     setActivePinia(createPinia())
     const auth = useAuth()
     auth.token.value = 'test-token'
@@ -309,5 +315,25 @@ describe('CaseView document panel', () => {
     expect(saveKey.defaultPrevented).toBe(true)
     const draftCall = fetchSpy.mock.calls.find(([url, init]) => String(url).endsWith('/draft') && init?.method === 'PUT')
     expect(draftCall).toBeTruthy()
+  })
+
+  it('task view stacks sections vertically on mobile', async () => {
+    setViewport(375)
+    installFetchMock([])
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    const sections = wrapper.findAll('.mobile-collapse')
+    expect(sections.length).toBeGreaterThan(0)
+    expect(wrapper.find('.summary-list').exists()).toBe(true)
+  })
+
+  it('action buttons are full width on mobile', async () => {
+    setViewport(375)
+    installFetchMock([])
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    expect(wrapper.find('.actions').exists()).toBe(true)
   })
 })

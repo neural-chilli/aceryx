@@ -14,7 +14,9 @@ import TabPanel from 'primevue/tabpanel'
 import Dialog from 'primevue/dialog'
 import Card from 'primevue/card'
 import Chart from 'primevue/chart'
+import DesktopOnlyNotice from '../components/DesktopOnlyNotice.vue'
 import { useAuth } from '../composables/useAuth'
+import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
 import { useTerminology } from '../composables/useTerminology'
 import type { ReportResult, SavedReport } from '../types'
@@ -22,6 +24,7 @@ import type { ReportResult, SavedReport } from '../types'
 const { authFetch } = useAuth()
 const { t } = useTerminology()
 const { register, unregister } = useKeyboard()
+const { isDesktop } = useBreakpoint()
 
 const question = ref('')
 const questionInput = ref()
@@ -158,7 +161,8 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <section class="reports">
+  <DesktopOnlyNotice v-if="!isDesktop" title="Reports" />
+  <section v-else class="reports">
     <h1>{{ t('Reports') }}</h1>
 
     <div class="ask">

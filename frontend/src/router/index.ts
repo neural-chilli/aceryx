@@ -7,6 +7,7 @@ import PasswordChangeView from '../views/PasswordChange.vue'
 import BuilderView from '../views/Builder.vue'
 import ReportsView from '../views/Reports.vue'
 import ActivityView from '../views/Activity.vue'
+import ProfileView from '../views/Profile.vue'
 import { installAuthGuards } from './guards'
 
 const router = createRouter({
@@ -20,6 +21,7 @@ const router = createRouter({
     { path: '/cases/:id', component: CaseView, meta: { requiresAuth: true } },
     { path: '/builder', component: BuilderView, meta: { requiresAuth: true } },
     { path: '/reports', component: ReportsView, meta: { requiresAuth: true } },
+    { path: '/profile', component: ProfileView, meta: { requiresAuth: true } },
     { path: '/auth/password', component: PasswordChangeView, meta: { requiresAuth: true } },
   ],
 })

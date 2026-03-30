@@ -1,5 +1,7 @@
 import type { Branding } from '../types'
 
+let manifestBlobURL = ''
+
 function clamp(v: number): number {
   return Math.max(0, Math.min(255, v))
 }
@@ -44,10 +46,40 @@ export function useBranding() {
     root.style.setProperty('--p-primary-600', adjust(primary, -24))
     root.style.setProperty('--p-primary-400', adjust(primary, 24))
 
+    const themeMeta = document.querySelector("meta[name='theme-color']") as HTMLMetaElement | null
+    if (themeMeta) {
+      themeMeta.content = primary
+    }
+
     if (branding.favicon_url) {
       const link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null
       if (link) {
         link.href = branding.favicon_url
+      }
+    }
+
+    const manifestLink = document.querySelector("link[rel='manifest']") as HTMLLinkElement | null
+    if (manifestLink) {
+      if (manifestBlobURL && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(manifestBlobURL)
+        manifestBlobURL = ''
+      }
+      const iconURL = branding.logo_url || '/logo-192.png'
+      const manifest = {
+        name: branding.company_name || 'Aceryx',
+        short_name: branding.company_name || 'Aceryx',
+        start_url: '/',
+        display: 'standalone',
+        background_color: primary,
+        theme_color: primary,
+        icons: [
+          { src: iconURL, sizes: '192x192', type: 'image/png' },
+          { src: iconURL, sizes: '512x512', type: 'image/png' },
+        ],
+      }
+      if (typeof URL.createObjectURL === 'function') {
+        manifestBlobURL = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: 'application/manifest+json' }))
+        manifestLink.href = manifestBlobURL
       }
     }
   }

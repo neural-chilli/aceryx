@@ -2,8 +2,10 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
+import BottomTabBar from './components/BottomTabBar.vue'
 import KeyboardHelp from './components/KeyboardHelp.vue'
 import { useAuth } from './composables/useAuth'
+import { useBreakpoint } from './composables/useBreakpoint'
 import { useKeyboard } from './composables/useKeyboard'
 import { useTheme } from './composables/useTheme'
 import { useTerminology } from './composables/useTerminology'
@@ -14,6 +16,7 @@ const { currentUser, tenantBranding, themes, preferences, logout, updatePreferen
 const { apply } = useTheme()
 const { t } = useTerminology()
 const { register } = useKeyboard()
+const { isDesktop, isMobileOrTablet } = useBreakpoint()
 
 const selectedThemeID = ref<string>('')
 const showKeyboardHelp = ref(false)
@@ -94,14 +97,14 @@ async function onLogout() {
         <img v-if="tenantBranding?.logo_url" :src="tenantBranding.logo_url" alt="Tenant logo" class="logo" />
         <strong>{{ brandName }}</strong>
       </RouterLink>
-      <nav class="main-nav">
+      <nav v-if="isDesktop" class="main-nav desktop-nav">
         <RouterLink to="/inbox">{{ t('Inbox') }}</RouterLink>
         <RouterLink to="/activity">{{ t('Activity') }}</RouterLink>
         <RouterLink to="/cases">{{ t('Cases') }}</RouterLink>
         <RouterLink to="/reports">{{ t('Reports') }}</RouterLink>
         <RouterLink to="/builder">Builder</RouterLink>
       </nav>
-      <details ref="profileMenu" class="profile-menu">
+      <details v-if="isDesktop" ref="profileMenu" class="profile-menu">
         <summary>{{ currentUser?.name ?? 'User' }}</summary>
         <div class="menu-body">
           <label for="theme-select">Theme</label>
@@ -121,6 +124,7 @@ async function onLogout() {
     </main>
 
     <footer v-if="poweredBy" class="footer">Powered by Aceryx</footer>
+    <BottomTabBar v-if="isMobileOrTablet" />
     <KeyboardHelp :visible="showKeyboardHelp" :current-scope="keyboardScope" @close="showKeyboardHelp = false" />
   </div>
   <RouterView v-else />
@@ -130,7 +134,7 @@ async function onLogout() {
 .shell {
   min-height: 100vh;
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   background: linear-gradient(165deg, #f8fafc 0%, #eff6ff 100%);
 }
 
@@ -209,5 +213,17 @@ async function onLogout() {
   color: #64748b;
   font-size: 0.85rem;
   background: #fff;
+}
+
+@media (max-width: 1024px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    justify-items: start;
+    gap: 0.45rem;
+  }
+
+  .content {
+    padding: 0.75rem;
+  }
 }
 </style>

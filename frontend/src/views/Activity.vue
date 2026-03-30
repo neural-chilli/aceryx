@@ -276,4 +276,34 @@ onUnmounted(() => {
 .loading {
   color: #64748b;
 }
+
+@media (max-width: 640px) {
+  .activity {
+    height: calc(100vh - 10.5rem);
+    gap: 0.55rem;
+  }
+
+  .header {
+    gap: 0.5rem;
+  }
+
+  .filter {
+    min-width: 8rem;
+  }
+
+  .item {
+    grid-template-columns: 1.15rem 1fr;
+    gap: 0.5rem;
+    padding: 0.45rem 0.5rem;
+  }
+
+  .icon {
+    font-size: 0.9rem;
+  }
+
+  .meta {
+    font-size: 0.74rem;
+    gap: 0.35rem;
+  }
+}
 </style>

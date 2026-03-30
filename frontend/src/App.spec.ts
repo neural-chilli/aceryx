@@ -1,4 +1,4 @@
-import { createPinia } from 'pinia'
+import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -9,20 +9,31 @@ import { useAuth } from './composables/useAuth'
 
 const Dummy = { template: '<div>content</div>' }
 
+function setViewport(width: number) {
+  Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
+  window.dispatchEvent(new Event('resize'))
+}
+
 describe('App shell', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    setViewport(1280)
     vi.stubGlobal('fetch', vi.fn(async () => new Response('[]', { status: 200 })))
   })
 
   it('shows tenant logo and company name and powered-by footer', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuth()
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/inbox', component: Dummy },
+        { path: '/activity', component: Dummy },
         { path: '/cases', component: Dummy },
         { path: '/builder', component: Dummy },
         { path: '/reports', component: Dummy },
+        { path: '/profile', component: Dummy },
         { path: '/auth/password', component: Dummy },
         { path: '/login', component: Dummy },
       ],
@@ -30,7 +41,6 @@ describe('App shell', () => {
     await router.push('/inbox')
     await router.isReady()
 
-    const auth = useAuth()
     auth.currentUser.value = { id: 'p1', tenant_id: 't1', type: 'human', name: 'Alex User', email: 'alex@example.com' }
     auth.tenantBranding.value = {
       company_name: 'Acme Lending',
@@ -45,24 +55,28 @@ describe('App shell', () => {
 
     const wrapper = mount(App, {
       global: {
-        plugins: [createPinia(), router, [PrimeVue, { theme: { preset: Aura } }]],
+        plugins: [pinia, router, [PrimeVue, { theme: { preset: Aura } }]],
       },
     })
 
     expect(wrapper.text()).toContain('Acme Lending')
     expect(wrapper.find('img.logo').attributes('src')).toBe('/logo.svg')
     expect(wrapper.text()).toContain('Powered by Aceryx')
-    expect(wrapper.find('#theme-select option').text()).toContain('Light')
   })
 
   it('global shortcut G then I navigates to inbox', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuth()
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/inbox', component: Dummy },
+        { path: '/activity', component: Dummy },
         { path: '/cases', component: Dummy },
         { path: '/reports', component: Dummy },
         { path: '/builder', component: Dummy },
+        { path: '/profile', component: Dummy },
         { path: '/auth/password', component: Dummy },
         { path: '/login', component: Dummy },
       ],
@@ -70,13 +84,12 @@ describe('App shell', () => {
     await router.push('/cases')
     await router.isReady()
 
-    const auth = useAuth()
     auth.currentUser.value = { id: 'p1', tenant_id: 't1', type: 'human', name: 'Alex User' }
     auth.tenantBranding.value = { company_name: 'Acme', powered_by: false, colors: {} }
 
     mount(App, {
       global: {
-        plugins: [createPinia(), router, [PrimeVue, { theme: { preset: Aura } }]],
+        plugins: [pinia, router, [PrimeVue, { theme: { preset: Aura } }]],
       },
     })
 
@@ -87,13 +100,18 @@ describe('App shell', () => {
   })
 
   it('help overlay opens with Shift+? and closes on Escape', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuth()
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
         { path: '/inbox', component: Dummy },
+        { path: '/activity', component: Dummy },
         { path: '/cases', component: Dummy },
         { path: '/reports', component: Dummy },
         { path: '/builder', component: Dummy },
+        { path: '/profile', component: Dummy },
         { path: '/auth/password', component: Dummy },
         { path: '/login', component: Dummy },
       ],
@@ -101,13 +119,12 @@ describe('App shell', () => {
     await router.push('/inbox')
     await router.isReady()
 
-    const auth = useAuth()
     auth.currentUser.value = { id: 'p1', tenant_id: 't1', type: 'human', name: 'Alex User' }
     auth.tenantBranding.value = { company_name: 'Acme', powered_by: false, colors: {} }
 
     mount(App, {
       global: {
-        plugins: [createPinia(), router, [PrimeVue, { theme: { preset: Aura } }]],
+        plugins: [pinia, router, [PrimeVue, { theme: { preset: Aura } }]],
       },
     })
 
@@ -118,5 +135,75 @@ describe('App shell', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
     await flushPromises()
     expect(document.body.textContent ?? '').not.toContain('Keyboard Shortcuts')
+  })
+
+  it('shows bottom tab bar on mobile and hides desktop nav', async () => {
+    setViewport(375)
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuth()
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/inbox', component: Dummy },
+        { path: '/activity', component: Dummy },
+        { path: '/cases', component: Dummy },
+        { path: '/reports', component: Dummy },
+        { path: '/builder', component: Dummy },
+        { path: '/profile', component: Dummy },
+        { path: '/auth/password', component: Dummy },
+        { path: '/login', component: Dummy },
+      ],
+    })
+    await router.push('/inbox')
+    await router.isReady()
+
+    auth.currentUser.value = { id: 'p1', tenant_id: 't1', type: 'human', name: 'Alex User' }
+    auth.tenantBranding.value = { company_name: 'Acme', powered_by: false, colors: {} }
+
+    const wrapper = mount(App, {
+      global: {
+        plugins: [pinia, router, [PrimeVue, { theme: { preset: Aura } }]],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.bottom-tab-bar').exists()).toBe(true)
+    expect(wrapper.find('.desktop-nav').exists()).toBe(false)
+  })
+
+  it('shows desktop nav on desktop and hides bottom tab bar', async () => {
+    setViewport(1366)
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const auth = useAuth()
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [
+        { path: '/inbox', component: Dummy },
+        { path: '/activity', component: Dummy },
+        { path: '/cases', component: Dummy },
+        { path: '/reports', component: Dummy },
+        { path: '/builder', component: Dummy },
+        { path: '/profile', component: Dummy },
+        { path: '/auth/password', component: Dummy },
+        { path: '/login', component: Dummy },
+      ],
+    })
+    await router.push('/inbox')
+    await router.isReady()
+
+    auth.currentUser.value = { id: 'p1', tenant_id: 't1', type: 'human', name: 'Alex User' }
+    auth.tenantBranding.value = { company_name: 'Acme', powered_by: false, colors: {} }
+
+    const wrapper = mount(App, {
+      global: {
+        plugins: [pinia, router, [PrimeVue, { theme: { preset: Aura } }]],
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.desktop-nav').exists()).toBe(true)
+    expect(wrapper.find('.bottom-tab-bar').exists()).toBe(false)
   })
 })
