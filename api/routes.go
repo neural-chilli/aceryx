@@ -26,6 +26,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/rbac"
+	"github.com/neural-chilli/aceryx/internal/reports"
 	"github.com/neural-chilli/aceryx/internal/tasks"
 	"github.com/neural-chilli/aceryx/internal/tenants"
 	"github.com/neural-chilli/aceryx/internal/vault"
@@ -46,6 +47,8 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	caseSvc := cases.NewCaseService(db, eng)
 	reportSvc := cases.NewReportsService(db, 5*time.Minute)
 	caseHandlers := handlers.NewCaseHandlers(ctSvc, caseSvc, reportSvc)
+	reportingSvc := reports.NewService(db, agents.NewLLMClientFromEnv(120*time.Second))
+	reportsHandlers := handlers.NewReportsHandlers(reportingSvc)
 	auditSvc := audit.NewService(db)
 	audit.SetDefaultService(auditSvc)
 	auditHandlers := handlers.NewAuditHandlers(auditSvc)
@@ -98,6 +101,8 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
 	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
 	go vaultSvc.StartOrphanCleanupTicker(context.Background())
+	go reportingSvc.StartViewRefreshTicker(context.Background())
+	go reportingSvc.StartScheduleTicker(context.Background())
 
 	authMW := middleware.AuthMiddleware(authSvc)
 	withAuth := func(h http.HandlerFunc) http.Handler {
@@ -158,6 +163,13 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("GET /reports/cases/by-stage", withPerm("cases:read", caseHandlers.ReportCasesByStage))
 	mux.Handle("GET /reports/workload", withPerm("cases:read", caseHandlers.ReportWorkload))
 	mux.Handle("GET /reports/decisions", withPerm("cases:read", caseHandlers.ReportDecisions))
+	mux.Handle("POST /reports/ask", withPerm("reports:query", reportsHandlers.Ask))
+	mux.Handle("POST /reports", withPerm("reports:query", reportsHandlers.Create))
+	mux.Handle("GET /reports", withPerm("reports:query", reportsHandlers.List))
+	mux.Handle("GET /reports/{id}", withPerm("reports:query", reportsHandlers.Get))
+	mux.Handle("POST /reports/{id}/run", withPerm("reports:query", reportsHandlers.Run))
+	mux.Handle("PUT /reports/{id}", withPerm("reports:query", reportsHandlers.Update))
+	mux.Handle("DELETE /reports/{id}", withPerm("reports:query", reportsHandlers.Delete))
 	mux.Handle("POST /admin/erasure", withPerm("admin:audit", vaultHandlers.Erasure))
 	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))

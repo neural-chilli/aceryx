@@ -68,16 +68,18 @@ type UpdateThemeRequest struct {
 }
 
 var defaultTerminology = Terminology{
-	"case":  "case",
-	"cases": "cases",
-	"Case":  "Case",
-	"Cases": "Cases",
-	"task":  "task",
-	"tasks": "tasks",
-	"Task":  "Task",
-	"Tasks": "Tasks",
-	"inbox": "inbox",
-	"Inbox": "Inbox",
+	"case":    "case",
+	"cases":   "cases",
+	"Case":    "Case",
+	"Cases":   "Cases",
+	"task":    "task",
+	"tasks":   "tasks",
+	"Task":    "Task",
+	"Tasks":   "Tasks",
+	"inbox":   "inbox",
+	"Inbox":   "Inbox",
+	"reports": "reports",
+	"Reports": "Reports",
 }
 
 func ResolveTerminology(overrides Terminology) Terminology {

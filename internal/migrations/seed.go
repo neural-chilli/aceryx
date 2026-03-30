@@ -34,6 +34,7 @@ var allPermissions = []string{
 	"admin:roles",
 	"admin:tenant",
 	"admin:audit",
+	"reports:query",
 }
 
 var defaultRoleSeeds = map[string]roleSeed{
@@ -47,7 +48,7 @@ var defaultRoleSeeds = map[string]roleSeed{
 	},
 	"case_worker": {
 		description: "Work assigned cases and tasks",
-		permissions: []string{"cases:read", "cases:update", "tasks:claim", "tasks:complete", "vault:download", "vault:upload"},
+		permissions: []string{"cases:read", "cases:update", "tasks:claim", "tasks:complete", "vault:download", "vault:upload", "reports:query"},
 	},
 	"viewer": {
 		description: "Read-only case access",
@@ -74,11 +75,12 @@ func SeedDefaultData(ctx context.Context, db *sql.DB) error {
 		"powered_by": true,
 	}
 	terminology := map[string]any{
-		"case":  "case",
-		"cases": "cases",
-		"task":  "task",
-		"tasks": "tasks",
-		"inbox": "inbox",
+		"case":    "case",
+		"cases":   "cases",
+		"task":    "task",
+		"tasks":   "tasks",
+		"inbox":   "inbox",
+		"reports": "reports",
 	}
 	settings := map[string]any{
 		"default_theme":   "light",

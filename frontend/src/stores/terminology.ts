@@ -11,6 +11,8 @@ const defaults: Record<string, string> = {
   Tasks: 'Tasks',
   inbox: 'inbox',
   Inbox: 'Inbox',
+  reports: 'reports',
+  Reports: 'Reports',
 }
 
 export const useTerminologyStore = defineStore('terminology', {

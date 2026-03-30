@@ -137,3 +137,34 @@ export type DashboardCase = {
   sla_status?: string
   current_stage?: string
 }
+
+export type ReportColumn = {
+  key: string
+  label: string
+  role: 'dimension' | 'measure' | 'info'
+}
+
+export type ReportResult = {
+  title: string
+  sql: string
+  visualisation: 'table' | 'bar' | 'line' | 'pie' | 'number'
+  columns: ReportColumn[]
+  rows: Array<Record<string, unknown>>
+  row_count: number
+}
+
+export type SavedReport = {
+  id: string
+  tenant_id: string
+  created_by: string
+  name: string
+  description?: string
+  original_question?: string
+  query_sql: string
+  visualisation: 'table' | 'bar' | 'line' | 'pie' | 'number'
+  columns: ReportColumn[]
+  is_published: boolean
+  pinned: boolean
+  schedule?: string
+  last_run_at?: string
+}
