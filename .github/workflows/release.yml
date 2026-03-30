@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Publish Release
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build dist artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ROOT_DIR="$(pwd)"
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dist
+
+          build_one() {
+            local os="$1"
+            local arch="$2"
+            local ext="$3"
+            local bin="qp"
+            if [[ "$os" == "windows" ]]; then
+              bin="qp.exe"
+            fi
+
+            local out_dir
+            out_dir="$(mktemp -d)"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" go build -trimpath -ldflags "-s -w -X main.version=${TAG}" -o "${out_dir}/${bin}" ./cmd/qp
+
+            local base="qp_v${VERSION}_${os}_${arch}"
+            if [[ "$ext" == "zip" ]]; then
+              (cd "$out_dir" && zip -q "${ROOT_DIR}/dist/${base}.zip" "$bin")
+            else
+              tar -C "$out_dir" -czf "dist/${base}.tar.gz" "$bin"
+            fi
+            rm -rf "$out_dir"
+          }
+
+          build_one darwin amd64 tar.gz
+          build_one darwin arm64 tar.gz
+          build_one linux amd64 tar.gz
+          build_one linux arm64 tar.gz
+          build_one windows amd64 zip
+          build_one windows arm64 zip
+
+          (cd dist && sha256sum *.tar.gz *.zip > checksums.txt)
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
+          generate_release_notes: true
