@@ -115,7 +115,7 @@ WHERE tenant_id = $1
 	if err != nil {
 		return nil, fmt.Errorf("list case types: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]CaseType, 0)
 	for rows.Next() {
@@ -339,7 +339,7 @@ WHERE c.tenant_id = $1
 	if err != nil {
 		return nil, fmt.Errorf("list cases query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	cases := make([]Case, 0)
 	for rows.Next() {
@@ -525,7 +525,7 @@ WHERE c.tenant_id = $1
 	if err != nil {
 		return nil, fmt.Errorf("search cases query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]SearchResult, 0)
 	for rows.Next() {
@@ -614,7 +614,7 @@ WHERE c.tenant_id = $1
 	if err != nil {
 		return nil, fmt.Errorf("dashboard query: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]DashboardRow, 0)
 	for rows.Next() {
@@ -667,7 +667,7 @@ ORDER BY period
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]CasesSummaryRow, 0)
 	for rows.Next() {
@@ -693,7 +693,7 @@ WHERE tenant_id = $1 AND status IN ('open', 'in_progress')
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	b := make([]AgeingBracket, 0, len(thresholds)+1)
 	for i := 0; i < len(thresholds); i++ {
@@ -739,7 +739,7 @@ ORDER BY period
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]SLAComplianceRow, 0)
 	for rows.Next() {
@@ -771,7 +771,7 @@ ORDER BY cs.step_id
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]StageRow, 0)
 	for rows.Next() {
@@ -798,7 +798,7 @@ ORDER BY p.name
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]WorkloadRow, 0)
 	for rows.Next() {
@@ -829,7 +829,7 @@ ORDER BY period
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]DecisionRow, 0)
 	for rows.Next() {
@@ -1068,7 +1068,7 @@ ORDER BY step_id
 	if err != nil {
 		return nil, fmt.Errorf("load case steps: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]CaseStep, 0)
 	for rows.Next() {
@@ -1093,7 +1093,7 @@ ORDER BY created_at
 	if err != nil {
 		return nil, fmt.Errorf("load case events: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]CaseEvent, 0)
 	for rows.Next() {
@@ -1122,7 +1122,7 @@ ORDER BY uploaded_at DESC
 	if err != nil {
 		return nil, fmt.Errorf("load case documents: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]CaseDocument, 0)
 	for rows.Next() {
