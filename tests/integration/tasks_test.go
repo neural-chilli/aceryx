@@ -132,7 +132,7 @@ func TestTasksIntegration_HumanTaskFlow(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM case_events
-WHERE case_id=$1 AND event_type IN ('task_created','task_claimed','task_completed')
+WHERE case_id=$1 AND event_type='task' AND action IN ('created','claimed','completed')
 `, caseID).Scan(&eventCount); err != nil {
 		t.Fatalf("count task audit events: %v", err)
 	}
@@ -297,7 +297,7 @@ func TestTasksIntegration_CompletionValidationReassignEscalation(t *testing.T) {
 	if err := db.QueryRowContext(ctx, `
 SELECT COUNT(*)
 FROM case_events
-WHERE case_id=$1 AND step_id='review' AND event_type='task_escalation_suppressed'
+WHERE case_id=$1 AND step_id='review' AND event_type='task' AND action='escalation_suppressed'
 `, caseID).Scan(&suppressed); err != nil {
 		t.Fatalf("count suppressed events: %v", err)
 	}

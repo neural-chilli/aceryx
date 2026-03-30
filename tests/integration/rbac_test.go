@@ -213,7 +213,7 @@ VALUES ($1, $2, 'doc.pdf', 'application/pdf', 10, 'h1', 's3://doc', $3)
 	var deniedCount int
 	if err := db.QueryRowContext(ctx, `
 SELECT COUNT(*) FROM auth_events
-WHERE tenant_id = $1 AND principal_id = $2 AND event_type = 'permission_denied' AND permission = 'admin:roles' AND resource_path = '/admin/roles'
+WHERE tenant_id = $1 AND principal_id = $2 AND event_type = 'auth.denied' AND permission = 'admin:roles' AND resource_path = '/admin/roles'
 `, tenantA, viewerA.ID).Scan(&deniedCount); err != nil {
 		t.Fatalf("query denied audit events: %v", err)
 	}

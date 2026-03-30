@@ -63,7 +63,7 @@ func (s *CaseTypeService) RegisterCaseType(ctx context.Context, tenantID, create
 	if err != nil {
 		return CaseType{}, nil, fmt.Errorf("begin register case type tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	var nextVersion int
 	if err := tx.QueryRowContext(ctx, `
@@ -221,14 +221,14 @@ VALUES ($1, $2, 'pending', '[]'::jsonb, 0)
 		}
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, c.ID, "", "case_created", createdBy, "human", "create_case", map[string]interface{}{
+	if err := audit.RecordCaseEventTx(ctx, tx, c.ID, "", "case", createdBy, "human", "created", map[string]interface{}{
 		"case_number": c.CaseNumber,
 		"case_type":   c.CaseType,
 	}); err != nil {
 		return Case{}, nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return Case{}, nil, fmt.Errorf("commit create case tx: %w", err)
 	}
 
@@ -361,7 +361,7 @@ func (s *CaseService) UpdateCaseData(ctx context.Context, tenantID, caseID, acto
 	if err != nil {
 		return PatchResult{}, nil, fmt.Errorf("begin patch case tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	var (
 		rawData    []byte
@@ -420,11 +420,11 @@ WHERE tenant_id = $1 AND id = $2 AND version = $4
 	}
 
 	diff := ComputeFieldDiff(before, merged)
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case_updated", actorID, "human", "update_case_data", map[string]interface{}{"diff": diff}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "updated", map[string]interface{}{"diff": diff}); err != nil {
 		return PatchResult{}, nil, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return PatchResult{}, nil, fmt.Errorf("commit patch case tx: %w", err)
 	}
 
@@ -456,7 +456,7 @@ WHERE c.tenant_id = $1 AND c.id = $2 AND cs.state = 'active'
 	if err != nil {
 		return fmt.Errorf("begin close case tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE cases
@@ -466,11 +466,11 @@ WHERE tenant_id = $1 AND id = $2
 		return fmt.Errorf("set case completed: %w", err)
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case_closed", actorID, "human", "close_case", map[string]interface{}{"reason": reason}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "closed", map[string]interface{}{"reason": reason}); err != nil {
 		return err
 	}
 
-	return tx.Commit()
+	return audit.CommitTx(tx)
 }
 
 func (s *CaseService) CancelCase(ctx context.Context, tenantID, caseID, actorID uuid.UUID, reason string) error {
@@ -817,9 +817,9 @@ func (r *ReportsService) Decisions(ctx context.Context, tenantID uuid.UUID, week
 	}
 	rows, err := r.db.QueryContext(ctx, `
 SELECT date_trunc('week', created_at) AS period,
-       COUNT(*) FILTER (WHERE actor_type = 'agent' AND event_type IN ('step_completed', 'case_updated')),
-       COUNT(*) FILTER (WHERE actor_type = 'human' AND event_type IN ('step_completed', 'case_updated')),
-       COUNT(*) FILTER (WHERE actor_type = 'agent' AND event_type = 'step_failed')
+       COUNT(*) FILTER (WHERE actor_type = 'agent' AND ((event_type = 'agent' AND action = 'completed') OR (event_type = 'case' AND action = 'updated'))),
+       COUNT(*) FILTER (WHERE actor_type = 'human' AND ((event_type = 'task' AND action = 'completed') OR (event_type = 'case' AND action = 'updated'))),
+       COUNT(*) FILTER (WHERE event_type = 'agent' AND action = 'escalated')
 FROM case_events ce
 JOIN cases c ON c.id = ce.case_id
 WHERE c.tenant_id = $1 AND ce.created_at >= date_trunc('week', now() - ($2 || ' week')::interval)

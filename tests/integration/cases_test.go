@@ -502,8 +502,8 @@ UPDATE cases SET status='cancelled', updated_at=now() WHERE id=$1
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO case_events (case_id, event_type, actor_id, actor_type, action, data, prev_event_hash, event_hash)
 VALUES
-($1, 'case_updated', $2, 'agent', 'auto_decide', '{}'::jsonb, 'p1', 'h1'),
-($1, 'case_updated', $2, 'human', 'manual_decide', '{}'::jsonb, 'h1', 'h2')
+($1, 'case', $2, 'agent', 'updated', '{}'::jsonb, 'p1', 'h1'),
+($1, 'case', $2, 'human', 'updated', '{}'::jsonb, 'h1', 'h2')
 `, onTrackCase, principalID); err != nil {
 		t.Fatalf("insert decision events: %v", err)
 	}

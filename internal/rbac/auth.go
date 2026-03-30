@@ -346,7 +346,7 @@ SET
 }
 
 func (a *AuthService) RecordDenied(ctx context.Context, principal AuthPrincipal, permission, path string) {
-	_ = recordAuthEvent(ctx, a.db, authEvent{TenantID: &principal.TenantID, PrincipalID: &principal.ID, EventType: "permission_denied", Success: false, Permission: permission, Path: path})
+	_ = recordAuthEvent(ctx, a.db, authEvent{TenantID: &principal.TenantID, PrincipalID: &principal.ID, EventType: "auth.denied", Success: false, Permission: permission, Path: path})
 }
 
 func (a *AuthService) listThemesForTenant(ctx context.Context, tenantID uuid.UUID) ([]ThemeOption, error) {

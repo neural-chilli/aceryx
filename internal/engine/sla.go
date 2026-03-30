@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/audit"
 )
 
 func (e *Engine) StartSLAMonitor(ctx context.Context) {
@@ -82,6 +83,7 @@ LIMIT 1000
 		if state != StateActive {
 			continue
 		}
+		_ = e.recordSLABreach(ctx, task)
 		_ = cb(ctx, task)
 	}
 
@@ -91,4 +93,42 @@ LIMIT 1000
 // CheckOverdueTasksForTest exposes one SLA scan pass for integration tests.
 func (e *Engine) CheckOverdueTasksForTest(ctx context.Context) (int, error) {
 	return e.checkOverdueTasks(ctx)
+}
+
+func (e *Engine) recordSLABreach(ctx context.Context, task OverdueTask) error {
+	tx, err := e.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = audit.RollbackTx(tx) }()
+
+	var caseStatus string
+	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, task.CaseID).Scan(&caseStatus); err != nil {
+		return err
+	}
+	if caseStatus == "cancelled" {
+		return audit.CommitTx(tx)
+	}
+
+	var state string
+	var deadline sql.NullTime
+	if err := tx.QueryRowContext(ctx, `
+SELECT state, sla_deadline
+FROM case_steps
+WHERE id = $1 AND case_id = $2 AND step_id = $3
+FOR UPDATE
+`, task.ID, task.CaseID, task.StepID).Scan(&state, &deadline); err != nil {
+		return err
+	}
+	if state != StateActive || !deadline.Valid || !deadline.Time.Before(time.Now().UTC()) {
+		return audit.CommitTx(tx)
+	}
+
+	if err := audit.RecordCaseEventTx(ctx, tx, task.CaseID, task.StepID, "system", e.systemActor(), "system", "sla_breach", map[string]any{
+		"sla_deadline": deadline.Time.UTC().Format(time.RFC3339Nano),
+		"task_id":      task.ID.String(),
+	}); err != nil {
+		return err
+	}
+	return audit.CommitTx(tx)
 }

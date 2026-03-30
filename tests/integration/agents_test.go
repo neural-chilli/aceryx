@@ -83,11 +83,11 @@ RETURNING id
 	waitForStepState(t, ctx, db, caseID, "agent", engine.StateCompleted)
 
 	var eventCount int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM case_events WHERE case_id = $1 AND event_type = 'agent_step_completed'`, caseID).Scan(&eventCount); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM case_events WHERE case_id = $1 AND event_type = 'agent' AND action = 'completed'`, caseID).Scan(&eventCount); err != nil {
 		t.Fatalf("count case events: %v", err)
 	}
 	if eventCount != 1 {
-		t.Fatalf("expected agent_step_completed event, got %d", eventCount)
+		t.Fatalf("expected agent.completed event, got %d", eventCount)
 	}
 }
 

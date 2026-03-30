@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/connectors"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/tasks"
@@ -169,7 +170,7 @@ func (a *AgentExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepID st
 	stepResult := &engine.StepResult{
 		Output:         resultPayload,
 		ExecutionEvent: eventJSON,
-		AuditEventType: "agent_step_completed",
+		AuditEventType: "agent.completed",
 	}
 	if cfg.WritesCaseData {
 		stepResult.WritesCaseData = true
@@ -452,7 +453,23 @@ func (a *AgentExecutor) createHumanReviewTask(ctx context.Context, caseID uuid.U
 	if cfgTask.AssignToRole == "" && cfgTask.AssignToUser == "" {
 		cfgTask.AssignToRole = "case_worker"
 	}
-	return a.tasks.CreateTaskFromActivation(ctx, caseID, stepID, cfgTask)
+	if err := a.tasks.CreateTaskFromActivation(ctx, caseID, stepID, cfgTask); err != nil {
+		return err
+	}
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin agent escalation audit tx: %w", err)
+	}
+	defer func() { _ = audit.RollbackTx(tx) }()
+
+	actorID := uuid.MustParse("00000000-0000-0000-0000-000000000000")
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "agent", actorID, "system", "escalated", map[string]any{
+		"confidence": confidence,
+		"threshold":  cfg.ConfidenceThreshold,
+	}); err != nil {
+		return err
+	}
+	return audit.CommitTx(tx)
 }
 
 func (a *AgentExecutor) loadCaseAndSteps(ctx context.Context, caseID uuid.UUID) (uuid.UUID, string, string, map[string]any, map[string]any, error) {

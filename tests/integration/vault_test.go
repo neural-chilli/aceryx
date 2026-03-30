@@ -131,11 +131,11 @@ func TestVaultIntegration_APIUploadListDownloadDeleteSignedURL(t *testing.T) {
 	}
 
 	var auditDownloads int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM case_events WHERE case_id = $1 AND event_type = 'document_downloaded'`, caseID).Scan(&auditDownloads); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM case_events WHERE case_id = $1 AND event_type = 'document' AND action = 'downloaded'`, caseID).Scan(&auditDownloads); err != nil {
 		t.Fatalf("count document download events: %v", err)
 	}
 	if auditDownloads == 0 {
-		t.Fatal("expected document_downloaded audit events")
+		t.Fatal("expected document.downloaded audit events")
 	}
 }
 

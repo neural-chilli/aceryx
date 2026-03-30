@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/audit"
 )
 
 func (e *Engine) EvaluateDAG(ctx context.Context, caseID uuid.UUID) error {
@@ -21,7 +22,7 @@ func (e *Engine) evaluateDAG(ctx context.Context, caseID uuid.UUID) error {
 	if err != nil {
 		return fmt.Errorf("begin dag evaluation tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	var caseStatus string
 	var caseData []byte
@@ -70,6 +71,16 @@ FOR UPDATE
 		if err := applyTransitionTx(ctx, tx, caseID, tr); err != nil {
 			return err
 		}
+		switch tr.Type {
+		case TransitionToActive:
+			if err := audit.RecordCaseEventTx(ctx, tx, caseID, tr.StepID, "step", e.systemActor(), "system", "activated", map[string]any{"from": tr.From, "to": tr.To, "reason": tr.Reason, "outcome": tr.Outcome}); err != nil {
+				return err
+			}
+		case TransitionToSkipped:
+			if err := audit.RecordCaseEventTx(ctx, tx, caseID, tr.StepID, "step", e.systemActor(), "system", "skipped", map[string]any{"from": tr.From, "to": tr.To, "reason": tr.Reason, "outcome": tr.Outcome}); err != nil {
+				return err
+			}
+		}
 		if tr.Type == TransitionToActive {
 			if step, ok := stepsByID[tr.StepID]; ok {
 				toDispatch = append(toDispatch, step)
@@ -81,7 +92,7 @@ FOR UPDATE
 		return fmt.Errorf("update case timestamp after dag evaluation: %w", err)
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit dag evaluation: %w", err)
 	}
 
@@ -331,7 +342,7 @@ func (e *Engine) completeStep(ctx context.Context, caseID uuid.UUID, stepID stri
 	if err != nil {
 		return fmt.Errorf("begin complete step tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	var caseStatus string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, caseID).Scan(&caseStatus); err != nil {
@@ -380,14 +391,27 @@ WHERE id = $1
 		}
 	}
 
-	auditEventType := "step_completed"
+	eventType := "step"
+	action := "completed"
 	if result.AuditEventType != "" {
-		auditEventType = result.AuditEventType
+		for _, sep := range []string{".", "/"} {
+			if strings.Contains(result.AuditEventType, sep) {
+				parts := strings.SplitN(result.AuditEventType, sep, 2)
+				if parts[0] != "" && parts[1] != "" {
+					eventType = parts[0]
+					action = parts[1]
+					break
+				}
+			}
+		}
+		if !strings.Contains(result.AuditEventType, ".") && !strings.Contains(result.AuditEventType, "/") {
+			eventType = result.AuditEventType
+		}
 	}
-	if err := e.insertCaseEventTx(ctx, tx, caseID, stepID, auditEventType, "system", "complete_step", map[string]interface{}{"attempts": result.Attempts, "outcome": result.Outcome}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, eventType, e.systemActor(), "system", action, map[string]any{"attempts": result.Attempts, "outcome": result.Outcome}); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit complete step: %w", err)
 	}
 
@@ -406,7 +430,7 @@ func (e *Engine) failStep(ctx context.Context, caseID uuid.UUID, stepID string, 
 	if err != nil {
 		return fmt.Errorf("begin fail step tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	var caseStatus string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, caseID).Scan(&caseStatus); err != nil {
@@ -430,10 +454,10 @@ WHERE case_id = $1 AND step_id = $2 AND state = 'active'
 	if _, err := tx.ExecContext(ctx, `UPDATE cases SET updated_at = now() WHERE id = $1`, caseID); err != nil {
 		return fmt.Errorf("touch case for fail step: %w", err)
 	}
-	if err := e.insertCaseEventTx(ctx, tx, caseID, stepID, "step_failed", "system", "fail_step", map[string]interface{}{"error": failErr.Error()}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "step", e.systemActor(), "system", "failed", map[string]any{"error": failErr.Error()}); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit fail step: %w", err)
 	}
 
@@ -448,7 +472,7 @@ func (e *Engine) skipStepTerminal(ctx context.Context, caseID uuid.UUID, stepID 
 	if err != nil {
 		return fmt.Errorf("begin skip step tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE case_steps
@@ -466,10 +490,10 @@ WHERE case_id = $1 AND step_id = $2 AND state = 'active'
 	if _, err := tx.ExecContext(ctx, `UPDATE cases SET updated_at = now() WHERE id = $1`, caseID); err != nil {
 		return fmt.Errorf("touch case for skip-on-exhausted: %w", err)
 	}
-	if err := e.insertCaseEventTx(ctx, tx, caseID, stepID, "step_skipped", "system", "skip_step", map[string]interface{}{"attempts": attempts, "error": cause.Error()}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "step", e.systemActor(), "system", "skipped", map[string]any{"attempts": attempts, "error": cause.Error()}); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit skip step terminal: %w", err)
 	}
 	return nil
@@ -484,7 +508,7 @@ func (e *Engine) cancelCase(ctx context.Context, caseID uuid.UUID, actorID uuid.
 	if err != nil {
 		return fmt.Errorf("begin cancel case tx: %w", err)
 	}
-	defer func() { _ = tx.Rollback() }()
+	defer func() { _ = audit.RollbackTx(tx) }()
 
 	ast, err := loadWorkflowASTTx(ctx, tx, caseID)
 	if err != nil {
@@ -525,31 +549,23 @@ WHERE case_id = $1 AND state = 'active' AND step_id = $2
 		}
 	}
 
-	if err := e.insertCaseEventTx(ctx, tx, caseID, "", "case_cancelled", "human", "cancel_case", map[string]interface{}{"reason": reason, "actor_id": actorID.String()}); err != nil {
+	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "cancelled", map[string]any{"reason": reason}); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit cancel case: %w", err)
 	}
 	return nil
 }
 
-func (e *Engine) insertCaseEventTx(ctx context.Context, tx *sql.Tx, caseID uuid.UUID, stepID, eventType, actorType, action string, data map[string]interface{}) error {
-	payload, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("marshal case event payload: %w", err)
-	}
+func (e *Engine) systemActor() uuid.UUID {
+	e.mu.RLock()
 	actorID := e.systemActorID
-	if actorID == uuid.Nil {
-		actorID = uuid.MustParse("00000000-0000-0000-0000-000000000000")
+	e.mu.RUnlock()
+	if actorID != uuid.Nil {
+		return actorID
 	}
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO case_events (case_id, step_id, event_type, actor_id, actor_type, action, data, prev_event_hash, event_hash)
-VALUES ($1, NULLIF($2, ''), $3, $4, $5, $6, $7::jsonb, $8, $9)
-`, caseID, stepID, eventType, actorID, actorType, action, string(payload), "prev", "event"); err != nil {
-		return fmt.Errorf("insert case event %s: %w", eventType, err)
-	}
-	return nil
+	return uuid.MustParse("00000000-0000-0000-0000-000000000000")
 }
 
 func calculateBackoff(policy ErrorPolicy, retryCount int) time.Duration {

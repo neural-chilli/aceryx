@@ -11,6 +11,7 @@ import (
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
 	"github.com/neural-chilli/aceryx/internal/agents"
+	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/connectors"
 	"github.com/neural-chilli/aceryx/internal/connectors/docgenconn"
@@ -45,6 +46,9 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	caseSvc := cases.NewCaseService(db, eng)
 	reportSvc := cases.NewReportsService(db, 5*time.Minute)
 	caseHandlers := handlers.NewCaseHandlers(ctSvc, caseSvc, reportSvc)
+	auditSvc := audit.NewService(db)
+	audit.SetDefaultService(auditSvc)
+	auditHandlers := handlers.NewAuditHandlers(auditSvc)
 
 	authzSvc := rbac.NewService(db)
 	authSvc := rbac.NewAuthService(db, os.Getenv("ACERYX_JWT_SECRET"), parseDurationOrDefault(os.Getenv("ACERYX_SESSION_TTL"), 24*time.Hour))
@@ -136,6 +140,9 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("PATCH /cases/{id}/data", withPerm("cases:update", caseHandlers.PatchCaseData))
 	mux.Handle("POST /cases/{id}/close", withPerm("cases:close", caseHandlers.CloseCase))
 	mux.Handle("POST /cases/{id}/cancel", withPerm("cases:close", caseHandlers.CancelCase))
+	mux.Handle("GET /cases/{id}/events", withPerm("cases:read", auditHandlers.ListCaseEvents))
+	mux.Handle("POST /cases/{id}/events/verify", withPerm("admin:audit", auditHandlers.VerifyCaseEvents))
+	mux.Handle("GET /cases/{id}/events/export", withPerm("admin:audit", auditHandlers.ExportCaseEvents))
 	mux.Handle("POST /cases/{case_id}/documents", withPerm("vault:upload", vaultHandlers.Upload))
 	mux.Handle("GET /cases/{case_id}/documents", withPerm("vault:download", vaultHandlers.List))
 	mux.Handle("GET /cases/{case_id}/documents/{doc_id}", withPerm("vault:download", vaultHandlers.Download))
