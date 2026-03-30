@@ -138,7 +138,7 @@ WHERE p.tenant_id = $1 AND p.status='active' AND r.name = $2
 	if err != nil {
 		return fmt.Errorf("query principals by role for ws send: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var principalID uuid.UUID

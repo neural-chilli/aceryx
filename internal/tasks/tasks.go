@@ -238,7 +238,7 @@ ORDER BY
 	if err != nil {
 		return nil, fmt.Errorf("query inbox tasks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]InboxTask, 0)
 	now := s.now()
@@ -336,7 +336,7 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 	d.StepResults = map[string]any{}
 	rows, qerr := s.db.QueryContext(ctx, `SELECT step_id, COALESCE(result, '{}'::jsonb) FROM case_steps WHERE case_id = $1 AND state = 'completed'`, caseID)
 	if qerr == nil {
-		defer rows.Close()
+		defer func() { _ = rows.Close() }()
 		for rows.Next() {
 			var sid string
 			var raw []byte

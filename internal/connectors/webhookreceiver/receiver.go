@@ -105,7 +105,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(fmt.Sprintf(`{"status":"ok","case_id":"%s"}`, caseID)))
+	_, _ = fmt.Fprintf(w, `{"status":"ok","case_id":"%s"}`, caseID)
 }
 
 func (h *Handler) loadRoute(ctx context.Context, path string) (RouteConfig, error) {

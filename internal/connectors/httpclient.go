@@ -39,7 +39,7 @@ func DoJSONRequest(ctx context.Context, method string, url string, headers map[s
 	if err != nil {
 		return 0, nil, nil, err
 	}
-	defer res.Body.Close()
+	defer func() { _ = res.Body.Close() }()
 	payload, err := io.ReadAll(res.Body)
 	if err != nil {
 		return res.StatusCode, res.Header, nil, fmt.Errorf("read response body: %w", err)
