@@ -18,7 +18,7 @@ WHERE cs.state = 'active' AND c.status != 'cancelled'
 	if err != nil {
 		return fmt.Errorf("query active cases for recovery: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	for rows.Next() {
 		var caseID uuid.UUID
@@ -56,7 +56,7 @@ WHERE case_id = $1 AND state = 'active'
 	if err != nil {
 		return fmt.Errorf("query active steps for recovery: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	type recStep struct {
 		stepID string

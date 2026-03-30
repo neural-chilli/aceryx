@@ -125,7 +125,7 @@ WHERE p.id = $1
 	if err != nil {
 		return nil, fmt.Errorf("query permissions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	perms := map[string]bool{}
 	for rows.Next() {
@@ -158,7 +158,7 @@ func (s *Service) invalidatePrincipalsForRole(ctx context.Context, roleID uuid.U
 	if err != nil {
 		return fmt.Errorf("query principals for role invalidation: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	principalIDs := make([]uuid.UUID, 0)
 	for rows.Next() {

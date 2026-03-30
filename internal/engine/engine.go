@@ -139,7 +139,7 @@ WHERE case_id = $1
 	if err != nil {
 		return nil, fmt.Errorf("load step states: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	states := make(map[string]StepState)
 	for rows.Next() {

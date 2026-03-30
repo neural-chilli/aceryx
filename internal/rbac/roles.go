@@ -57,7 +57,7 @@ ORDER BY name
 	if err != nil {
 		return nil, fmt.Errorf("list roles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	roles := make([]Role, 0)
 	for rows.Next() {
@@ -184,7 +184,7 @@ func (s *RoleService) listRolePermissions(ctx context.Context, roleID uuid.UUID)
 	if err != nil {
 		return nil, fmt.Errorf("list role permissions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	perms := make([]string, 0)
 	for rows.Next() {

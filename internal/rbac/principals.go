@@ -92,7 +92,7 @@ ORDER BY created_at DESC
 	if err != nil {
 		return nil, fmt.Errorf("list principals: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]Principal, 0)
 	for rows.Next() {
@@ -235,7 +235,7 @@ ORDER BY r.name
 	if err != nil {
 		return nil, fmt.Errorf("query principal role names: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	roles := make([]string, 0)
 	for rows.Next() {

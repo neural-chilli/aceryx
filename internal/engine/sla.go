@@ -51,7 +51,7 @@ LIMIT 1000
 	if err != nil {
 		return 0, fmt.Errorf("query overdue tasks: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	tasks := make([]OverdueTask, 0)
 	for rows.Next() {

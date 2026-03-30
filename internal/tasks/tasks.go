@@ -633,7 +633,7 @@ GROUP BY p.id
 	if err != nil {
 		return uuid.Nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	candidates := make([]userLoad, 0)
 	for rows.Next() {
 		var c userLoad
@@ -663,7 +663,7 @@ WHERE pr.principal_id=$1 AND p.tenant_id=$2
 	if err != nil {
 		return nil, fmt.Errorf("query principal roles: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	roles := make([]string, 0)
 	for rows.Next() {
 		var name string

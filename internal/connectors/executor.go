@@ -128,7 +128,7 @@ WHERE case_id = $1
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("load step results for template context: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var stepID string
 		var raw []byte
