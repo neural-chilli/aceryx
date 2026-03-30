@@ -41,6 +41,14 @@ tasks:
     deps: [db:reset, db:migrate, db:seed]
     cmd: echo "✓ Database fresh"
 
+  backup:
+    desc: Create a backup
+    cmd: ./aceryx backup --output ./backups/aceryx-$(date +%Y%m%d-%H%M%S).tar.gz
+
+#  restore:
+#    desc: Restore from backup (interactive — requires --confirm)
+#    cmd: echo "Usage: ./aceryx restore --input <path> --confirm"
+
   # ── Build ──────────────────────────────────────────────────
 
   build:
@@ -192,14 +200,15 @@ tasks:
   loc:
     desc: Count lines of code
     cmd: |
-      echo "=== Go ==="
-      find . -name '*.go' -not -path './vendor/*' | xargs wc -l | tail -1
-      echo "=== Vue/TS ==="
-      find frontend/src -name '*.vue' -o -name '*.ts' | xargs wc -l | tail -1
-      echo "=== SQL ==="
-      find migrations -name '*.sql' | xargs wc -l | tail -1
-      echo "=== Markdown ==="
-      find . -name '*.md' | xargs wc -l | tail -1
+      go_lines=$(find . -name '*.go' -not -path './vendor/*' | xargs wc -l | tail -1 | awk '{print $1}')
+      vue_lines=$(find frontend/src \( -name '*.vue' -o -name '*.ts' \) | xargs wc -l | tail -1 | awk '{print $1}')
+      sql_lines=$(find migrations -name '*.sql' | xargs wc -l | tail -1 | awk '{print $1}')
+
+      max_width=$(printf "%s\n" "$go_lines" "$vue_lines" "$sql_lines" $((go_lines + vue_lines + sql_lines)) | awk '{print length}' | sort -nr | head -1)
+      printf "%-7s %*d\n" "Go:"     "$max_width" "$go_lines"
+      printf "%-7s %*d\n" "Vue/TS:" "$max_width" "$vue_lines"
+      printf "%-7s %*d\n" "SQL:"    "$max_width" "$sql_lines"
+      printf "%-7s %*d\n" "Total:"  "$max_width" $((go_lines + vue_lines + sql_lines))
 
   check:imports:
     desc: Verify no cross-package internal imports (AGENTS.md rule)

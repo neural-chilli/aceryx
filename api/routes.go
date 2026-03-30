@@ -227,8 +227,9 @@ func firstNonEmpty(values ...string) string {
 
 func chainMiddlewares(next http.Handler) http.Handler {
 	h := next
-	h = middleware.RequestLoggingMiddleware(h)
-	h = middleware.MetricsMiddleware(h)
+	h = middleware.MaintenanceModeMiddleware(h)
 	h = middleware.CorrelationMiddleware(h)
+	h = middleware.MetricsMiddleware(h)
+	h = middleware.RequestLoggingMiddleware(h)
 	return h
 }

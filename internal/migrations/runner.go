@@ -27,6 +27,17 @@ func NewRunner(db *sql.DB) *Runner {
 	return &Runner{db: db}
 }
 
+func LatestVersion() (int, error) {
+	files, err := migrationFiles()
+	if err != nil {
+		return 0, err
+	}
+	if len(files) == 0 {
+		return 0, nil
+	}
+	return files[len(files)-1].version, nil
+}
+
 func (r *Runner) Apply(ctx context.Context) error {
 	if err := ensureSchemaMigrations(ctx, r.db); err != nil {
 		return fmt.Errorf("ensure schema_migrations: %w", err)
