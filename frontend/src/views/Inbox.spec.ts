@@ -22,7 +22,10 @@ vi.mock('../composables/useWebSocket', () => {
 function mountInbox(pinia = createPinia()) {
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/inbox', component: InboxView }],
+    routes: [
+      { path: '/inbox', component: InboxView },
+      { path: '/cases/:id', component: { template: '<div>case view</div>' } },
+    ],
   })
 
   return router.push('/inbox').then(async () => {
@@ -32,7 +35,7 @@ function mountInbox(pinia = createPinia()) {
         plugins: [pinia, router, [PrimeVue, { theme: { preset: Aura } }]],
       },
     })
-    return { wrapper }
+    return { wrapper, router }
   })
 }
 
@@ -94,5 +97,82 @@ describe('Inbox view', () => {
 
     expect(wrapper.text()).toContain('Work Queue')
     expect(wrapper.text()).toContain('No applications right now')
+  })
+
+  it('supports J/K selection and Enter opens selected task', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url === '/tasks') {
+        return new Response(JSON.stringify([
+          {
+            case_id: 'c1',
+            step_id: 'review_a',
+            case_number: 'TSK-1',
+            case_type: 'loan',
+            step_name: 'Review A',
+            priority: 2,
+            sla_status: 'on_track',
+          },
+          {
+            case_id: 'c2',
+            step_id: 'review_b',
+            case_number: 'TSK-2',
+            case_type: 'loan',
+            step_name: 'Review B',
+            priority: 2,
+            sla_status: 'on_track',
+          },
+        ]), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    }))
+
+    const { wrapper, router } = await mountInbox()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'j' }))
+    await flushPromises()
+    expect(wrapper.findAll('tr.row-selected').length).toBe(1)
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'enter' }))
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/cases/c2')
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'k' }))
+    await flushPromises()
+    expect(wrapper.findAll('tr.row-selected').length).toBe(1)
+  })
+
+  it('C claims selected task', async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/tasks') {
+        return new Response(JSON.stringify([
+          {
+            case_id: 'c1',
+            step_id: 'review',
+            case_number: 'TSK-1',
+            case_type: 'loan',
+            step_name: 'Review',
+            priority: 2,
+            sla_status: 'on_track',
+          },
+        ]), { status: 200 })
+      }
+      if (url === '/tasks/c1/review/claim' && init?.method === 'POST') {
+        return new Response(JSON.stringify({ status: 'ok' }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    await mountInbox()
+    await flushPromises()
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c' }))
+    await flushPromises()
+
+    const claimCall = fetchSpy.mock.calls.find(([url, init]) => String(url).includes('/tasks/c1/review/claim') && init?.method === 'POST')
+    expect(claimCall).toBeTruthy()
   })
 })

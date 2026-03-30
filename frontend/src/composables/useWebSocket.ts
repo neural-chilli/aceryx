@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
 import { useAuth } from './useAuth'
 
 const messages = ref<any[]>([])
@@ -66,5 +66,7 @@ export function useWebSocket() {
     close()
   })
 
-  return { messages, open, close }
+  const activityMessages = computed(() => messages.value.filter((msg) => msg?.type === 'activity'))
+
+  return { messages, activityMessages, open, close }
 }

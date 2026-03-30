@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import Textarea from 'primevue/textarea'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
@@ -15,13 +15,16 @@ import Dialog from 'primevue/dialog'
 import Card from 'primevue/card'
 import Chart from 'primevue/chart'
 import { useAuth } from '../composables/useAuth'
+import { useKeyboard } from '../composables/useKeyboard'
 import { useTerminology } from '../composables/useTerminology'
 import type { ReportResult, SavedReport } from '../types'
 
 const { authFetch } = useAuth()
 const { t } = useTerminology()
+const { register, unregister } = useKeyboard()
 
 const question = ref('')
+const questionInput = ref()
 const loading = ref(false)
 const error = ref('')
 const result = ref<ReportResult | null>(null)
@@ -125,7 +128,33 @@ async function runSaved(report: SavedReport) {
   chartType.value = result.value.visualisation
 }
 
-void loadReports()
+function focusQuestion() {
+  const el = questionInput.value?.$el?.querySelector?.('textarea') as HTMLTextAreaElement | undefined
+  el?.focus()
+}
+
+onMounted(() => {
+  void loadReports()
+  register('/', focusQuestion, 'Focus report question', 'reports')
+  register('enter', () => {
+    const active = document.activeElement
+    const isQuestion = active instanceof HTMLTextAreaElement && active === questionInput.value?.$el?.querySelector?.('textarea')
+    if (isQuestion) {
+      void ask()
+    }
+  }, 'Run report question', 'reports')
+  register('s', () => {
+    if (result.value) {
+      saveDialog.value = true
+    }
+  }, 'Save current report', 'reports')
+})
+
+onUnmounted(() => {
+  unregister('/')
+  unregister('enter')
+  unregister('s')
+})
 </script>
 
 <template>
@@ -133,7 +162,7 @@ void loadReports()
     <h1>{{ t('Reports') }}</h1>
 
     <div class="ask">
-      <Textarea v-model="question" rows="3" :placeholder="`Ask a question about your ${t('cases')}...`" @keyup.enter.exact.prevent="ask" />
+      <Textarea ref="questionInput" v-model="question" rows="3" :placeholder="`Ask a question about your ${t('cases')}...`" @keyup.enter.exact.prevent="ask" />
       <Button label="Run" :loading="loading" @click="ask" />
     </div>
     <p v-if="error" class="error">{{ error }}</p>

@@ -67,6 +67,9 @@ function installFetchMock(docs: DocFixture[]) {
       if (url.endsWith('/draft') && init?.method === 'PUT') {
         return new Response(JSON.stringify({ status: 'saved' }), { status: 200 })
       }
+      if (url.endsWith('/complete') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ status: 'completed' }), { status: 200 })
+      }
       if (url.includes('/signed-url')) {
         return new Response(JSON.stringify({ url: '/vault/signed/mock' }), { status: 200 })
       }
@@ -248,5 +251,63 @@ describe('CaseView document panel', () => {
 
     expect(wrapper.text()).toContain('Matter')
     expect(wrapper.text()).toContain('evidence')
+  })
+
+  it('Ctrl+Enter submits primary action and shows shortcut hint', async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/tasks/case-1/review') && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify(defaultTaskPayload()), { status: 200 })
+      }
+      if (url === '/cases/case-1/documents' && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url.endsWith('/complete') && init?.method === 'POST') {
+        return new Response(JSON.stringify({ status: 'ok' }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    const submitKey = new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: true, cancelable: true })
+    window.dispatchEvent(submitKey)
+    await flushPromises()
+
+    const completeCall = fetchSpy.mock.calls.find(([url, init]) => String(url).endsWith('/complete') && init?.method === 'POST')
+    expect(completeCall).toBeTruthy()
+    expect(wrapper.text()).toContain('Ctrl+Enter')
+  })
+
+  it('Ctrl+S saves draft and prevents browser default', async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/tasks/case-1/review') && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify(defaultTaskPayload()), { status: 200 })
+      }
+      if (url === '/cases/case-1/documents' && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url.endsWith('/draft') && init?.method === 'PUT') {
+        return new Response(JSON.stringify({ status: 'saved' }), { status: 200 })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    const input = wrapper.find('input')
+    input.element.focus()
+    const saveKey = new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true })
+    window.dispatchEvent(saveKey)
+    await flushPromises()
+
+    expect(saveKey.defaultPrevented).toBe(true)
+    const draftCall = fetchSpy.mock.calls.find(([url, init]) => String(url).endsWith('/draft') && init?.method === 'PUT')
+    expect(draftCall).toBeTruthy()
   })
 })

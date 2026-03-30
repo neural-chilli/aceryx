@@ -7,6 +7,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import FormRenderer from '../components/forms/FormRenderer.vue'
 import { useAuth } from '../composables/useAuth'
+import { useKeyboard } from '../composables/useKeyboard'
 import { useTerminology } from '../composables/useTerminology'
 import type { TaskDetail, TaskFormAction, TaskFormSchema } from '../types'
 
@@ -24,9 +25,16 @@ type VaultDocument = {
 const route = useRoute()
 const { authFetch } = useAuth()
 const { t } = useTerminology()
+const { register, unregister, prettyShortcut } = useKeyboard()
+
+type FormRendererExposed = {
+  submitPrimaryAction: () => void
+  saveDraftNow: () => void
+}
 
 const task = ref<TaskDetail | null>(null)
 const loading = ref(false)
+const formRef = ref<FormRendererExposed | null>(null)
 
 const documents = ref<VaultDocument[]>([])
 const docsLoading = ref(false)
@@ -38,6 +46,7 @@ const csvColumns = ref<string[]>([])
 
 const caseID = computed(() => String(route.params.id ?? ''))
 const stepID = computed(() => String(route.query.step ?? ''))
+const submitHint = computed(() => prettyShortcut('mod+enter'))
 
 const formSchema = computed<TaskFormSchema>(() => {
   if (!task.value) {
@@ -266,10 +275,18 @@ async function uploadDocument(event: Event) {
 
 onMounted(async () => {
   await Promise.all([loadTask(), loadDocuments()])
+  register('mod+enter', () => {
+    formRef.value?.submitPrimaryAction()
+  }, 'Submit primary task action', 'case_view')
+  register('mod+s', () => {
+    formRef.value?.saveDraftNow()
+  }, 'Save task draft', 'case_view')
 })
 
 onBeforeUnmount(() => {
   resetPreviewState()
+  unregister('mod+enter')
+  unregister('mod+s')
 })
 
 watch([caseID, stepID], async () => {
@@ -288,12 +305,14 @@ watch([caseID, stepID], async () => {
       </div>
 
       <FormRenderer
+        ref="formRef"
         :schema="formSchema"
         :case-data="task.case_data ?? {}"
         :step-results="task.step_results ?? {}"
         :draft-data="(task.draft_data as Record<string, unknown> | undefined)"
         :case-id="task.case_id"
         :step-id="task.step_id"
+        :primary-shortcut-hint="submitHint"
         @submit="complete"
         @save-draft="saveDraft"
       />

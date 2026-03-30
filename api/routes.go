@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
+	"github.com/neural-chilli/aceryx/internal/activity"
 	"github.com/neural-chilli/aceryx/internal/agents"
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/cases"
@@ -79,6 +80,9 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 		return ap.ID, ap.TenantID, nil
 	}))
 	notifySvc := notify.NewService(db, wsHub)
+	activitySvc := activity.NewService(db, wsHub)
+	auditSvc.OnCommitted(activitySvc.OnAuditEvent)
+	activityHandlers := handlers.NewActivityHandlers(activitySvc)
 	taskSvc := tasks.NewTaskService(db, eng, notifySvc)
 	caseSvc.SetNotifier(notifySvc)
 	taskHandlers := handlers.NewTaskHandlers(taskSvc)
@@ -147,6 +151,7 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("POST /cases/{id}/close", withPerm("cases:close", caseHandlers.CloseCase))
 	mux.Handle("POST /cases/{id}/cancel", withPerm("cases:close", caseHandlers.CancelCase))
 	mux.Handle("GET /cases/{id}/events", withPerm("cases:read", auditHandlers.ListCaseEvents))
+	mux.Handle("GET /activity", withAuth(activityHandlers.Feed))
 	mux.Handle("POST /cases/{id}/events/verify", withPerm("admin:audit", auditHandlers.VerifyCaseEvents))
 	mux.Handle("GET /cases/{id}/events/export", withPerm("admin:audit", auditHandlers.ExportCaseEvents))
 	mux.Handle("POST /cases/{case_id}/documents", withPerm("vault:upload", vaultHandlers.Upload))

@@ -52,6 +52,7 @@ const props = defineProps<{
   draftData?: Record<string, unknown>
   caseId: string
   stepId: string
+  primaryShortcutHint?: string
 }>()
 
 const emit = defineEmits<{
@@ -369,6 +370,17 @@ function submit(action: Action) {
   emit('submit', action.value, collectSubmitData())
 }
 
+function submitPrimaryAction() {
+  const primary = normalizedActions.value[0]
+  if (primary) {
+    submit(primary)
+  }
+}
+
+function saveDraftNow() {
+  emitDraft()
+}
+
 function onBeforeUnload() {
   emitDraft()
 }
@@ -408,6 +420,11 @@ watch(
   },
   { deep: true },
 )
+
+defineExpose({
+  submitPrimaryAction,
+  saveDraftNow,
+})
 </script>
 
 <template>
@@ -515,12 +532,14 @@ watch(
 
     <div class="actions">
       <Button
-        v-for="action in normalizedActions"
+        v-for="(action, index) in normalizedActions"
         :key="action.value"
-        :label="action.label"
         :severity="actionSeverity(action)"
         @click="submit(action)"
-      />
+      >
+        <span class="action-label">{{ action.label }}</span>
+        <span v-if="index === 0 && primaryShortcutHint" class="shortcut-hint">{{ primaryShortcutHint }}</span>
+      </Button>
     </div>
   </section>
 </template>
@@ -563,5 +582,17 @@ watch(
   display: inline-flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+}
+
+.action-label {
+  margin-right: 0.4rem;
+}
+
+.shortcut-hint {
+  font-size: 0.72rem;
+  opacity: 0.75;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid color-mix(in oklab, currentColor, white 50%);
+  border-radius: 0.45rem;
 }
 </style>
