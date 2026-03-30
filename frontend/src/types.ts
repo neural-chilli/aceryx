@@ -85,10 +85,44 @@ export type TaskDetail = {
   assigned_to?: string
   draft_data?: Record<string, unknown>
   form: string
-  form_schema: {
-    fields: Array<{ id: string; type: string; required?: boolean; bind?: string }>
-  }
+  form_schema: TaskFormSchema
   outcomes: string[]
+  available_actions?: Array<TaskFormAction | string>
+  step_results?: Record<string, unknown>
+}
+
+export type TaskFormSchema = {
+  title?: string
+  layout?: TaskFormSection[]
+  fields?: TaskFormField[]
+  actions?: TaskFormAction[]
+}
+
+export type TaskFormSection = {
+  section: string
+  fields: TaskFormField[]
+}
+
+export type TaskFormField = {
+  id?: string
+  bind: string
+  label?: string
+  type?: string
+  readonly?: boolean
+  required?: boolean
+  options?: string[]
+  options_from?: string
+  min_length?: number
+  max_length?: number
+  min?: number
+  max?: number
+}
+
+export type TaskFormAction = {
+  label: string
+  value: string
+  style?: string
+  requires?: string[]
 }
 
 export type DashboardCase = {

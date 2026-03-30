@@ -1,17 +1,14 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import InputText from 'primevue/inputtext'
-import InputNumber from 'primevue/inputnumber'
-import Checkbox from 'primevue/checkbox'
-import Textarea from 'primevue/textarea'
-import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import FormRenderer from '../components/forms/FormRenderer.vue'
 import { useAuth } from '../composables/useAuth'
 import { useTerminology } from '../composables/useTerminology'
-import type { TaskDetail } from '../types'
+import type { TaskDetail, TaskFormAction, TaskFormSchema } from '../types'
 
 type VaultDocument = {
   id: string
@@ -29,10 +26,7 @@ const { authFetch } = useAuth()
 const { t } = useTerminology()
 
 const task = ref<TaskDetail | null>(null)
-const formData = ref<Record<string, any>>({})
 const loading = ref(false)
-const draftSavedAt = ref<string>('')
-let draftTimer: number | null = null
 
 const documents = ref<VaultDocument[]>([])
 const docsLoading = ref(false)
@@ -45,6 +39,45 @@ const csvColumns = ref<string[]>([])
 const caseID = computed(() => String(route.params.id ?? ''))
 const stepID = computed(() => String(route.query.step ?? ''))
 
+const formSchema = computed<TaskFormSchema>(() => {
+  if (!task.value) {
+    return { title: 'Task', layout: [], actions: [] }
+  }
+  const schema = task.value.form_schema ?? {}
+  if (schema.layout && schema.layout.length > 0) {
+    return {
+      title: schema.title ?? task.value.step_id,
+      layout: schema.layout,
+      actions: normalizeActions(task.value),
+    }
+  }
+  const fields = schema.fields ?? []
+  return {
+    title: schema.title ?? task.value.step_id,
+    layout: [
+      {
+        section: t('Task'),
+        fields: fields.map((field) => ({
+          ...field,
+          bind: field.bind || (field.id ? `decision.${field.id}` : ''),
+        })),
+      },
+    ],
+    actions: normalizeActions(task.value),
+  }
+})
+
+function normalizeActions(detail: TaskDetail): TaskFormAction[] {
+  if (Array.isArray(detail.form_schema?.actions) && detail.form_schema.actions.length > 0) {
+    return detail.form_schema.actions
+  }
+  const available = Array.isArray(detail.available_actions) ? detail.available_actions : []
+  if (available.length > 0) {
+    return available.map((entry) => (typeof entry === 'string' ? { label: entry, value: entry } : entry))
+  }
+  return (detail.outcomes ?? []).map((outcome) => ({ label: outcome, value: outcome }))
+}
+
 async function loadTask() {
   if (!caseID.value || !stepID.value) {
     task.value = null
@@ -56,66 +89,35 @@ async function loadTask() {
     if (!res.ok) {
       return
     }
-    const payload = (await res.json()) as TaskDetail
-    task.value = payload
-    formData.value = {
-      ...(payload.case_data ?? {}),
-      ...((payload.draft_data as Record<string, unknown>) ?? {}),
-    }
-    if (payload.draft_data) {
-      draftSavedAt.value = new Date().toLocaleTimeString()
-    }
+    task.value = (await res.json()) as TaskDetail
   } finally {
     loading.value = false
   }
 }
 
-function scheduleDraftSave() {
+async function saveDraft(data: Record<string, unknown>) {
   if (!task.value) {
     return
   }
-  if (draftTimer !== null) {
-    window.clearTimeout(draftTimer)
-  }
-  draftTimer = window.setTimeout(async () => {
-    await saveDraft()
-  }, 30_000)
-}
-
-async function saveDraft() {
-  if (!task.value) {
-    return
-  }
-  const res = await authFetch(`/tasks/${task.value.case_id}/${encodeURIComponent(task.value.step_id)}/draft`, {
+  await authFetch(`/tasks/${task.value.case_id}/${encodeURIComponent(task.value.step_id)}/draft`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data: formData.value }),
+    body: JSON.stringify({ data }),
   })
-  if (res.ok) {
-    draftSavedAt.value = new Date().toLocaleTimeString()
-  }
 }
 
-async function complete(outcome: string) {
+async function complete(outcome: string, data: Record<string, unknown>) {
   if (!task.value) {
     return
   }
   const res = await authFetch(`/tasks/${task.value.case_id}/${encodeURIComponent(task.value.step_id)}/complete`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ outcome, data: formData.value }),
+    body: JSON.stringify({ outcome, data }),
   })
   if (res.ok) {
     await loadTask()
   }
-}
-
-function renderKind(type: string) {
-  const tpe = type.toLowerCase()
-  if (tpe === 'number') return 'number'
-  if (tpe === 'boolean') return 'boolean'
-  if (tpe === 'text' || tpe === 'textarea') return 'textarea'
-  return 'string'
 }
 
 function humanSize(bytes: number): string {
@@ -182,7 +184,7 @@ function escapeHTML(input: string): string {
 
 function renderMarkdown(input: string): string {
   const escaped = escapeHTML(input)
-  const html = escaped
+  return escaped
     .replace(/^### (.+)$/gm, '<h3>$1</h3>')
     .replace(/^## (.+)$/gm, '<h2>$1</h2>')
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
@@ -190,7 +192,6 @@ function renderMarkdown(input: string): string {
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
     .replace(/\n/g, '<br />')
-  return html
 }
 
 const markdownHTML = computed(() => renderMarkdown(selectedContent.value))
@@ -263,24 +264,14 @@ async function uploadDocument(event: Event) {
   input.value = ''
 }
 
-const beforeUnload = () => {
-  void saveDraft()
-}
-
 onMounted(async () => {
   await Promise.all([loadTask(), loadDocuments()])
-  window.addEventListener('beforeunload', beforeUnload)
 })
 
 onBeforeUnmount(() => {
-  if (draftTimer !== null) {
-    window.clearTimeout(draftTimer)
-  }
   resetPreviewState()
-  window.removeEventListener('beforeunload', beforeUnload)
 })
 
-watch(formData, scheduleDraftSave, { deep: true })
 watch([caseID, stepID], async () => {
   await Promise.all([loadTask(), loadDocuments()])
 })
@@ -295,45 +286,17 @@ watch([caseID, stepID], async () => {
         <h2>{{ task.step_id }}</h2>
         <Tag :value="task.state" />
       </div>
-      <small v-if="draftSavedAt">{{ t('Draft') }} saved at {{ draftSavedAt }}</small>
 
-      <div v-for="field in task.form_schema.fields" :key="field.id" class="field">
-        <label :for="field.id">{{ field.id }}</label>
-
-        <InputText
-          v-if="renderKind(field.type) === 'string'"
-          :id="field.id"
-          v-model="formData[field.id]"
-          fluid
-        />
-
-        <InputNumber
-          v-else-if="renderKind(field.type) === 'number'"
-          :id="field.id"
-          v-model="formData[field.id]"
-          fluid
-        />
-
-        <Checkbox v-else-if="renderKind(field.type) === 'boolean'" :input-id="field.id" v-model="formData[field.id]" binary />
-
-        <Textarea
-          v-else
-          :id="field.id"
-          v-model="formData[field.id]"
-          rows="3"
-          auto-resize
-        />
-      </div>
-
-      <div class="actions">
-        <Button label="Save Draft" severity="secondary" @click="saveDraft" />
-        <Button
-          v-for="outcome in task.outcomes"
-          :key="outcome"
-          :label="outcome"
-          @click="complete(outcome)"
-        />
-      </div>
+      <FormRenderer
+        :schema="formSchema"
+        :case-data="task.case_data ?? {}"
+        :step-results="task.step_results ?? {}"
+        :draft-data="(task.draft_data as Record<string, unknown> | undefined)"
+        :case-id="task.case_id"
+        :step-id="task.step_id"
+        @submit="complete"
+        @save-draft="saveDraft"
+      />
     </div>
 
     <p v-else-if="stepID && !task && !loading">Task not found.</p>
@@ -418,24 +381,13 @@ h3 {
 .task-form {
   display: grid;
   gap: 0.75rem;
-  max-width: 42rem;
+  max-width: 52rem;
 }
 
 .task-header {
   display: inline-flex;
   align-items: center;
   gap: 0.6rem;
-}
-
-.field {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.actions {
-  display: inline-flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
 }
 
 .document-panel {
