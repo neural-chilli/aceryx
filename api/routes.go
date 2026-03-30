@@ -27,6 +27,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/rbac"
 	"github.com/neural-chilli/aceryx/internal/tasks"
 	"github.com/neural-chilli/aceryx/internal/tenants"
+	"github.com/neural-chilli/aceryx/internal/vault"
 )
 
 // NewRouter creates and configures the HTTP router.
@@ -88,6 +89,10 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	tenantSvc := tenants.NewTenantService(db)
 	themeSvc := tenants.NewThemeService(db)
 	tenantHandlers := handlers.NewTenantHandlers(tenantSvc, themeSvc)
+	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
+	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
+	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
+	go vaultSvc.StartOrphanCleanupTicker(context.Background())
 
 	authMW := middleware.AuthMiddleware(authSvc)
 	withAuth := func(h http.HandlerFunc) http.Handler {
@@ -131,6 +136,11 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("PATCH /cases/{id}/data", withPerm("cases:update", caseHandlers.PatchCaseData))
 	mux.Handle("POST /cases/{id}/close", withPerm("cases:close", caseHandlers.CloseCase))
 	mux.Handle("POST /cases/{id}/cancel", withPerm("cases:close", caseHandlers.CancelCase))
+	mux.Handle("POST /cases/{case_id}/documents", withPerm("vault:upload", vaultHandlers.Upload))
+	mux.Handle("GET /cases/{case_id}/documents", withPerm("vault:download", vaultHandlers.List))
+	mux.Handle("GET /cases/{case_id}/documents/{doc_id}", withPerm("vault:download", vaultHandlers.Download))
+	mux.Handle("GET /cases/{case_id}/documents/{doc_id}/signed-url", withPerm("vault:download", vaultHandlers.SignedURL))
+	mux.Handle("DELETE /cases/{case_id}/documents/{doc_id}", withPerm("vault:delete", vaultHandlers.Delete))
 	mux.Handle("GET /cases/search", withPerm("cases:read", caseHandlers.SearchCases))
 	mux.Handle("GET /cases/dashboard", withPerm("cases:read", caseHandlers.Dashboard))
 
@@ -140,6 +150,8 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("GET /reports/cases/by-stage", withPerm("cases:read", caseHandlers.ReportCasesByStage))
 	mux.Handle("GET /reports/workload", withPerm("cases:read", caseHandlers.ReportWorkload))
 	mux.Handle("GET /reports/decisions", withPerm("cases:read", caseHandlers.ReportDecisions))
+	mux.Handle("POST /admin/erasure", withPerm("admin:audit", vaultHandlers.Erasure))
+	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
 	mux.Handle("GET /prompt-templates", withPerm("workflows:view", promptTemplateHandlers.List))
@@ -168,4 +180,13 @@ func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
