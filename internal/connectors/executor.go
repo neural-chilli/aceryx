@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 type Executor struct {
@@ -31,6 +33,7 @@ func NewExecutor(db *sql.DB, registry *Registry, secrets SecretStore) *Executor 
 }
 
 func (e *Executor) Execute(ctx context.Context, caseID uuid.UUID, stepID string, raw json.RawMessage) (*engine.StepResult, error) {
+	start := time.Now()
 	cfg := StepConfig{}
 	if err := json.Unmarshal(raw, &cfg); err != nil {
 		return nil, fmt.Errorf("parse integration step config: %w", err)
@@ -87,8 +90,34 @@ func (e *Executor) Execute(ctx context.Context, caseID uuid.UUID, stepID string,
 
 	result, err := action.Execute(actx, resolvedAuth, resolvedInput)
 	if err != nil {
+		status := "error"
+		if errors.Is(err, context.DeadlineExceeded) {
+			status = "timeout"
+		}
+		observability.ConnectorCallsTotal.WithLabelValues(tenantID.String(), cfg.Connector, cfg.Action, status).Inc()
+		observability.ConnectorDurationSeconds.WithLabelValues(tenantID.String(), cfg.Connector).Observe(time.Since(start).Seconds())
+		slog.ErrorContext(ctx, "connector call failed",
+			append(observability.RequestAttrs(ctx),
+				"case_id", caseID.String(),
+				"step_id", stepID,
+				"connector", cfg.Connector,
+				"action", cfg.Action,
+				"error", err,
+			)...,
+		)
 		return nil, err
 	}
+	observability.ConnectorCallsTotal.WithLabelValues(tenantID.String(), cfg.Connector, cfg.Action, "success").Inc()
+	observability.ConnectorDurationSeconds.WithLabelValues(tenantID.String(), cfg.Connector).Observe(time.Since(start).Seconds())
+	slog.InfoContext(ctx, "connector call completed",
+		append(observability.RequestAttrs(ctx),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+			"connector", cfg.Connector,
+			"action", cfg.Action,
+			"duration_ms", time.Since(start).Milliseconds(),
+		)...,
+	)
 	payload, err := json.Marshal(result)
 	if err != nil {
 		return nil, fmt.Errorf("marshal connector action result: %w", err)

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/connectors"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/observability"
 	"github.com/neural-chilli/aceryx/internal/tasks"
 )
 
@@ -111,6 +113,7 @@ func (a *AgentExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepID st
 	if model == "" {
 		return nil, fmt.Errorf("llm model not configured")
 	}
+	observability.AgentInvocationsTotal.WithLabelValues(tenantID.String(), model).Inc()
 
 	outputSchemaAny := map[string]any{}
 	for k, v := range cfg.OutputSchema {
@@ -137,16 +140,41 @@ func (a *AgentExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepID st
 
 	resultObj, usage, latencyMs, err := a.invokeWithValidationRetry(ctx, model, renderedPrompt, cfg)
 	if err != nil {
+		slog.ErrorContext(ctx, "agent execution failed",
+			append(observability.RequestAttrs(ctx),
+				"case_id", caseID.String(),
+				"step_id", stepID,
+				"tenant_id", tenantID.String(),
+				"model", model,
+				"error", err,
+			)...,
+		)
 		return nil, err
 	}
+	observability.AgentDurationSeconds.WithLabelValues(tenantID.String()).Observe(float64(latencyMs) / 1000.0)
+	observability.AgentTokensTotal.WithLabelValues(tenantID.String(), model, "input").Add(float64(usage.InputTokens))
+	observability.AgentTokensTotal.WithLabelValues(tenantID.String(), model, "output").Add(float64(usage.OutputTokens))
 
 	confidence, _ := asFloat(resultObj["confidence"])
+	observability.AgentConfidenceScore.WithLabelValues(tenantID.String()).Observe(confidence)
 	if confidence < cfg.ConfidenceThreshold && strings.EqualFold(cfg.OnLowConfidence, "escalate_to_human") {
+		observability.AgentEscalationsTotal.WithLabelValues(tenantID.String()).Inc()
 		if err := a.createHumanReviewTask(ctx, caseID, stepID, cfg, resultObj, confidence); err != nil {
 			return nil, err
 		}
 		return nil, engine.ErrStepAwaitingReview
 	}
+
+	slog.InfoContext(ctx, "agent step completed",
+		append(observability.RequestAttrs(ctx),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+			"tenant_id", tenantID.String(),
+			"model", model,
+			"confidence", confidence,
+			"latency_ms", latencyMs,
+		)...,
+	)
 
 	resultPayload, err := json.Marshal(resultObj)
 	if err != nil {

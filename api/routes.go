@@ -36,13 +36,16 @@ import (
 // NewRouter creates and configures the HTTP router.
 func NewRouter() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handlers.Health)
-	return mux
+	health := handlers.NewHealthHandlers(nil, nil, nil)
+	mux.HandleFunc("GET /health", health.Health)
+	mux.HandleFunc("GET /healthz", health.Liveness)
+	mux.HandleFunc("GET /readyz", health.Readiness)
+	mux.Handle("GET /metrics", health.Metrics())
+	return chainMiddlewares(mux)
 }
 
 func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /health", handlers.Health)
 
 	ctSvc := cases.NewCaseTypeService(db)
 	caseSvc := cases.NewCaseService(db, eng)
@@ -80,6 +83,7 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 		return ap.ID, ap.TenantID, nil
 	}))
 	notifySvc := notify.NewService(db, wsHub)
+	health := handlers.NewHealthHandlers(db, eng, wsHub)
 	activitySvc := activity.NewService(db, wsHub)
 	auditSvc.OnCommitted(activitySvc.OnAuditEvent)
 	activityHandlers := handlers.NewActivityHandlers(activitySvc)
@@ -115,6 +119,11 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	withPerm := func(permission string, h http.HandlerFunc) http.Handler {
 		return authMW(middleware.RequirePermission(authzSvc, authSvc, permission)(http.HandlerFunc(h)))
 	}
+
+	mux.HandleFunc("GET /health", health.Health)
+	mux.HandleFunc("GET /healthz", health.Liveness)
+	mux.HandleFunc("GET /readyz", health.Readiness)
+	mux.Handle("GET /metrics", health.Metrics())
 
 	mux.HandleFunc("POST /auth/login", authHandlers.Login)
 	mux.Handle("POST /auth/logout", withAuth(authHandlers.Logout))
@@ -193,7 +202,7 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	mux.Handle("POST /tasks/{case_id}/{step_id}/escalate", withPerm("tasks:escalate", taskHandlers.Escalate))
 	mux.HandleFunc("GET /ws", wsHub.HandleWS)
 
-	return mux
+	return chainMiddlewares(mux)
 }
 
 func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {
@@ -214,4 +223,12 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func chainMiddlewares(next http.Handler) http.Handler {
+	h := next
+	h = middleware.RequestLoggingMiddleware(h)
+	h = middleware.MetricsMiddleware(h)
+	h = middleware.CorrelationMiddleware(h)
+	return h
 }

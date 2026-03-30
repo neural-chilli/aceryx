@@ -4,15 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	internalmigrations "github.com/neural-chilli/aceryx/internal/migrations"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 func main() {
+	observability.SetupLoggerFromEnv(os.Stdout)
+
 	if len(os.Args) < 2 {
 		printUsage()
 		return
@@ -24,11 +27,13 @@ func main() {
 		fmt.Println("aceryx v0.0.1-dev")
 	case "migrate":
 		if err := runMigrate(); err != nil {
-			log.Fatalf("migrate failed: %v", err)
+			slog.Error("migrate failed", "error", err)
+			os.Exit(1)
 		}
 	case "seed":
 		if err := runSeed(); err != nil {
-			log.Fatalf("seed failed: %v", err)
+			slog.Error("seed failed", "error", err)
+			os.Exit(1)
 		}
 	case "serve":
 		fmt.Println("aceryx - case orchestration engine")

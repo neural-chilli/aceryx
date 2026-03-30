@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/audit"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 func (e *Engine) EvaluateDAG(ctx context.Context, caseID uuid.UUID) error {
@@ -18,6 +20,10 @@ func (e *Engine) EvaluateDAG(ctx context.Context, caseID uuid.UUID) error {
 }
 
 func (e *Engine) evaluateDAG(ctx context.Context, caseID uuid.UUID) error {
+	start := time.Now()
+	defer func() {
+		observability.DBQueryDurationSeconds.WithLabelValues("dag_eval").Observe(time.Since(start).Seconds())
+	}()
 	tx, err := e.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin dag evaluation tx: %w", err)
@@ -26,12 +32,13 @@ func (e *Engine) evaluateDAG(ctx context.Context, caseID uuid.UUID) error {
 
 	var caseStatus string
 	var caseData []byte
+	var tenantID uuid.UUID
 	err = tx.QueryRowContext(ctx, `
-SELECT status, data
+SELECT status, data, tenant_id
 FROM cases
 WHERE id = $1
 FOR UPDATE
-`, caseID).Scan(&caseStatus, &caseData)
+`, caseID).Scan(&caseStatus, &caseData, &tenantID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrNotFound
@@ -39,6 +46,8 @@ FOR UPDATE
 		return fmt.Errorf("lock case row: %w", err)
 	}
 	if caseStatus == "cancelled" {
+		observability.DAGEvaluationsTotal.WithLabelValues(tenantID.String()).Inc()
+		observability.DAGEvaluationDurationSeconds.WithLabelValues(tenantID.String()).Observe(time.Since(start).Seconds())
 		return tx.Commit()
 	}
 
@@ -95,6 +104,21 @@ FOR UPDATE
 	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit dag evaluation: %w", err)
 	}
+	e.updateCaseStepStateMetrics(ctx, tenantID)
+	observability.DAGEvaluationsTotal.WithLabelValues(tenantID.String()).Inc()
+	observability.DAGEvaluationDurationSeconds.WithLabelValues(tenantID.String()).Observe(time.Since(start).Seconds())
+	active, capTotal := e.WorkerPoolStats()
+	if capTotal > 0 {
+		observability.WorkerPoolUtilisation.Set(float64(active) / float64(capTotal))
+	}
+	slog.DebugContext(ctx, "dag evaluation completed",
+		append(observability.RequestAttrs(ctx),
+			"case_id", caseID.String(),
+			"tenant_id", tenantID.String(),
+			"transitions", len(transitions),
+			"duration_ms", time.Since(start).Milliseconds(),
+		)...,
+	)
 
 	for _, step := range toDispatch {
 		e.dispatchStep(caseID, step)
@@ -213,6 +237,7 @@ func (e *Engine) dispatchStep(caseID uuid.UUID, step WorkflowStep) {
 }
 
 func (e *Engine) executeWithRetry(ctx context.Context, caseID uuid.UUID, step WorkflowStep) error {
+	start := time.Now()
 	exec, err := e.executorFor(step.Type)
 	if err != nil {
 		return err
@@ -231,7 +256,9 @@ func (e *Engine) executeWithRetry(ctx context.Context, caseID uuid.UUID, step Wo
 				result = &StepResult{}
 			}
 			result.Attempts = attempt
-			return e.completeStep(ctx, caseID, step.ID, result)
+			err := e.completeStep(ctx, caseID, step.ID, result)
+			e.observeStepExecution(ctx, caseID, step.Type, start)
+			return err
 		}
 
 		retryCount, updateErr := e.incrementRetryCount(ctx, caseID, step.ID, attempt, execErr)
@@ -239,11 +266,38 @@ func (e *Engine) executeWithRetry(ctx context.Context, caseID uuid.UUID, step Wo
 			return updateErr
 		}
 		if retryCount < policy.MaxAttempts {
+			slog.WarnContext(ctx, "step retry scheduled",
+				append(observability.RequestAttrs(ctx),
+					"case_id", caseID.String(),
+					"step_id", step.ID,
+					"step_type", step.Type,
+					"retry_count", retryCount,
+					"max_attempts", policy.MaxAttempts,
+				)...,
+			)
 			time.Sleep(calculateBackoff(policy, retryCount))
 			continue
 		}
-		return e.onExhausted(ctx, caseID, step, attempt, execErr)
+		err := e.onExhausted(ctx, caseID, step, attempt, execErr)
+		e.observeStepExecution(ctx, caseID, step.Type, start)
+		return err
 	}
+}
+
+func (e *Engine) observeStepExecution(ctx context.Context, caseID uuid.UUID, stepType string, start time.Time) {
+	tenantID, err := e.lookupTenantID(ctx, caseID)
+	if err != nil {
+		return
+	}
+	observability.StepExecutionDurationSeconds.WithLabelValues(tenantID.String(), stepType).Observe(time.Since(start).Seconds())
+}
+
+func (e *Engine) lookupTenantID(ctx context.Context, caseID uuid.UUID) (uuid.UUID, error) {
+	var tenantID uuid.UUID
+	if err := e.db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id = $1`, caseID).Scan(&tenantID); err != nil {
+		return uuid.Nil, err
+	}
+	return tenantID, nil
 }
 
 func (e *Engine) incrementRetryCount(ctx context.Context, caseID uuid.UUID, stepID string, attempt int, execErr error) (int, error) {
@@ -414,6 +468,16 @@ WHERE id = $1
 	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit complete step: %w", err)
 	}
+	tenantID, terr := e.lookupTenantID(ctx, caseID)
+	if terr == nil {
+		e.updateCaseStepStateMetrics(ctx, tenantID)
+	}
+	slog.InfoContext(ctx, "step completed",
+		append(observability.RequestAttrs(ctx),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+		)...,
+	)
 
 	if caseStatus != "cancelled" {
 		e.triggerEvaluation(caseID)
@@ -460,6 +524,17 @@ WHERE case_id = $1 AND step_id = $2 AND state = 'active'
 	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit fail step: %w", err)
 	}
+	tenantID, terr := e.lookupTenantID(ctx, caseID)
+	if terr == nil {
+		e.updateCaseStepStateMetrics(ctx, tenantID)
+	}
+	slog.ErrorContext(ctx, "step failed",
+		append(observability.RequestAttrs(ctx),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+			"error", failErr,
+		)...,
+	)
 
 	if caseStatus != "cancelled" {
 		e.triggerEvaluation(caseID)
@@ -495,6 +570,10 @@ WHERE case_id = $1 AND step_id = $2 AND state = 'active'
 	}
 	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit skip step terminal: %w", err)
+	}
+	tenantID, terr := e.lookupTenantID(ctx, caseID)
+	if terr == nil {
+		e.updateCaseStepStateMetrics(ctx, tenantID)
 	}
 	return nil
 }
@@ -555,6 +634,16 @@ WHERE case_id = $1 AND state = 'active' AND step_id = $2
 	if err := audit.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit cancel case: %w", err)
 	}
+	tenantID, terr := e.lookupTenantID(ctx, caseID)
+	if terr == nil {
+		e.updateCaseStepStateMetrics(ctx, tenantID)
+	}
+	slog.InfoContext(ctx, "case cancelled in engine",
+		append(observability.RequestAttrs(ctx),
+			"case_id", caseID.String(),
+			"actor_id", actorID.String(),
+		)...,
+	)
 	return nil
 }
 
@@ -606,4 +695,22 @@ WHERE id = $1 AND version = $2
 		return ErrCaseDataConflict
 	}
 	return nil
+}
+
+func (e *Engine) updateCaseStepStateMetrics(ctx context.Context, tenantID uuid.UUID) {
+	if tenantID == uuid.Nil {
+		return
+	}
+	states := []string{"pending", "ready", "active", "completed", "failed", "skipped"}
+	for _, state := range states {
+		var count int
+		if err := e.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE c.tenant_id = $1 AND cs.state = $2
+`, tenantID, state).Scan(&count); err == nil {
+			observability.CaseStepsTotal.WithLabelValues(tenantID.String(), state).Set(float64(count))
+		}
+	}
 }

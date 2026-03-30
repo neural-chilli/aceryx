@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/observability"
 	"github.com/neural-chilli/aceryx/internal/rbac"
 )
 
@@ -56,6 +57,8 @@ func AuthMiddleware(auth *rbac.AuthService) func(http.Handler) http.Handler {
 				Email:     ap.Email,
 				Roles:     ap.Roles,
 			})
+			ctx = observability.WithTenantID(ctx, ap.TenantID)
+			ctx = observability.WithPrincipalID(ctx, ap.ID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/notify"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 var (
@@ -208,6 +210,16 @@ WHERE case_id = $1 AND step_id = $2
 		return fmt.Errorf("commit task creation: %w", err)
 	}
 	tenantID, _ := s.lookupTenantID(ctx, caseID)
+	if tenantID != uuid.Nil {
+		s.updateActiveTasksGauge(ctx, tenantID)
+	}
+	slog.InfoContext(ctx, "task created",
+		append(observability.RequestAttrs(ctx),
+			"tenant_id", tenantID.String(),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+		)...,
+	)
 
 	if s.notify != nil {
 		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
@@ -470,6 +482,16 @@ SELECT EXISTS(SELECT 1 FROM claim)
 			Data:       map[string]any{"claimed_by": principalID.String()},
 		})
 	}
+	observability.TasksClaimedTotal.WithLabelValues(tenantID.String()).Inc()
+	s.updateActiveTasksGauge(ctx, tenantID)
+	slog.InfoContext(ctx, "task claimed",
+		append(observability.RequestAttrs(ctx),
+			"tenant_id", tenantID.String(),
+			"principal_id", principalID.String(),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+		)...,
+	)
 	return nil
 }
 
@@ -589,6 +611,17 @@ WHERE id = $1
 			Data:       map[string]any{"outcome": req.Outcome, "completed_by": principalID.String()},
 		})
 	}
+	observability.TasksCompletedTotal.WithLabelValues(tenantID.String(), req.Outcome).Inc()
+	s.updateActiveTasksGauge(ctx, tenantID)
+	slog.InfoContext(ctx, "task completed",
+		append(observability.RequestAttrs(ctx),
+			"tenant_id", tenantID.String(),
+			"principal_id", principalID.String(),
+			"case_id", caseID.String(),
+			"step_id", stepID,
+			"outcome", req.Outcome,
+		)...,
+	)
 	return nil
 }
 
@@ -742,6 +775,22 @@ func (s *TaskService) HandleOverdue(ctx context.Context, task engine.OverdueTask
 		return nil
 	}
 	return s.EscalateTask(ctx, tenantID, task.CaseID, task.StepID, cfg)
+}
+
+func (s *TaskService) updateActiveTasksGauge(ctx context.Context, tenantID uuid.UUID) {
+	if tenantID == uuid.Nil {
+		return
+	}
+	var count int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE c.tenant_id = $1
+  AND cs.state = 'active'
+`, tenantID).Scan(&count); err == nil {
+		observability.TasksActiveTotal.WithLabelValues(tenantID.String()).Set(float64(count))
+	}
 }
 
 func (s *TaskService) loadEscalationConfig(ctx context.Context, caseID uuid.UUID, stepID string) (EscalationConfig, uuid.UUID, error) {

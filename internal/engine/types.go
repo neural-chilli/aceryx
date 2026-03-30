@@ -217,3 +217,20 @@ func (e *Engine) executorFor(stepType string) (StepExecutor, error) {
 	}
 	return exec, nil
 }
+
+func (e *Engine) WorkerPoolStats() (active int, capacity int) {
+	if e == nil {
+		return 0, 0
+	}
+	active = 0
+	capacity = 0
+	if e.executions != nil {
+		active += e.executions.Active()
+		capacity += e.executions.Capacity()
+	}
+	if e.evaluations != nil {
+		active += e.evaluations.Active()
+		capacity += e.evaluations.Capacity()
+	}
+	return active, capacity
+}

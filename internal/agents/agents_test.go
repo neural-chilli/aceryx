@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 func TestValidateOutputAgainstSchema(t *testing.T) {
@@ -107,6 +109,30 @@ func TestLLMClientChatCompletion(t *testing.T) {
 		c := NewLLMClient(srv.URL, "test-model", "", time.Second)
 		if _, err := c.ChatCompletion(context.Background(), []Message{{Role: "user", Content: "hi"}}, nil); err == nil {
 			t.Fatal("expected decode error")
+		}
+	})
+
+	t.Run("correlation_header_propagated", func(t *testing.T) {
+		const wantID = "corr-123"
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if got := r.Header.Get(observability.CorrelationHeader); got != wantID {
+				t.Fatalf("expected correlation header %q, got %q", wantID, got)
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"model": "test-model",
+				"choices": []map[string]any{{
+					"finish_reason": "stop",
+					"message":       map[string]any{"content": `{"ok":true,"confidence":0.9}`},
+				}},
+				"usage": map[string]any{"prompt_tokens": 10, "completion_tokens": 5},
+			})
+		}))
+		defer srv.Close()
+
+		c := NewLLMClient(srv.URL, "test-model", "", time.Second)
+		ctx := observability.WithCorrelationID(context.Background(), wantID)
+		if _, err := c.ChatCompletion(ctx, []Message{{Role: "user", Content: "hi"}}, nil); err != nil {
+			t.Fatalf("chat completion: %v", err)
 		}
 	})
 }

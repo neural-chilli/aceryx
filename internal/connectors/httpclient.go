@@ -8,6 +8,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 func DoJSONRequest(ctx context.Context, method string, url string, headers map[string]string, body any, timeout time.Duration) (int, http.Header, []byte, error) {
@@ -32,6 +34,9 @@ func DoJSONRequest(ctx context.Context, method string, url string, headers map[s
 	}
 	if req.Header.Get("Content-Type") == "" {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if cid := observability.CorrelationIDFromContext(ctx); cid != "" {
+		req.Header.Set(observability.CorrelationHeader, cid)
 	}
 
 	client := &http.Client{Timeout: timeout}

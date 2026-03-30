@@ -14,6 +14,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/expressions"
+	"github.com/neural-chilli/aceryx/internal/observability"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 func TestEngineIntegration_FullWorkflowExecution(t *testing.T) {
@@ -219,6 +221,33 @@ WHERE case_id=$1 AND step_id='sla'
 	}
 	if atomic.LoadInt32(&escalations) == 0 {
 		t.Fatal("expected escalation callback to fire")
+	}
+}
+
+func TestEngineIntegration_DAGEvaluationMetricIncrements(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{{ID: "s1", Type: "rule"}}}
+	caseID := seedEngineCase(t, ctx, db, ast)
+	en := engine.New(db, expressions.NewEvaluator(), engine.Config{})
+	en.RegisterExecutor("rule", engine.NewMockExecutor(map[string][]engine.MockExecution{
+		"s1": {{Result: &engine.StepResult{Output: json.RawMessage(`{"ok":true}`)}}},
+	}))
+
+	var tenantID uuid.UUID
+	if err := db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id = $1`, caseID).Scan(&tenantID); err != nil {
+		t.Fatalf("load tenant id: %v", err)
+	}
+	before := testutil.ToFloat64(observability.DAGEvaluationsTotal.WithLabelValues(tenantID.String()))
+	if err := en.EvaluateDAG(ctx, caseID); err != nil {
+		t.Fatalf("evaluate dag: %v", err)
+	}
+	waitForStepState(t, ctx, db, caseID, "s1", engine.StateCompleted)
+	after := testutil.ToFloat64(observability.DAGEvaluationsTotal.WithLabelValues(tenantID.String()))
+	if after <= before {
+		t.Fatalf("expected dag metric to increase, before=%f after=%f", before, after)
 	}
 }
 

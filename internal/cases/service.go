@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"sort"
 	"strconv"
@@ -16,6 +17,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/notify"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 type Engine interface {
@@ -163,6 +165,10 @@ WHERE tenant_id = $1 AND id = $2
 }
 
 func (s *CaseService) CreateCase(ctx context.Context, tenantID, createdBy uuid.UUID, req CreateCaseRequest) (Case, []ValidationError, error) {
+	start := time.Now()
+	defer func() {
+		observability.DBQueryDurationSeconds.WithLabelValues("case_write").Observe(time.Since(start).Seconds())
+	}()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Case{}, nil, fmt.Errorf("begin create case tx: %w", err)
@@ -245,11 +251,23 @@ VALUES ($1, $2, 'pending', '[]'::jsonb, 0)
 	if s.engine != nil {
 		_ = s.engine.EvaluateDAG(ctx, c.ID)
 	}
+	s.updateCaseStatusMetrics(ctx, tenantID)
+	slog.InfoContext(ctx, "case created",
+		append(observability.RequestAttrs(ctx),
+			"tenant_id", tenantID.String(),
+			"case_id", c.ID.String(),
+			"case_number", c.CaseNumber,
+		)...,
+	)
 
 	return c, nil, nil
 }
 
 func (s *CaseService) GetCase(ctx context.Context, tenantID, caseID uuid.UUID) (Case, error) {
+	start := time.Now()
+	defer func() {
+		observability.DBQueryDurationSeconds.WithLabelValues("case_read").Observe(time.Since(start).Seconds())
+	}()
 	var c Case
 	var rawData []byte
 	var ctName string
@@ -483,6 +501,14 @@ WHERE tenant_id = $1 AND id = $2
 	if err := audit.CommitTx(tx); err != nil {
 		return err
 	}
+	s.updateCaseStatusMetrics(ctx, tenantID)
+	slog.InfoContext(ctx, "case closed",
+		append(observability.RequestAttrs(ctx),
+			"tenant_id", tenantID.String(),
+			"case_id", caseID.String(),
+			"actor_id", actorID.String(),
+		)...,
+	)
 	if s.notify != nil {
 		caseNumber, creator, creatorEmail, nerr := s.caseCreator(ctx, tenantID, caseID)
 		if nerr == nil {
@@ -513,6 +539,14 @@ func (s *CaseService) CancelCase(ctx context.Context, tenantID, caseID, actorID 
 	if err := s.engine.CancelCase(ctx, caseID, actorID, reason); err != nil {
 		return err
 	}
+	s.updateCaseStatusMetrics(ctx, tenantID)
+	slog.InfoContext(ctx, "case cancelled",
+		append(observability.RequestAttrs(ctx),
+			"tenant_id", tenantID.String(),
+			"case_id", caseID.String(),
+			"actor_id", actorID.String(),
+		)...,
+	)
 	if s.notify != nil {
 		caseNumber, recipients, nerr := s.caseCancellationRecipients(ctx, tenantID, caseID)
 		if nerr == nil && len(recipients) > 0 {
@@ -529,7 +563,21 @@ func (s *CaseService) CancelCase(ctx context.Context, tenantID, caseID, actorID 
 	return nil
 }
 
+func (s *CaseService) updateCaseStatusMetrics(ctx context.Context, tenantID uuid.UUID) {
+	statuses := []string{"open", "in_progress", "completed", "cancelled"}
+	for _, status := range statuses {
+		var count int
+		if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cases WHERE tenant_id = $1 AND status = $2`, tenantID, status).Scan(&count); err == nil {
+			observability.CasesTotal.WithLabelValues(tenantID.String(), status).Set(float64(count))
+		}
+	}
+}
+
 func (s *CaseService) SearchCases(ctx context.Context, tenantID uuid.UUID, allowedCaseTypeIDs []uuid.UUID, filter SearchFilter) ([]SearchResult, error) {
+	start := time.Now()
+	defer func() {
+		observability.DBQueryDurationSeconds.WithLabelValues("search").Observe(time.Since(start).Seconds())
+	}()
 	page, perPage := normalizePage(filter.Page, filter.PerPage)
 
 	query := `

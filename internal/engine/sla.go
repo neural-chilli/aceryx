@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/audit"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 func (e *Engine) StartSLAMonitor(ctx context.Context) {
@@ -85,6 +87,17 @@ LIMIT 1000
 		}
 		_ = e.recordSLABreach(ctx, task)
 		_ = cb(ctx, task)
+		tenantID, terr := e.lookupTenantID(ctx, task.CaseID)
+		if terr == nil {
+			observability.SLABreachesTotal.WithLabelValues(tenantID.String()).Inc()
+		}
+		slog.WarnContext(ctx, "sla breach detected",
+			append(observability.RequestAttrs(ctx),
+				"case_id", task.CaseID.String(),
+				"step_id", task.StepID,
+				"task_id", task.ID.String(),
+			)...,
+		)
 	}
 
 	return len(tasks), nil

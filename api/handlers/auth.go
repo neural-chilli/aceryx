@@ -4,11 +4,13 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/api/middleware"
+	"github.com/neural-chilli/aceryx/internal/observability"
 	"github.com/neural-chilli/aceryx/internal/rbac"
 )
 
@@ -48,6 +50,11 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 
 	resp, err := h.Auth.Login(r.Context(), req)
 	if err != nil {
+		slog.WarnContext(r.Context(), "login failed",
+			append(observability.RequestAttrs(r.Context()),
+				"email", req.Email,
+			)...,
+		)
 		if errors.Is(err, rbac.ErrInvalidCredential) {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
@@ -55,6 +62,12 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.InfoContext(r.Context(), "login successful",
+		append(observability.RequestAttrs(r.Context()),
+			"principal_id", resp.Principal.ID.String(),
+			"tenant_id", resp.Principal.TenantID.String(),
+		)...,
+	)
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -68,6 +81,12 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	slog.InfoContext(r.Context(), "logout successful",
+		append(observability.RequestAttrs(r.Context()),
+			"principal_id", principal.ID.String(),
+			"tenant_id", principal.TenantID.String(),
+		)...,
+	)
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
 }
 

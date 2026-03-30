@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 type Message struct {
@@ -92,6 +94,9 @@ func (c *LLMClient) ChatCompletion(ctx context.Context, messages []Message, resp
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
+	if cid := observability.CorrelationIDFromContext(ctx); cid != "" {
+		req.Header.Set(observability.CorrelationHeader, cid)
+	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -159,6 +164,9 @@ func (c *LLMClient) Embed(ctx context.Context, input string) ([]float32, error) 
 	req.Header.Set("Content-Type", "application/json")
 	if c.apiKey != "" {
 		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	if cid := observability.CorrelationIDFromContext(ctx); cid != "" {
+		req.Header.Set(observability.CorrelationHeader, cid)
 	}
 
 	resp, err := c.client.Do(req)

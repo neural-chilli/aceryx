@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/observability"
 	"nhooyr.io/websocket"
 )
 
@@ -84,6 +85,7 @@ func (h *Hub) add(principalID, tenantID uuid.UUID, conn *websocket.Conn) {
 	}
 	h.byPrincipal[principalID][conn] = struct{}{}
 	h.byConn[conn] = connMeta{principalID: principalID, tenantID: tenantID}
+	observability.WebSocketConnectionsTotal.WithLabelValues(tenantID.String()).Inc()
 }
 
 func (h *Hub) remove(conn *websocket.Conn) {
@@ -100,6 +102,7 @@ func (h *Hub) remove(conn *websocket.Conn) {
 			delete(h.byPrincipal, meta.principalID)
 		}
 	}
+	observability.WebSocketConnectionsTotal.WithLabelValues(meta.tenantID.String()).Dec()
 	_ = conn.Close(websocket.StatusNormalClosure, "closed")
 }
 
@@ -181,4 +184,10 @@ func DefaultTokenValidator(authenticator func(ctx context.Context, token string)
 		}
 		return authenticator(ctx, token)
 	}
+}
+
+func (h *Hub) TotalConnections() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.byConn)
 }
