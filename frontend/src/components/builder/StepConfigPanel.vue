@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import InputText from 'primevue/inputtext'
 import InputNumber from 'primevue/inputnumber'
+import Drawer from 'primevue/drawer'
 import ExpressionEditor from './ExpressionEditor.vue'
 import HumanTaskConfig from './config/HumanTaskConfig.vue'
 import AgentConfig from './config/AgentConfig.vue'
@@ -9,7 +10,6 @@ import IntegrationConfig from './config/IntegrationConfig.vue'
 import RuleConfig from './config/RuleConfig.vue'
 import TimerConfig from './config/TimerConfig.vue'
 import NotificationConfig from './config/NotificationConfig.vue'
-import type { FormSchema } from '../forms/FormRenderer.vue'
 import type { WorkflowStep } from './model'
 
 type ConnectorMeta = {
@@ -34,11 +34,6 @@ const emit = defineEmits<{
 
 const renameTarget = ref<string>('')
 
-const formSchema = computed<FormSchema>(() => {
-  const cfg = (props.step?.config ?? {}) as Record<string, unknown>
-  return (cfg.form_schema as FormSchema) ?? { title: 'Form', layout: [], actions: [] }
-})
-
 const hasMultiDeps = computed(() => (props.step?.depends_on?.length ?? 0) > 1)
 
 function patchStep(patch: Partial<WorkflowStep>) {
@@ -52,13 +47,6 @@ function patchConfig(next: Record<string, unknown>) {
   patchStep({ config: next })
 }
 
-function patchForm(next: FormSchema) {
-  if (!props.step) {
-    return
-  }
-  patchConfig({ ...(props.step.config ?? {}), form_schema: next })
-}
-
 function doRename() {
   if (!props.step || !renameTarget.value) {
     return
@@ -69,13 +57,19 @@ function doRename() {
 </script>
 
 <template>
-  <aside class="panel" :class="{ open }">
+  <Drawer
+    :visible="open"
+    position="right"
+    :modal="false"
+    :dismissable="false"
+    :append-to="'self'"
+    :pt="{ root: { style: { width: '480px' } } }"
+    @update:visible="(v: boolean) => { if (!v) emit('close') }"
+  >
+    <template #header>
+      <h3 style="margin: 0">Step Config</h3>
+    </template>
     <div v-if="step" class="inner">
-      <header>
-        <h3>Step Config</h3>
-        <button type="button" @click="emit('close')">×</button>
-      </header>
-
       <label>Step ID</label>
       <InputText :model-value="step.id" disabled />
       <div class="rename">
@@ -128,10 +122,7 @@ function doRename() {
       <HumanTaskConfig
         v-if="step.type === 'human_task'"
         :config="(step.config ?? {}) as Record<string, unknown>"
-        :schema-fields="availableFields"
-        :form-schema="formSchema"
         @update="patchConfig"
-        @update-form="patchForm"
       />
       <AgentConfig
         v-else-if="step.type === 'agent'"
@@ -161,32 +152,13 @@ function doRename() {
         @update="patchConfig"
       />
     </div>
-  </aside>
+  </Drawer>
 </template>
 
 <style scoped>
-.panel {
-  width: 0;
-  overflow: hidden;
-  border-left: 1px solid #dbe3ef;
-  background: #fff;
-  transition: width 0.2s ease;
-}
-
-.panel.open {
-  width: 360px;
-}
-
 .inner {
   display: grid;
   gap: 0.5rem;
-  padding: 0.8rem;
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
 }
 
 .rename {

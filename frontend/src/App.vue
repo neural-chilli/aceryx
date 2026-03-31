@@ -94,7 +94,7 @@ async function onLogout() {
   <div v-if="showShell" class="shell">
     <header class="topbar">
       <RouterLink to="/inbox" class="brand">
-        <img v-if="tenantBranding?.logo_url" :src="tenantBranding.logo_url" alt="Tenant logo" class="logo" />
+        <img :src="tenantBranding?.logo_url || '/logo-small.png'" alt="Logo" class="logo" />
         <strong>{{ brandName }}</strong>
       </RouterLink>
       <nav v-if="isDesktop" class="main-nav desktop-nav">

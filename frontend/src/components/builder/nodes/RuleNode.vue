@@ -1,7 +1,16 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import BaseNode from './BaseNode.vue'
 
-defineProps<{ data: Record<string, any> }>()
+const props = defineProps<{ data: Record<string, any> }>()
+
+const subtitle = computed(() => {
+  const outcomes = props.data.config?.outcomes
+  if (Array.isArray(outcomes) && outcomes.length > 0) {
+    return `${outcomes.length} outcome${outcomes.length > 1 ? 's' : ''}`
+  }
+  return 'No outcomes'
+})
 </script>
 
 <template>
@@ -10,8 +19,8 @@ defineProps<{ data: Record<string, any> }>()
     icon="◆"
     :step-id="data.stepId"
     :label="data.label || 'Rule'"
-    subtitle="Rule"
+    :subtitle="subtitle"
     :valid="Boolean(data.valid)"
-    diamond
+    accent-border
   />
 </template>

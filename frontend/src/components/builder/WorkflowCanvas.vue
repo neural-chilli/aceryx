@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { VueFlow, type Connection, type Edge } from '@vue-flow/core'
+import { VueFlow, useVueFlow, type Connection, type Edge } from '@vue-flow/core'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import HumanTaskNode from './nodes/HumanTaskNode.vue'
@@ -21,6 +21,8 @@ const emit = defineEmits<{
   'update:ast': [ast: WorkflowAST]
   selectStep: [stepID: string | null]
 }>()
+
+const { screenToFlowCoordinate } = useVueFlow()
 
 const nodes = computed(() => astToNodes(props.ast).map((node) => ({
   ...node,
@@ -90,8 +92,10 @@ function onDrop(event: DragEvent) {
   if (!type) {
     return
   }
-  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect()
-  const position = { x: event.clientX - rect.left, y: event.clientY - rect.top }
+  const position = screenToFlowCoordinate({
+    x: event.clientX,
+    y: event.clientY,
+  })
   addStep(props.ast, type, position)
   updateAst()
 }
@@ -102,11 +106,14 @@ function onDragOver(event: DragEvent) {
 </script>
 
 <template>
-  <div class="canvas-shell" @drop="onDrop" @dragover="onDragOver">
+  <div class="canvas-shell">
     <VueFlow
       :nodes="nodes"
       :edges="edges"
       :node-types="nodeTypes"
+      :snap-to-grid="true"
+      :snap-grid="[20, 20]"
+      :default-edge-options="{ type: 'smoothstep' }"
       fit-view-on-init
       @connect="onConnect"
       @nodes-delete="onNodesDelete"
@@ -114,6 +121,8 @@ function onDragOver(event: DragEvent) {
       @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick"
       @pane-click="onPaneClick"
+      @drop="onDrop"
+      @dragover="onDragOver"
     />
   </div>
 </template>

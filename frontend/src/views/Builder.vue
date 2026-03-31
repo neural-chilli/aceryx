@@ -6,9 +6,11 @@ import Button from 'primevue/button'
 import StepPalette from '../components/builder/StepPalette.vue'
 import WorkflowCanvas from '../components/builder/WorkflowCanvas.vue'
 import StepConfigPanel from '../components/builder/StepConfigPanel.vue'
+import FormDesigner from '../components/builder/FormDesigner.vue'
 import WorkflowToolbar from '../components/builder/WorkflowToolbar.vue'
 import ValidationPanel from '../components/builder/ValidationPanel.vue'
 import DesktopOnlyNotice from '../components/DesktopOnlyNotice.vue'
+import type { FormSchema } from '../components/forms/FormRenderer.vue'
 import {
   addStep,
   applyAutoLayout,
@@ -60,6 +62,25 @@ const availableFields = computed(() => {
   }
   return [...fields]
 })
+
+const showFormDesigner = computed(() => selectedStep.value?.type === 'human_task')
+
+const formSchema = computed<FormSchema>(() => {
+  const cfg = (selectedStep.value?.config ?? {}) as Record<string, unknown>
+  return (cfg.form_schema as FormSchema) ?? { title: 'Form', layout: [], actions: [] }
+})
+
+function updateFormSchema(schema: FormSchema) {
+  if (!selectedStep.value) return
+  const index = ast.steps.findIndex((s) => s.id === selectedStep.value?.id)
+  if (index < 0) return
+  ast.steps[index] = {
+    ...ast.steps[index],
+    config: { ...(ast.steps[index].config ?? {}), form_schema: schema },
+  }
+  issues.value = validateAST(ast)
+  unsaved.value = normalizeForRoundTrip(ast) !== original.value
+}
 
 async function loadWorkflows() {
   const res = await authFetch('/workflows')
@@ -267,7 +288,14 @@ if (ast.steps.length === 0) {
 
     <div class="workspace">
       <StepPalette @add="addPaletteStep" />
+      <FormDesigner
+        v-if="showFormDesigner"
+        :model-value="formSchema"
+        :schema-fields="availableFields"
+        @update:model-value="updateFormSchema"
+      />
       <WorkflowCanvas
+        v-else
         :ast="ast"
         :highlighted-step-id="issues.find((issue) => issue.severity === 'error')?.stepId"
         @update:ast="updateAST"
@@ -291,13 +319,19 @@ if (ast.steps.length === 0) {
 
 <style scoped>
 .builder-page {
-  height: calc(100vh - 6rem);
+  height: calc(100% + 2rem);
+  margin: -1rem;
   display: grid;
   grid-template-rows: auto auto 1fr auto;
-  border: 1px solid #dbe3ef;
-  border-radius: 0.75rem;
   overflow: hidden;
   background: #f8fafc;
+}
+
+@media (max-width: 1024px) {
+  .builder-page {
+    height: calc(100% + 1.5rem);
+    margin: -0.75rem;
+  }
 }
 
 .workflow-select {
@@ -317,6 +351,6 @@ if (ast.steps.length === 0) {
 .workspace {
   min-height: 0;
   display: grid;
-  grid-template-columns: 220px 1fr auto;
+  grid-template-columns: 220px 1fr;
 }
 </style>

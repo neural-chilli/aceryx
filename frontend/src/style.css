@@ -1,10 +1,10 @@
 :root {
-  --acx-brand-primary: #2563eb;
-  --acx-brand-primary-dark: #1d4ed8;
-  --acx-brand-primary-light: #3b82f6;
+  --acx-brand-primary: #863bff;
+  --acx-brand-primary-dark: #6425cc;
+  --acx-brand-primary-light: #a57cff;
   --acx-brand-secondary: #334155;
   --acx-brand-accent: #0ea5e9;
-  --font-ui: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
 * {

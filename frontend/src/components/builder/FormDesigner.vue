@@ -56,43 +56,45 @@ function addAction() {
 
 <template>
   <div class="form-designer">
-    <header>
-      <h4>Form Designer</h4>
-      <Button label="Add Section" size="small" @click="addSection" />
-    </header>
+    <div class="editor-pane">
+      <header>
+        <h4>Form Designer</h4>
+        <Button label="Add Section" size="small" @click="addSection" />
+      </header>
 
-    <div v-for="(section, sectionIndex) in localSchema.layout ?? []" :key="sectionIndex" class="section">
-      <InputText v-model="section.section" placeholder="Section title" />
-      <div class="field-picker">
-        <button
-          v-for="field in schemaFields"
-          :key="field"
-          type="button"
-          @click="addFieldToSection(sectionIndex, field)"
-        >
-          + {{ field }}
-        </button>
+      <div v-for="(section, sectionIndex) in localSchema.layout ?? []" :key="sectionIndex" class="section">
+        <InputText v-model="section.section" placeholder="Section title" />
+        <div class="field-picker">
+          <button
+            v-for="field in schemaFields"
+            :key="field"
+            type="button"
+            @click="addFieldToSection(sectionIndex, field)"
+          >
+            + {{ field }}
+          </button>
+        </div>
+
+        <div v-for="field in section.fields" :key="field.bind" class="field-row">
+          <InputText v-model="field.label" />
+          <InputText v-model="field.bind" />
+          <Checkbox v-model="field.readonly" binary />
+          <Checkbox v-model="field.required" binary />
+        </div>
       </div>
 
-      <div v-for="field in section.fields" :key="field.bind" class="field-row">
-        <InputText v-model="field.label" />
-        <InputText v-model="field.bind" />
-        <Checkbox v-model="field.readonly" binary />
-        <Checkbox v-model="field.required" binary />
+      <div class="actions">
+        <h4>Actions</h4>
+        <Button label="Add Action" size="small" @click="addAction" />
+        <div v-for="action in localSchema.actions ?? []" :key="action.value" class="action-row">
+          <InputText v-model="action.label" />
+          <InputText v-model="action.value" />
+          <InputText v-model="action.style" />
+        </div>
       </div>
     </div>
 
-    <div class="actions">
-      <h4>Actions</h4>
-      <Button label="Add Action" size="small" @click="addAction" />
-      <div v-for="action in localSchema.actions ?? []" :key="action.value" class="action-row">
-        <InputText v-model="action.label" />
-        <InputText v-model="action.value" />
-        <InputText v-model="action.style" />
-      </div>
-    </div>
-
-    <div class="preview">
+    <div class="preview-pane">
       <h4>Preview</h4>
       <FormRenderer
         :schema="localSchema"
@@ -110,7 +112,25 @@ function addAction() {
 <style scoped>
 .form-designer {
   display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  height: 100%;
+  overflow: hidden;
+}
+
+.editor-pane {
+  display: grid;
+  align-content: start;
   gap: 0.75rem;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.preview-pane {
+  overflow-y: auto;
+  padding: 1rem;
+  border-left: 1px solid #dbe3ef;
+  background: #f8fafc;
 }
 
 .section,
