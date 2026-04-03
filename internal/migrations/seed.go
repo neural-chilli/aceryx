@@ -65,8 +65,8 @@ func SeedDefaultData(ctx context.Context, db *sql.DB) error {
 
 	branding := map[string]any{
 		"company_name": "Aceryx Demo",
-		"logo_url":     "https://example.com/logo.svg",
-		"favicon_url":  "https://example.com/favicon.ico",
+		"logo_url":     "/logo-small.png",
+		"favicon_url":  "/favicon.svg",
 		"colors": map[string]any{
 			"primary":   "#1f6feb",
 			"secondary": "#0f172a",

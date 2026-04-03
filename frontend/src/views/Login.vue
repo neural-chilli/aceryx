@@ -26,12 +26,20 @@ const tenantSlug = computed(() => {
   if (slugFromQuery) {
     return slugFromQuery
   }
-  const parts = window.location.hostname.split('.')
-  if (parts.length > 2) {
+  const host = window.location.hostname
+  const isIPv4 = /^\d{1,3}(\.\d{1,3}){3}$/.test(host)
+  const isIPv6 = host.includes(':')
+  const isLocalHost = host === 'localhost'
+  const parts = host.split('.')
+  if (parts.length > 2 && !isIPv4 && !isIPv6 && !isLocalHost) {
     return parts[0]
   }
   const fromPath = window.location.pathname.split('/').filter(Boolean)
-  return fromPath.length > 1 && fromPath[0] !== 'login' ? fromPath[0] : ''
+  if (fromPath.length > 1 && fromPath[0] !== 'login') {
+    return fromPath[0]
+  }
+  // Local/dev default so login works on plain localhost without a slug.
+  return 'default'
 })
 
 const bannerMessage = computed(() => {

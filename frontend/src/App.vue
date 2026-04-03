@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import Button from 'primevue/button'
 import BottomTabBar from './components/BottomTabBar.vue'
 import KeyboardHelp from './components/KeyboardHelp.vue'
+import { backendHTTPURL } from './composables/backendOrigin'
 import { useAuth } from './composables/useAuth'
 import { useBreakpoint } from './composables/useBreakpoint'
 import { useKeyboard } from './composables/useKeyboard'
@@ -21,8 +22,15 @@ const { isDesktop, isMobileOrTablet } = useBreakpoint()
 const selectedThemeID = ref<string>('')
 const showKeyboardHelp = ref(false)
 const profileMenu = ref<HTMLDetailsElement | null>(null)
+const navLogoFailed = ref(false)
 
 const brandName = computed(() => tenantBranding.value?.company_name ?? 'Aceryx')
+const brandLogoURL = computed(() => {
+  if (navLogoFailed.value) {
+    return '/logo-small.png'
+  }
+  return backendHTTPURL(tenantBranding.value?.logo_url ?? '/logo-small.png')
+})
 const poweredBy = computed(() => tenantBranding.value?.powered_by ?? false)
 const showShell = computed(() => route.path !== '/login')
 const keyboardScope = computed(() => {
@@ -95,13 +103,17 @@ async function onLogout() {
   await logout()
   await router.push('/login')
 }
+
+function onBrandLogoError() {
+  navLogoFailed.value = true
+}
 </script>
 
 <template>
   <div v-if="showShell" class="shell">
     <header class="topbar">
       <RouterLink to="/inbox" class="brand">
-        <img :src="tenantBranding?.logo_url || '/logo-small.png'" alt="Logo" class="logo" />
+        <img :src="brandLogoURL" alt="Logo" class="logo" @error="onBrandLogoError" />
         <strong>{{ brandName }}</strong>
       </RouterLink>
       <nav v-if="isDesktop" class="main-nav desktop-nav">

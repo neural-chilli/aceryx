@@ -70,4 +70,59 @@ describe('Login view', () => {
     expect(wrapper.text()).toContain('Acme Lending')
     expect(document.title).toBe('Acme Lending')
   })
+
+  it('submits default tenant slug on localhost when no slug is provided', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/tenant/branding')) {
+        return new Response('{}', { status: 404 })
+      }
+      if (url === '/api/auth/login') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+        expect(payload.tenant_slug).toBe('default')
+        return new Response(JSON.stringify({ error: 'invalid credentials' }), { status: 401 })
+      }
+      return new Response('{}', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper } = await mountLogin('/login')
+    await wrapper.find('input#email').setValue('admin@localhost')
+    await wrapper.find('input[type="password"]').setValue('admin')
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalled()
+  })
+
+  it('submits default tenant slug on IPv4 host', async () => {
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: new URL('http://127.0.0.1:8080/login'),
+    })
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/api/tenant/branding')) {
+        return new Response('{}', { status: 404 })
+      }
+      if (url === '/api/auth/login') {
+        const payload = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>
+        expect(payload.tenant_slug).toBe('default')
+        return new Response(JSON.stringify({ error: 'invalid credentials' }), { status: 401 })
+      }
+      return new Response('{}', { status: 404 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const { wrapper } = await mountLogin('/login')
+    await wrapper.find('input#email').setValue('admin@localhost')
+    await wrapper.find('input[type="password"]').setValue('admin')
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(fetchMock).toHaveBeenCalled()
+    Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+  })
 })

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/api"
+	internalmigrations "github.com/neural-chilli/aceryx/internal/migrations"
 	"github.com/neural-chilli/aceryx/internal/rbac"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -325,6 +326,32 @@ func TestRBACIntegration_RolePermissionInvalidationAndSessionCleanup(t *testing.
 	}
 	if remaining != 0 {
 		t.Fatalf("expected session cleanup ticker to remove expired sessions, remaining=%d", remaining)
+	}
+}
+
+func TestRBACIntegration_LoginFallsBackToDefaultTenant(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	if err := internalmigrations.SeedDefaultData(ctx, db); err != nil {
+		t.Fatalf("seed default data: %v", err)
+	}
+
+	authSvc := rbac.NewAuthService(db, "test-secret", time.Hour)
+	resp, err := authSvc.Login(ctx, rbac.LoginRequest{
+		Email:    "admin@localhost",
+		Password: "admin",
+		// tenant intentionally omitted to validate default fallback
+	})
+	if err != nil {
+		t.Fatalf("login with implicit default tenant failed: %v", err)
+	}
+	if resp == nil || resp.Token == "" {
+		t.Fatal("expected token on login with implicit default tenant")
+	}
+	if resp.Tenant.Slug != "default" {
+		t.Fatalf("expected tenant slug default, got %q", resp.Tenant.Slug)
 	}
 }
 
