@@ -23,6 +23,7 @@ const actions = computed(() => selectedConnector.value?.actions ?? [])
 
 <template>
   <div class="panel">
+    <h4>Integration Settings</h4>
     <label>Connector</label>
     <select
       :value="String(config.connector ?? '')"
@@ -47,6 +48,7 @@ const actions = computed(() => selectedConnector.value?.actions ?? [])
       rows="4"
       @update:model-value="(value) => emit('update', { ...config, input: value })"
     />
+    <small class="hint">Use template bindings like &#123;"customer":"&#123;&#123;case.data.customer_id&#125;&#125;"&#125;</small>
 
     <label>Output Mapping</label>
     <Textarea
@@ -61,5 +63,17 @@ const actions = computed(() => selectedConnector.value?.actions ?? [])
 .panel {
   display: grid;
   gap: 0.5rem;
+}
+
+h4 {
+  margin: 0 0 0.1rem;
+  font-size: 0.92rem;
+  color: var(--acx-text-muted);
+}
+
+.hint {
+  color: var(--acx-text-muted);
+  margin-top: -0.2rem;
+  font-size: 0.8rem;
 }
 </style>

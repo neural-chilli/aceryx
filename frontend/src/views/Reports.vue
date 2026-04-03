@@ -243,6 +243,10 @@ onUnmounted(() => {
   gap: 1rem;
 }
 
+h1 {
+  margin: 0;
+}
+
 .ask {
   display: grid;
   gap: 0.5rem;

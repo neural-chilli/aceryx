@@ -129,15 +129,15 @@ function addAction() {
 .preview-pane {
   overflow-y: auto;
   padding: 1rem;
-  border-left: 1px solid #dbe3ef;
-  background: #f8fafc;
+  border-left: 1px solid var(--acx-surface-200);
+  background: var(--acx-surface-50);
 }
 
 .section,
 .actions {
   display: grid;
   gap: 0.4rem;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-surface-200);
   padding: 0.5rem;
   border-radius: 0.5rem;
 }

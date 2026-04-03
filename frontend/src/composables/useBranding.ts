@@ -1,4 +1,5 @@
 import type { Branding } from '../types'
+import { backendHTTPURL } from './backendOrigin'
 
 let manifestBlobURL = ''
 
@@ -54,7 +55,7 @@ export function useBranding() {
     if (branding.favicon_url) {
       const link = document.querySelector("link[rel='icon']") as HTMLLinkElement | null
       if (link) {
-        link.href = branding.favicon_url
+        link.href = backendHTTPURL(branding.favicon_url)
       }
     }
 
@@ -64,7 +65,7 @@ export function useBranding() {
         URL.revokeObjectURL(manifestBlobURL)
         manifestBlobURL = ''
       }
-      const iconURL = branding.logo_url || '/logo-192.png'
+      const iconURL = backendHTTPURL(branding.logo_url || '/logo-192.png')
       const manifest = {
         name: branding.company_name || 'Aceryx',
         short_name: branding.company_name || 'Aceryx',

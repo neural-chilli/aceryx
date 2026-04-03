@@ -1,6 +1,7 @@
 import { ref } from 'vue'
 import type { Theme } from '../types'
 
+const THEME_KEY = 'acx:theme-id'
 const currentTheme = ref<Theme | null>(null)
 
 function clearThemeOverrides(previous: Theme | null) {
@@ -25,7 +26,20 @@ export function useTheme() {
       root.style.setProperty(prop, value)
     }
     currentTheme.value = theme
+    try {
+      localStorage.setItem(THEME_KEY, theme.id)
+    } catch {
+      /* storage unavailable */
+    }
   }
 
-  return { currentTheme, apply }
+  const savedThemeID = (): string | null => {
+    try {
+      return localStorage.getItem(THEME_KEY)
+    } catch {
+      return null
+    }
+  }
+
+  return { currentTheme, apply, savedThemeID }
 }

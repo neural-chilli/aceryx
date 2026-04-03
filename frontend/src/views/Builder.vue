@@ -324,7 +324,7 @@ if (ast.steps.length === 0) {
   display: grid;
   grid-template-rows: auto auto 1fr auto;
   overflow: hidden;
-  background: #f8fafc;
+  background: var(--acx-surface-50);
 }
 
 @media (max-width: 1024px) {
@@ -335,11 +335,11 @@ if (ast.steps.length === 0) {
 }
 
 .workflow-select {
-  border-bottom: 1px solid #dbe3ef;
+  border-bottom: 1px solid var(--acx-surface-200);
   padding: 0.6rem 0.7rem;
   display: grid;
   gap: 0.5rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
 }
 
 .create {

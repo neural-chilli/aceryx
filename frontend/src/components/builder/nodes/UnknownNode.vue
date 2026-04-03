@@ -12,6 +12,7 @@ defineProps<{ data: Record<string, any> }>()
     :label="data.label"
     :subtitle="`Unknown type: ${data.stepType ?? 'unknown'}`"
     :valid="Boolean(data.valid)"
+    :details="Array.isArray(data.missing) ? data.missing : []"
     unknown
   />
 </template>

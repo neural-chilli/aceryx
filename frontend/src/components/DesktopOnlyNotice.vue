@@ -19,7 +19,7 @@ defineProps<{
   place-content: center;
   text-align: center;
   gap: 0.5rem;
-  color: #475569;
+  color: var(--acx-text-muted);
 }
 
 .icon {

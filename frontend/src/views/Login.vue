@@ -7,6 +7,7 @@ import Button from 'primevue/button'
 import Message from 'primevue/message'
 import { useAuth } from '../composables/useAuth'
 import { useBranding } from '../composables/useBranding'
+import { backendHTTPURL } from '../composables/backendOrigin'
 import type { Branding } from '../types'
 
 const email = ref('')
@@ -40,6 +41,8 @@ const bannerMessage = computed(() => {
   return ''
 })
 
+const previewLogoURL = computed(() => backendHTTPURL(previewBranding.value?.logo_url ?? '/logo.png'))
+
 onMounted(async () => {
   if (!tenantSlug.value) {
     return
@@ -71,7 +74,7 @@ async function submit() {
 <template>
   <div class="login-page">
     <div class="login-card">
-      <img v-if="previewBranding?.logo_url" :src="previewBranding.logo_url" alt="Tenant logo" class="tenant-logo" />
+      <img :src="previewLogoURL" alt="Tenant logo" class="tenant-logo" />
       <h1>{{ previewBranding?.company_name ?? 'Aceryx' }}</h1>
       <p class="subtitle">Sign in to continue</p>
 
@@ -99,13 +102,13 @@ async function submit() {
   place-items: center;
   background:
     radial-gradient(70rem 45rem at 110% -10%, color-mix(in oklab, var(--acx-brand-primary), white 80%), transparent 70%),
-    linear-gradient(140deg, #f8fafc 0%, #eef2ff 55%, #e2e8f0 100%);
+    var(--acx-surface);
 }
 
 .login-card {
   width: min(28rem, 92vw);
-  background: white;
-  border: 1px solid #dbe3ef;
+  background: var(--acx-surface-elevated);
+  border: 1px solid var(--acx-surface-200);
   border-radius: 1rem;
   padding: 1.5rem;
   display: grid;
@@ -126,7 +129,7 @@ h1 {
 
 .subtitle {
   margin: 0;
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 
 .field {
@@ -136,6 +139,6 @@ h1 {
 
 label {
   font-size: 0.9rem;
-  color: #334155;
+  color: var(--acx-text);
 }
 </style>

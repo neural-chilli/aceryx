@@ -18,6 +18,7 @@ app.use(PrimeVue, {
     preset: AceryxPreset,
     options: {
       darkModeSelector: '.p-dark',
+      cssLayer: false,
     },
   },
 })

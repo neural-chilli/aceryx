@@ -1,19 +1,27 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useAuth } from './useAuth'
+import { backendWSURL } from './backendOrigin'
 
 const messages = ref<any[]>([])
 let socket: WebSocket | null = null
 let reconnectTimer: number | null = null
 let retries = 0
+let keepAlive = false
+let intentionalClose = false
 
 function connect() {
+  if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
+    return
+  }
+
   const { token } = useAuth()
   if (!token.value) {
     return
   }
 
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const url = `${protocol}://${window.location.host}/ws?token=${encodeURIComponent(token.value)}`
+  intentionalClose = false
+  const params = new URLSearchParams({ token: token.value })
+  const url = backendWSURL('/ws', params)
   socket = new WebSocket(url)
 
   socket.onopen = () => {
@@ -27,11 +35,20 @@ function connect() {
       // ignore malformed ws message
     }
   }
-  socket.onclose = () => {
+  socket.onclose = (event) => {
+    socket = null
+    if (intentionalClose || !keepAlive) {
+      return
+    }
+    if (event.code === 1008 || event.code === 4401 || event.code === 4403) {
+      return
+    }
     scheduleReconnect()
   }
   socket.onerror = () => {
-    socket?.close()
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.close()
+    }
   }
 }
 
@@ -49,22 +66,21 @@ function scheduleReconnect() {
 
 export function useWebSocket() {
   const open = () => {
-    if (!socket || socket.readyState === WebSocket.CLOSED) {
-      connect()
-    }
+    keepAlive = true
+    connect()
   }
   const close = () => {
+    keepAlive = false
+    intentionalClose = true
     if (reconnectTimer !== null) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
-    socket?.close()
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      socket.close(1000, 'client close')
+    }
     socket = null
   }
-
-  onBeforeUnmount(() => {
-    close()
-  })
 
   const activityMessages = computed(() => messages.value.filter((msg) => msg?.type === 'activity'))
 

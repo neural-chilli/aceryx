@@ -448,9 +448,9 @@ h3 {
 }
 
 .mobile-collapse {
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-surface-200);
   border-radius: 0.6rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
   padding: 0.5rem 0.65rem;
 }
 
@@ -472,7 +472,7 @@ h3 {
 }
 
 .summary-list dt {
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 
 .summary-list dd {
@@ -484,7 +484,7 @@ h3 {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.82rem;
-  color: #334155;
+  color: var(--acx-text);
 }
 
 .task-header {
@@ -528,9 +528,9 @@ h3 {
 }
 
 .mobile-doc-card {
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-surface-200);
   border-radius: 0.65rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
   padding: 0.6rem;
   display: grid;
   gap: 0.4rem;
@@ -538,7 +538,7 @@ h3 {
 
 .mobile-doc-card p {
   margin: 0;
-  color: #64748b;
+  color: var(--acx-text-muted);
   font-size: 0.85rem;
 }
 
@@ -550,7 +550,7 @@ h3 {
 .preview iframe {
   width: 100%;
   min-height: 25rem;
-  border: 1px solid var(--p-surface-300, #d4d4d4);
+  border: 1px solid var(--acx-surface-300);
 }
 
 .preview img {
@@ -562,8 +562,8 @@ h3 {
 .preview pre {
   margin: 0;
   padding: 0.75rem;
-  background: var(--p-surface-100, #f6f6f6);
-  border: 1px solid var(--p-surface-300, #d4d4d4);
+  background: var(--acx-surface-100);
+  border: 1px solid var(--acx-surface-300);
   overflow: auto;
 }
 

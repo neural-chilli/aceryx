@@ -15,8 +15,8 @@ defineProps<{
 
 <template>
   <div class="node" :class="{ 'accent-border': accentBorder, unknown }" :style="{ '--accent': accent }">
-    <Handle type="target" :position="Position.Top" class="handle" />
-    <Handle type="target" :position="Position.Left" class="handle" />
+    <Handle id="target-top" type="target" :position="Position.Top" class="handle" />
+    <Handle id="target-left" type="target" :position="Position.Left" class="handle" />
     <div class="header">
       <span class="icon">{{ icon }}</span>
       <strong>{{ label }}</strong>
@@ -24,8 +24,8 @@ defineProps<{
     </div>
     <small class="id">{{ stepId }}</small>
     <small v-if="subtitle">{{ subtitle }}</small>
-    <Handle type="source" :position="Position.Bottom" class="handle" />
-    <Handle type="source" :position="Position.Right" class="handle" />
+    <Handle id="source-bottom" type="source" :position="Position.Bottom" class="handle" />
+    <Handle id="source-right" type="source" :position="Position.Right" class="handle" />
   </div>
 </template>
 
@@ -35,7 +35,8 @@ defineProps<{
   padding: 0.6rem 0.7rem;
   border: 2px solid var(--accent);
   border-radius: 0.7rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
+  color: var(--acx-text);
   display: grid;
   gap: 0.2rem;
 }
@@ -74,14 +75,14 @@ defineProps<{
 }
 
 .id {
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 
 .handle {
   width: 8px;
   height: 8px;
   background: var(--accent);
-  border: 1.5px solid #fff;
+  border: 1.5px solid var(--acx-surface-elevated);
   opacity: 0;
   transition: opacity 0.15s ease;
 }

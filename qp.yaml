@@ -24,12 +24,16 @@ tasks:
   db:migrate:
     desc: Run database migrations
     deps: [db:up]
-    cmd: go run ./cmd/aceryx migrate
+    cmd: |
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      go run ./cmd/aceryx migrate
 
   db:seed:
     desc: Seed database with dev data (default tenant, admin user, sample workflow)
     deps: [db:migrate]
-    cmd: go run ./cmd/aceryx seed
+    cmd: |
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      go run ./cmd/aceryx seed
 
   db:psql:
     desc: Open psql shell
@@ -76,16 +80,24 @@ tasks:
   serve:
     desc: Run backend server
     deps: [db:up, build]
-    cmd: ./aceryx serve
+    cmd: |
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      ./aceryx serve
 
   dev:backend:
     desc: Run backend with hot reload (requires air)
     deps: [db:up]
-    cmd: air -c .air.toml
+    cmd: |
+      if [ -f .env ]; then set -a; . ./.env; set +a; fi
+      if [ -f .air.toml ] && command -v air >/dev/null 2>&1; then
+        air -c .air.toml
+      else
+        go run ./cmd/aceryx serve
+      fi
 
   dev:frontend:
     desc: Run Vite dev server with HMR
-    cmd: cd frontend && npm run dev
+    cmd: cd frontend && npm run dev -- --host 127.0.0.1 --port 5173
 
   dev:
     desc: Run backend + frontend dev servers
@@ -173,6 +185,16 @@ tasks:
     desc: Install all dependencies
     deps: [deps, deps:frontend]
     cmd: echo "✓ All dependencies installed"
+
+  env:init:
+    desc: Create .env from .env.example (if missing)
+    cmd: |
+      if [ -f .env ]; then
+        echo "✓ .env already exists"
+      else
+        cp .env.example .env
+        echo "✓ Created .env from .env.example"
+      fi
 
   deps:tools:
     desc: Install development tools

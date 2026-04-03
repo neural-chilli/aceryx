@@ -60,7 +60,7 @@ describe('App shell', () => {
     })
 
     expect(wrapper.text()).toContain('Acme Lending')
-    expect(wrapper.find('img.logo').attributes('src')).toBe('/logo.svg')
+    expect(wrapper.find('img.logo').attributes('src')).toMatch(/\/logo\.svg$/)
     expect(wrapper.text()).toContain('Powered by Aceryx')
   })
 

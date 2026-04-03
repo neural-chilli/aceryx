@@ -60,7 +60,7 @@ function addOutcome() {
 .outcome {
   display: grid;
   gap: 0.35rem;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-surface-200);
   border-radius: 0.5rem;
   padding: 0.45rem;
 }

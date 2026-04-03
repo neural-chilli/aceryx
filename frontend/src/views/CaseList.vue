@@ -251,7 +251,7 @@ h1 {
 }
 
 :deep(tr.row-selected > td) {
-  background: color-mix(in oklab, var(--acx-brand-primary), white 90%);
+  background: color-mix(in oklab, var(--acx-brand-primary), var(--acx-surface) 88%);
 }
 
 .case-cards {
@@ -261,15 +261,15 @@ h1 {
 
 .pull-indicator {
   font-size: 0.82rem;
-  color: #64748b;
+  color: var(--acx-text-muted);
   text-align: center;
 }
 
 .case-card {
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-border);
   border-radius: 0.65rem;
   padding: 0.65rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
 }
 
 .card-header {
@@ -303,7 +303,7 @@ h1 {
 
 .meta {
   margin: 0.35rem 0 0;
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 
 .filters-mobile {

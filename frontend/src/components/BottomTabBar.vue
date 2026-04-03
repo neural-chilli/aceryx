@@ -45,8 +45,8 @@ function isActive(path: string): boolean {
   z-index: 20;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  border-top: 1px solid #dbe3ef;
-  background: #fff;
+  border-top: 1px solid var(--acx-surface-200);
+  background: var(--acx-surface-elevated);
 }
 
 .tab {
@@ -55,7 +55,7 @@ function isActive(path: string): boolean {
   gap: 0.2rem;
   padding: 0.55rem 0.35rem 0.65rem;
   text-decoration: none;
-  color: #64748b;
+  color: var(--acx-text-muted);
   font-size: 0.75rem;
 }
 

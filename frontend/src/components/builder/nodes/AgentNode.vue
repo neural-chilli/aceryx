@@ -10,7 +10,7 @@ defineProps<{ data: Record<string, any> }>()
     icon="🧠"
     :step-id="data.stepId"
     :label="data.label"
-    :subtitle="`template: ${data.config?.prompt_template ?? '-'}`"
     :valid="Boolean(data.valid)"
+    :details="Array.isArray(data.summary) ? data.summary : []"
   />
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import { VueFlow, useVueFlow, type Connection, type Edge } from '@vue-flow/core'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -22,7 +22,35 @@ const emit = defineEmits<{
   selectStep: [stepID: string | null]
 }>()
 
-const { screenToFlowCoordinate } = useVueFlow()
+const VIEWPORT_KEY = 'acx:canvas-viewport'
+const { screenToFlowCoordinate, setViewport, getViewport, fitView } = useVueFlow()
+
+function saveViewport() {
+  try {
+    const vp = getViewport()
+    localStorage.setItem(VIEWPORT_KEY, JSON.stringify(vp))
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+onMounted(() => {
+  try {
+    const raw = localStorage.getItem(VIEWPORT_KEY)
+    if (!raw) {
+      fitView()
+      return
+    }
+    const vp = JSON.parse(raw) as { x: number; y: number; zoom: number }
+    if (typeof vp.x === 'number' && typeof vp.y === 'number' && typeof vp.zoom === 'number') {
+      setViewport(vp)
+    } else {
+      fitView()
+    }
+  } catch {
+    fitView()
+  }
+})
 
 const nodes = computed(() => astToNodes(props.ast).map((node) => ({
   ...node,
@@ -114,7 +142,6 @@ function onDragOver(event: DragEvent) {
       :snap-to-grid="true"
       :snap-grid="[20, 20]"
       :default-edge-options="{ type: 'smoothstep' }"
-      fit-view-on-init
       @connect="onConnect"
       @nodes-delete="onNodesDelete"
       @edges-delete="onEdgesDelete"
@@ -123,6 +150,7 @@ function onDragOver(event: DragEvent) {
       @pane-click="onPaneClick"
       @drop="onDrop"
       @dragover="onDragOver"
+      @viewport-change-end="saveViewport"
     />
   </div>
 </template>
@@ -131,8 +159,9 @@ function onDragOver(event: DragEvent) {
 .canvas-shell {
   width: 100%;
   height: 100%;
-  background:
-    radial-gradient(circle at 1px 1px, #cbd5e1 1px, transparent 0);
+  background-color: var(--acx-surface-50);
+  background-image:
+    radial-gradient(circle at 1px 1px, var(--acx-surface-300) 1px, transparent 0);
   background-size: 22px 22px;
 }
 

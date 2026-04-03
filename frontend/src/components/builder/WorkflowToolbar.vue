@@ -51,9 +51,9 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   gap: 0.7rem;
-  border-bottom: 1px solid #dbe3ef;
+  border-bottom: 1px solid var(--acx-border);
   padding: 0.55rem 0.7rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
 }
 
 .buttons {
@@ -65,7 +65,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-border);
   border-radius: 0.45rem;
   padding: 0.2rem 0.4rem;
 }

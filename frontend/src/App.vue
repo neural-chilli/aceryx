@@ -13,7 +13,7 @@ import { useTerminology } from './composables/useTerminology'
 const router = useRouter()
 const route = useRoute()
 const { currentUser, tenantBranding, themes, preferences, logout, updatePreferences, loadThemes } = useAuth()
-const { apply } = useTheme()
+const { apply, savedThemeID } = useTheme()
 const { t } = useTerminology()
 const { register } = useKeyboard()
 const { isDesktop, isMobileOrTablet } = useBreakpoint()
@@ -50,7 +50,14 @@ onMounted(async () => {
       return
     }
   }
-  selectedThemeID.value = preferences.value?.theme_id ?? ''
+  const saved = savedThemeID()
+  selectedThemeID.value = saved ?? preferences.value?.theme_id ?? ''
+  if (selectedThemeID.value) {
+    const found = themes.value.find((item) => item.id === selectedThemeID.value)
+    if (found) {
+      apply(found)
+    }
+  }
 
   register('g i', () => {
     void router.push('/inbox')
@@ -135,7 +142,7 @@ async function onLogout() {
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto auto;
-  background: linear-gradient(165deg, #f8fafc 0%, #eff6ff 100%);
+  background: var(--acx-surface);
 }
 
 .topbar {
@@ -144,8 +151,8 @@ async function onLogout() {
   gap: 1rem;
   align-items: center;
   padding: 0.85rem 1rem;
-  border-bottom: 1px solid #dbe3ef;
-  background: #fff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1e293b;
 }
 
 .brand {
@@ -153,7 +160,7 @@ async function onLogout() {
   align-items: center;
   gap: 0.55rem;
   text-decoration: none;
-  color: #0f172a;
+  color: #f1f5f9;
 }
 
 .logo {
@@ -168,15 +175,20 @@ async function onLogout() {
 }
 
 .main-nav a {
-  color: #1e293b;
+  color: #cbd5e1;
   text-decoration: none;
   padding: 0.25rem 0.5rem;
   border-radius: 0.4rem;
+  transition: color 0.15s ease;
+}
+
+.main-nav a:hover {
+  color: #f1f5f9;
 }
 
 .main-nav a.router-link-active {
-  background: color-mix(in oklab, var(--acx-brand-primary), white 86%);
-  color: var(--acx-brand-primary-dark);
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
 }
 
 .profile-menu {
@@ -186,6 +198,7 @@ async function onLogout() {
 .profile-menu summary {
   cursor: pointer;
   list-style: none;
+  color: #cbd5e1;
 }
 
 .menu-body {
@@ -193,8 +206,8 @@ async function onLogout() {
   right: 0;
   top: 1.8rem;
   min-width: 12rem;
-  background: #fff;
-  border: 1px solid #dbe3ef;
+  background: var(--acx-surface-elevated);
+  border: 1px solid var(--acx-surface-200);
   border-radius: 0.65rem;
   padding: 0.75rem;
   display: grid;
@@ -209,10 +222,10 @@ async function onLogout() {
 
 .footer {
   padding: 0.7rem 1rem;
-  border-top: 1px solid #dbe3ef;
-  color: #64748b;
+  border-top: 1px solid var(--acx-surface-200);
+  color: var(--acx-text-muted);
   font-size: 0.85rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
 }
 
 @media (max-width: 1024px) {

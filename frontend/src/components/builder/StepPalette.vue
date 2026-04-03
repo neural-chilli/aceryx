@@ -83,9 +83,9 @@ function onDragStart(event: DragEvent, type: string) {
   display: grid;
   align-content: start;
   gap: 0.6rem;
-  border-right: 1px solid #dbe3ef;
+  border-right: 1px solid var(--acx-surface-200);
   padding: 0.75rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
   overflow-y: auto;
 }
 
@@ -107,16 +107,16 @@ function onDragStart(event: DragEvent, type: string) {
   font-weight: 600;
   font-size: 0.65rem;
   letter-spacing: 0.05em;
-  color: #94a3b8;
+  color: var(--acx-text-muted);
   padding-top: 0.4rem;
 }
 
 .step-item {
   text-align: left;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-surface-200);
   border-left-width: 3px;
   border-radius: 0.5rem;
-  background: #f8fafc;
+  background: var(--acx-surface-50);
   padding: 0.45rem 0.55rem;
   cursor: grab;
   display: flex;
@@ -125,7 +125,7 @@ function onDragStart(event: DragEvent, type: string) {
 }
 
 .step-item:hover {
-  background: #f1f5f9;
+  background: var(--acx-surface-100);
 }
 
 .step-icon {

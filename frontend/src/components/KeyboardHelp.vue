@@ -86,11 +86,11 @@ li {
 .keys {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
   font-size: 0.82rem;
-  color: #0f172a;
+  color: var(--acx-text);
 }
 
 .desc {
-  color: #334155;
+  color: var(--acx-text);
 }
 
 .unavailable {

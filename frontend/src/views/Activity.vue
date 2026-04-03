@@ -199,9 +199,11 @@ onUnmounted(() => {
 
 <style scoped>
 .activity {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 0.75rem;
-  height: calc(100vh - 8rem);
+  min-height: 0;
+  height: 100%;
 }
 
 .header {
@@ -224,6 +226,8 @@ onUnmounted(() => {
 }
 
 .timeline {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding-right: 0.3rem;
 }
@@ -238,9 +242,9 @@ onUnmounted(() => {
   grid-template-columns: 1.5rem 1fr;
   gap: 0.6rem;
   padding: 0.55rem 0.65rem;
-  border: 1px solid #dbe3ef;
+  border: 1px solid var(--acx-border);
   border-radius: 0.6rem;
-  background: #fff;
+  background: var(--acx-surface-elevated);
 }
 
 .icon {
@@ -255,7 +259,7 @@ onUnmounted(() => {
   display: inline-flex;
   gap: 0.5rem;
   font-size: 0.82rem;
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 
 .case-link {
@@ -274,12 +278,11 @@ onUnmounted(() => {
 
 .empty,
 .loading {
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 
 @media (max-width: 640px) {
   .activity {
-    height: calc(100vh - 10.5rem);
     gap: 0.55rem;
   }
 

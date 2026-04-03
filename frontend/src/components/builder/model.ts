@@ -1,4 +1,4 @@
-import type { Edge, Node } from '@vue-flow/core'
+import { MarkerType, type Edge, type Node } from '@vue-flow/core'
 
 export type StepType =
   | 'human_task'
@@ -26,6 +26,7 @@ export type WorkflowAST = {
   id?: string
   name?: string
   case_type_id?: string
+  __next_step_seq?: number
   steps: WorkflowStep[]
   [key: string]: unknown
 }
@@ -56,6 +57,8 @@ export function astToNodes(ast: WorkflowAST): Node[] {
       config: step.config ?? {},
       stepType: step.type,
       valid: isStepConfigComplete(step),
+      summary: summarizeStep(step),
+      missing: missingConfigMessages(step),
     },
   }))
 }
@@ -68,6 +71,9 @@ export function astToEdges(ast: WorkflowAST): Edge[] {
         id: `dep:${dep}->${step.id}`,
         source: dep,
         target: step.id,
+        sourceHandle: 'source-right',
+        targetHandle: 'target-left',
+        markerEnd: { type: MarkerType.ArrowClosed },
         data: { edgeType: 'dependency' },
       })
     }
@@ -78,8 +84,11 @@ export function astToEdges(ast: WorkflowAST): Edge[] {
           id: `out:${step.id}:${outcome}->${target}`,
           source: step.id,
           target,
+          sourceHandle: 'source-right',
+          targetHandle: 'target-left',
           label: outcome,
           style: { strokeDasharray: '5 5' },
+          markerEnd: { type: MarkerType.ArrowClosed },
           data: { edgeType: 'outcome', outcome },
         })
       }
@@ -161,13 +170,18 @@ export function renameStep(ast: WorkflowAST, fromID: string, toID: string): bool
 
 export function generateStepID(ast: WorkflowAST, type: string): string {
   const base = type.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'step'
-  let i = 1
-  let candidate = `${base}_${i}`
   const ids = new Set(ast.steps.map((step) => step.id))
+  const baseSeq = typeof ast.__next_step_seq === 'number' && ast.__next_step_seq > 0
+    ? ast.__next_step_seq
+    : inferNextSequence(ast)
+
+  let seq = baseSeq
+  let candidate = `${base}_${seq}`
   while (ids.has(candidate)) {
-    i++
-    candidate = `${base}_${i}`
+    seq++
+    candidate = `${base}_${seq}`
   }
+  ast.__next_step_seq = seq + 1
   return candidate
 }
 
@@ -270,13 +284,22 @@ export function validateAST(ast: WorkflowAST): ValidationIssue[] {
         }
       }
     }
-    if (!isStepConfigComplete(step)) {
+    const missing = missingConfigMessages(step)
+    if (missing.length > 0) {
       issues.push({
         code: 'missing_config',
         message: `Step ${step.id} is missing required configuration`,
         stepId: step.id,
         severity: 'warning',
       })
+      for (const msg of missing) {
+        issues.push({
+          code: 'missing_config_field',
+          message: `Step ${step.id}: ${msg}`,
+          stepId: step.id,
+          severity: 'warning',
+        })
+      }
     }
     for (const exprField of expressionFields(step)) {
       if (!isExpressionLikelyValid(exprField.value)) {
@@ -379,22 +402,32 @@ function detectUnreachableIssues(ast: WorkflowAST): ValidationIssue[] {
 }
 
 function isStepConfigComplete(step: WorkflowStep): boolean {
+  return missingConfigMessages(step).length === 0
+}
+
+function missingConfigMessages(step: WorkflowStep): string[] {
   const cfg = (step.config ?? {}) as Record<string, unknown>
-  switch (step.type) {
+  switch (stepTypeKey(step.type)) {
     case 'human_task':
-      return Boolean(cfg.assign_to_role || cfg.assign_to_user) && Boolean(cfg.form || cfg.form_schema)
+      return [
+        ...(cfg.assign_to_role || cfg.assign_to_user ? [] : ['set assignee role or user']),
+        ...(cfg.form || cfg.form_schema ? [] : ['configure a form schema']),
+      ]
     case 'agent':
-      return Boolean(cfg.prompt_template)
+      return [ ...(cfg.prompt_template ? [] : ['choose a prompt template']) ]
     case 'integration':
-      return Boolean(cfg.connector) && Boolean(cfg.action)
+      return [
+        ...(cfg.connector ? [] : ['choose a connector']),
+        ...(cfg.action ? [] : ['choose an action']),
+      ]
     case 'rule':
-      return typeof step.outcomes === 'object' && Object.keys(step.outcomes ?? {}).length > 0
+      return [ ...(typeof step.outcomes === 'object' && Object.keys(step.outcomes ?? {}).length > 0 ? [] : ['define at least one outcome']) ]
     case 'timer':
-      return Boolean(cfg.duration)
+      return [ ...(cfg.duration ? [] : ['set a duration']) ]
     case 'notification':
-      return Boolean(cfg.channel)
+      return [ ...(cfg.channel ? [] : ['set notification channel']) ]
     default:
-      return true
+      return []
   }
 }
 
@@ -446,7 +479,7 @@ function dedupeIssues(issues: ValidationIssue[]): ValidationIssue[] {
 }
 
 function knownNodeType(stepType: string): string {
-  switch (stepType) {
+  switch (stepTypeKey(stepType)) {
     case 'human_task':
     case 'agent':
     case 'integration':
@@ -459,8 +492,83 @@ function knownNodeType(stepType: string): string {
   }
 }
 
+function stepTypeKey(stepType: string): string {
+  const normalized = String(stepType).toLowerCase().replace(/[\s-]+/g, '_')
+  if (normalized === 'human') return 'human_task'
+  if (['ai_agent', 'llm_agent'].includes(normalized)) return 'agent'
+  if (['connector', 'integration_step'].includes(normalized)) return 'integration'
+  if (normalized === 'decision_rule') return 'rule'
+  if (normalized === 'delay') return 'timer'
+  if (normalized === 'notify') return 'notification'
+  return normalized
+}
+
+function summarizeStep(step: WorkflowStep): string[] {
+  const cfg = (step.config ?? {}) as Record<string, unknown>
+  switch (stepTypeKey(step.type)) {
+    case 'human_task':
+      return [
+        `assignee: ${String(cfg.assign_to_role ?? cfg.assign_to_user ?? 'unassigned')}`,
+        `sla: ${String(cfg.sla_hours ?? '-') }h`,
+      ]
+    case 'agent':
+      return [
+        `template: ${String(cfg.prompt_template ?? '-')}`,
+        `confidence: ${String(cfg.confidence_threshold ?? '0.7')}`,
+      ]
+    case 'integration':
+      return [
+        `connector: ${String(cfg.connector ?? '-')}`,
+        `action: ${String(cfg.action ?? '-')}`,
+      ]
+    case 'rule':
+      return [`outcomes: ${Object.keys(step.outcomes ?? {}).length}`, `default: ${String(cfg.default_outcome ?? '-')}`]
+    case 'timer':
+      return [`duration: ${String(cfg.duration ?? '-')}`]
+    case 'notification':
+      return [`channel: ${String(cfg.channel ?? '-')}`, `template: ${String(cfg.template ?? '-')}`]
+    default:
+      return []
+  }
+}
+
+function inferNextSequence(ast: WorkflowAST): number {
+  let maxSeen = 0
+  for (const step of ast.steps) {
+    const match = step.id.match(/_(\d+)$/)
+    if (!match) {
+      continue
+    }
+    const num = Number.parseInt(match[1], 10)
+    if (Number.isFinite(num)) {
+      maxSeen = Math.max(maxSeen, num)
+    }
+  }
+  return maxSeen + 1
+}
+
 export function normalizeForRoundTrip(ast: WorkflowAST): string {
   const normalized = JSON.parse(JSON.stringify(ast)) as WorkflowAST
   normalized.steps = [...normalized.steps].sort((a, b) => a.id.localeCompare(b.id))
-  return JSON.stringify(normalized)
+  return stableJSONString(normalized)
+}
+
+function stableJSONString(value: unknown): string {
+  return JSON.stringify(sortDeep(value))
+}
+
+function sortDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortDeep(item))
+  }
+  if (!value || typeof value !== 'object') {
+    return value
+  }
+  const source = value as Record<string, unknown>
+  const sortedKeys = Object.keys(source).sort((a, b) => a.localeCompare(b))
+  const out: Record<string, unknown> = {}
+  for (const key of sortedKeys) {
+    out[key] = sortDeep(source[key])
+  }
+  return out
 }

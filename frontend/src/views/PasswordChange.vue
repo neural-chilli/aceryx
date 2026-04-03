@@ -77,6 +77,6 @@ h1 {
 }
 
 .hint {
-  color: #64748b;
+  color: var(--acx-text-muted);
 }
 </style>

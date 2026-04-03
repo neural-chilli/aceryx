@@ -10,7 +10,7 @@ defineProps<{ data: Record<string, any> }>()
     icon="👤"
     :step-id="data.stepId"
     :label="data.label"
-    :subtitle="`${data.config?.assign_to_role ?? 'unassigned'} · SLA ${data.config?.sla_hours ?? '-'}h`"
     :valid="Boolean(data.valid)"
+    :details="Array.isArray(data.summary) ? data.summary : []"
   />
 </template>

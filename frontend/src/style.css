@@ -5,6 +5,27 @@
   --acx-brand-secondary: #334155;
   --acx-brand-accent: #0ea5e9;
   --font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --acx-surface: #f8fafc;
+  --acx-surface-elevated: #ffffff;
+  --acx-border: #dbe3ef;
+  --acx-text: #0f172a;
+  --acx-text-muted: #64748b;
+  --acx-surface-50: #f8fafc;
+  --acx-surface-100: #f1f5f9;
+  --acx-surface-200: #e2e8f0;
+  --acx-surface-300: #cbd5e1;
+}
+
+.p-dark {
+  --acx-surface: #131c2e;
+  --acx-surface-elevated: #0f172a;
+  --acx-border: #334155;
+  --acx-text: #f1f5f9;
+  --acx-text-muted: #94a3b8;
+  --acx-surface-50: #131c2e;
+  --acx-surface-100: #1a2438;
+  --acx-surface-200: #1e293b;
+  --acx-surface-300: #334155;
 }
 
 * {
@@ -14,8 +35,8 @@
 body {
   margin: 0;
   font-family: var(--font-ui);
-  color: #0f172a;
-  background: #f8fafc;
+  color: var(--acx-text);
+  background: var(--acx-surface);
 }
 
 a {
