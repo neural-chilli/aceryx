@@ -40,3 +40,4 @@ manual/.hugo_cache/
 
 /docs/specs/
 /aceryx
+/.env.example

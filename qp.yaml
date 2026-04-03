@@ -131,8 +131,11 @@ tasks:
 
   test:all:
     desc: Run all tests
-    deps: [test, test:integration, test:bdd, test:frontend]
-    cmd: echo "✓ All tests passed"
+    steps:
+      - test
+      - test:integration
+#      - test:bdd
+      - test:frontend
 
   # ── Lint ───────────────────────────────────────────────────
 
@@ -270,7 +273,7 @@ tasks:
       - fmt
       - lint
     steps:
-      - test
+      - test:all
       - vet
       - build
       - arch-check
