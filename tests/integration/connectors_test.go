@@ -343,6 +343,13 @@ VALUES ($1, 'offer_letter_v2', 1, 'active', $2::jsonb, $3)
 	})
 	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{{ID: "int1", Type: "integration", Config: cfg}}}
 	caseID2 := seedEngineCase(t, ctx, db, ast)
+	var caseTenantID uuid.UUID
+	if err := db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id = $1`, caseID2).Scan(&caseTenantID); err != nil {
+		t.Fatalf("load tenant for integration case: %v", err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO secrets (tenant_id, key, value_encrypted) VALUES ($1, 'api_token', 'secret-token') ON CONFLICT (tenant_id, key) DO UPDATE SET value_encrypted = EXCLUDED.value_encrypted`, caseTenantID); err != nil {
+		t.Fatalf("insert api secret for integration case tenant: %v", err)
+	}
 
 	if err := en.EvaluateDAG(ctx, caseID2); err != nil {
 		t.Fatalf("evaluate dag for integration executor: %v", err)

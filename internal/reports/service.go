@@ -135,6 +135,9 @@ func (s *Service) Ask(ctx context.Context, tenantID uuid.UUID, question string) 
 }
 
 func (s *Service) ExecuteSQL(ctx context.Context, tenantID uuid.UUID, sqlText string) ([]map[string]any, []string, error) {
+	if err := s.RefreshMaterializedViews(ctx); err != nil {
+		return nil, nil, fmt.Errorf("refresh reporting views: %w", err)
+	}
 	scopedSQL, err := s.inspector.ScopeToTenant(sqlText)
 	if err != nil {
 		return nil, nil, err
@@ -291,7 +294,7 @@ func (s *Service) SaveReport(ctx context.Context, tenantID, principalID uuid.UUI
 INSERT INTO saved_reports (
     tenant_id, created_by, name, description, original_question, query_sql, visualisation, columns
 ) VALUES ($1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6, $7, $8::jsonb)
-RETURNING id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(original_question,''), query_sql, visualisation, columns, parameters, is_published, pinned, COALESCE(schedule,''), recipients, created_at, updated_at, last_run_at
+RETURNING id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(original_question,''), query_sql, visualisation, columns, COALESCE(parameters, '{}'::jsonb), is_published, pinned, COALESCE(schedule,''), COALESCE(recipients, '[]'::jsonb), created_at, updated_at, last_run_at
 `, tenantID, principalID, req.Name, req.Description, req.OriginalQuestion, req.QuerySQL, normalizeVisualisation(req.Visualisation), string(colsRaw)).Scan(
 		&out.ID, &out.TenantID, &out.CreatedBy, &out.Name, &out.Description, &out.OriginalQuestion,
 		&out.QuerySQL, &out.Visualisation, &colsRaw, &out.Parameters, &out.IsPublished, &out.Pinned,
@@ -310,7 +313,7 @@ func (s *Service) ListReports(ctx context.Context, tenantID, principalID uuid.UU
 		scope = "mine"
 	}
 	query := `
-SELECT id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(original_question,''), query_sql, visualisation, columns, parameters, is_published, pinned, COALESCE(schedule,''), recipients, created_at, updated_at, last_run_at
+SELECT id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(original_question,''), query_sql, visualisation, columns, COALESCE(parameters, '{}'::jsonb), is_published, pinned, COALESCE(schedule,''), COALESCE(recipients, '[]'::jsonb), created_at, updated_at, last_run_at
 FROM saved_reports
 WHERE tenant_id = $1
 `
@@ -355,7 +358,7 @@ func (s *Service) GetReport(ctx context.Context, tenantID, reportID uuid.UUID) (
 		raw  []byte
 	)
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(original_question,''), query_sql, visualisation, columns, parameters, is_published, pinned, COALESCE(schedule,''), recipients, created_at, updated_at, last_run_at
+SELECT id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(original_question,''), query_sql, visualisation, columns, COALESCE(parameters, '{}'::jsonb), is_published, pinned, COALESCE(schedule,''), COALESCE(recipients, '[]'::jsonb), created_at, updated_at, last_run_at
 FROM saved_reports
 WHERE tenant_id = $1 AND id = $2
 `, tenantID, reportID).Scan(&item.ID, &item.TenantID, &item.CreatedBy, &item.Name, &item.Description, &item.OriginalQuestion, &item.QuerySQL, &item.Visualisation, &raw, &item.Parameters, &item.IsPublished, &item.Pinned, &item.Schedule, &item.Recipients, &item.CreatedAt, &item.UpdatedAt, &item.LastRunAt)

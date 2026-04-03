@@ -25,6 +25,7 @@ var (
 	ErrNotFound            = errors.New("engine: not found")
 	ErrCaseDataConflict    = errors.New("engine: case data optimistic lock conflict")
 	ErrStepAwaitingReview  = errors.New("engine: step awaiting external human review")
+	ErrStepNotActive       = errors.New("engine: step is not active")
 	ErrExpressionTooLarge  = errors.New("engine: expression exceeds maximum size")
 	ErrExpressionTimedOut  = errors.New("engine: expression evaluation timeout")
 	ErrCycleDetectedInAST  = errors.New("engine: cycle detected in workflow AST")

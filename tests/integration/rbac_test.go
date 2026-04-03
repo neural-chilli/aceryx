@@ -184,7 +184,7 @@ func TestRBACIntegration_RouteMiddlewareAndTenantIsolation(t *testing.T) {
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO vault_documents (tenant_id, case_id, filename, mime_type, size_bytes, content_hash, storage_uri, uploaded_by)
 VALUES ($1, $2, 'doc.pdf', 'application/pdf', 10, 'h1', 's3://doc', $3)
-`, tenantB, caseB, adminB); err != nil {
+`, tenantB, caseB, adminB.ID); err != nil {
 		t.Fatalf("insert vault document tenant B: %v", err)
 	}
 

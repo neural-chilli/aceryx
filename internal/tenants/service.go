@@ -317,11 +317,11 @@ func (s *ThemeService) DeleteTheme(ctx context.Context, tenantID, themeID uuid.U
 		return fmt.Errorf("load theme before delete: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM themes WHERE tenant_id = $1 AND id = $2`, tenantID, themeID); err != nil {
-		return fmt.Errorf("delete theme: %w", err)
-	}
 	if _, err := tx.ExecContext(ctx, `UPDATE user_preferences SET theme_id = NULL WHERE theme_id = $1`, themeID); err != nil {
 		return fmt.Errorf("clear deleted theme references in user preferences: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM themes WHERE tenant_id = $1 AND id = $2`, tenantID, themeID); err != nil {
+		return fmt.Errorf("delete theme: %w", err)
 	}
 	if wasDefault {
 		if _, err := tx.ExecContext(ctx, `

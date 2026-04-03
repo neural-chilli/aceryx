@@ -3,7 +3,6 @@ package tasks
 import (
 	"context"
 	"database/sql"
-	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,6 +100,7 @@ type InboxTask struct {
 type TaskDetail struct {
 	CaseID           uuid.UUID         `json:"case_id"`
 	StepID           string            `json:"step_id"`
+	StepType         string            `json:"step_type,omitempty"`
 	CaseNumber       string            `json:"case_number"`
 	CaseType         string            `json:"case_type"`
 	CaseData         map[string]any    `json:"case_data"`
@@ -260,11 +260,6 @@ WHERE case_id = $1 AND step_id = $2
 }
 
 func (s *TaskService) Inbox(ctx context.Context, tenantID, principalID uuid.UUID) ([]InboxTask, error) {
-	roles, err := s.principalRoleNames(ctx, tenantID, principalID)
-	if err != nil {
-		return nil, err
-	}
-
 	rows, err := s.db.QueryContext(ctx, `
 SELECT
     cs.case_id,
@@ -286,7 +281,14 @@ WHERE cs.state = 'active'
       cs.assigned_to = $2
       OR (
           cs.assigned_to IS NULL
-          AND COALESCE(cs.metadata->>'role', '') = ANY($3)
+          AND EXISTS (
+              SELECT 1
+              FROM principal_roles pr
+              JOIN roles r ON r.id = pr.role_id
+              WHERE pr.principal_id = $2
+                AND r.tenant_id = $1
+                AND r.name = COALESCE(cs.metadata->>'role', '')
+          )
       )
   )
 ORDER BY
@@ -294,7 +296,7 @@ ORDER BY
   cs.sla_deadline NULLS LAST,
   c.priority DESC,
   cs.started_at
-`, tenantID, principalID, pqStringArray(roles))
+`, tenantID, principalID)
 	if err != nil {
 		return nil, fmt.Errorf("query inbox tasks: %w", err)
 	}
@@ -381,6 +383,7 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 
 	step, err := s.loadWorkflowStep(ctx, caseID, stepID)
 	if err == nil {
+		d.StepType = step.Type
 		d.Outcomes = make([]string, 0, len(step.Outcomes))
 		for k := range step.Outcomes {
 			d.Outcomes = append(d.Outcomes, k)
@@ -514,18 +517,32 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.id = cs.case_id AND c.tenant_id 
 }
 
 func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, caseID uuid.UUID, stepID string, req CompleteTaskRequest) error {
-	taskDetail, err := s.GetTask(ctx, tenantID, caseID, stepID)
-	if err != nil {
-		return err
-	}
-	if taskDetail.StepState == engine.StateCompleted {
-		return ErrAlreadyCompleted
-	}
-	if taskDetail.AssignedTo == nil || *taskDetail.AssignedTo != principalID {
-		return ErrForbidden
-	}
-	if !contains(taskDetail.Outcomes, req.Outcome) {
-		return ErrInvalidOutcome
+	var (
+		taskDetail TaskDetail
+		err        error
+	)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		taskDetail, err = s.GetTask(ctx, tenantID, caseID, stepID)
+		if err != nil {
+			return err
+		}
+		if taskDetail.StepState == engine.StateCompleted {
+			return ErrAlreadyCompleted
+		}
+		assigned := taskDetail.AssignedTo != nil && *taskDetail.AssignedTo == principalID
+		outcomeAllowed := contains(taskDetail.Outcomes, req.Outcome)
+		if assigned && outcomeAllowed {
+			break
+		}
+		waitForAgentInit := taskDetail.StepType == "agent" && taskDetail.StepState == engine.StateActive && time.Now().Before(deadline)
+		if !waitForAgentInit {
+			if !assigned {
+				return ErrForbidden
+			}
+			return ErrInvalidOutcome
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
 	payload := req.Data
 	if taskDetail.Form == "agent_review" && strings.EqualFold(req.Outcome, "accept") && len(payload) == 0 {
@@ -545,11 +562,11 @@ func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, c
 	resultRaw, _ := json.Marshal(map[string]any{"outcome": req.Outcome, "data": payload})
 	res, err := tx.ExecContext(ctx, `
 UPDATE case_steps cs
-SET state='completed', completed_at=now(), result=$6::jsonb, draft_data=NULL,
-    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(jsonb_build_object('type','completed','outcome',$7,'at',now()))
+SET state='completed', completed_at=now(), result=$5::jsonb, draft_data=NULL,
+    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(jsonb_build_object('type','completed','outcome',$6::text,'at',now()))
 FROM cases c
 WHERE cs.case_id=$1 AND cs.step_id=$2 AND c.id=cs.case_id AND c.tenant_id=$3 AND cs.state='active' AND cs.assigned_to=$4
-`, caseID, stepID, tenantID, principalID, s.now(), string(resultRaw), req.Outcome)
+`, caseID, stepID, tenantID, principalID, string(resultRaw), req.Outcome)
 	if err != nil {
 		return fmt.Errorf("update task completion: %w", err)
 	}
@@ -643,7 +660,7 @@ FOR UPDATE
 		return err
 	}
 
-	if _, err := tx.ExecContext(ctx, `UPDATE case_steps SET assigned_to=$4 WHERE case_id=$1 AND step_id=$2`, caseID, stepID, tenantID, req.AssignTo); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE case_steps SET assigned_to=$3 WHERE case_id=$1 AND step_id=$2`, caseID, stepID, req.AssignTo); err != nil {
 		return fmt.Errorf("reassign task: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE cases SET updated_at = now() WHERE id=$1`, caseID); err != nil {
@@ -702,7 +719,7 @@ FOR UPDATE
 		uid, err := s.pickLeastLoadedUserTx(ctx, tx, tenantID, cfg.ToRole)
 		if err == nil && uid != uuid.Nil {
 			reassignedTo = &uid
-			if _, err := tx.ExecContext(ctx, `UPDATE case_steps SET assigned_to=$4 WHERE case_id=$1 AND step_id=$2`, caseID, stepID, tenantID, uid); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE case_steps SET assigned_to=$3 WHERE case_id=$1 AND step_id=$2`, caseID, stepID, uid); err != nil {
 				return fmt.Errorf("escalation reassign: %w", err)
 			}
 		}
@@ -839,29 +856,6 @@ GROUP BY p.id
 		return uuid.Nil, sql.ErrNoRows
 	}
 	return selected, nil
-}
-
-func (s *TaskService) principalRoleNames(ctx context.Context, tenantID, principalID uuid.UUID) ([]string, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT r.name
-FROM principal_roles pr
-JOIN roles r ON r.id = pr.role_id
-JOIN principals p ON p.id = pr.principal_id
-WHERE pr.principal_id=$1 AND p.tenant_id=$2
-`, principalID, tenantID)
-	if err != nil {
-		return nil, fmt.Errorf("query principal roles: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	roles := make([]string, 0)
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
-		}
-		roles = append(roles, name)
-	}
-	return roles, rows.Err()
 }
 
 func (s *TaskService) lookupTenantID(ctx context.Context, caseID uuid.UUID) (uuid.UUID, error) {
@@ -1260,15 +1254,4 @@ func (e *HumanTaskExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepI
 		return nil, err
 	}
 	return nil, engine.ErrStepAwaitingReview
-}
-
-// minimal pg text[] array wrapper without new dependency
-type pqStringArray []string
-
-func (a pqStringArray) Value() (driver.Value, error) {
-	quoted := make([]string, len(a))
-	for i, v := range a {
-		quoted[i] = `"` + strings.ReplaceAll(v, `"`, `\\"`) + `"`
-	}
-	return "{" + strings.Join(quoted, ",") + "}", nil
 }

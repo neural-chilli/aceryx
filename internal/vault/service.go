@@ -123,7 +123,7 @@ LIMIT 1
 	err = tx.QueryRowContext(ctx, `
 INSERT INTO vault_documents (tenant_id, case_id, step_id, filename, mime_type, size_bytes, content_hash, storage_uri, uploaded_by, metadata)
 VALUES ($1, $2, NULLIF($3,''), $4, $5, $6, $7, $8, $9, $10::jsonb)
-RETURNING id, case_id, step_id, filename, mime_type, size_bytes, content_hash, uploaded_by, uploaded_at, COALESCE(metadata, '{}'::jsonb)
+RETURNING id, case_id, COALESCE(step_id,''), filename, mime_type, size_bytes, content_hash, uploaded_by, uploaded_at, COALESCE(metadata, '{}'::jsonb)
 `, tenantID, in.CaseID, in.StepID, in.Filename, in.MimeType, len(in.Data), hash, storageURI, in.UploadedBy, string(metaJSON)).Scan(
 		&doc.ID,
 		&doc.CaseID,

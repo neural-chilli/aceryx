@@ -633,6 +633,15 @@ VALUES ($1, 1, 'published', $2::jsonb, '', $3, now())
 
 func seedAdditionalCaseType(t *testing.T, ctx context.Context, db *sql.DB, tenantID, principalID uuid.UUID, name string) uuid.UUID {
 	t.Helper()
+	var existing uuid.UUID
+	if err := db.QueryRowContext(ctx, `
+SELECT id
+FROM case_types
+WHERE tenant_id = $1 AND name = $2 AND version = 1
+LIMIT 1
+`, tenantID, name).Scan(&existing); err == nil {
+		return existing
+	}
 	rawSchema, err := json.Marshal(testCaseSchema())
 	if err != nil {
 		t.Fatalf("marshal schema: %v", err)

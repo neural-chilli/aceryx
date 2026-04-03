@@ -85,9 +85,24 @@ func GenesisHash(caseID uuid.UUID) string {
 }
 
 func ComputeHash(prev, eventType, actorID, action string, data json.RawMessage, createdAt time.Time) string {
-	payload := prev + eventType + actorID + action + string(data) + createdAt.UTC().Format(time.RFC3339Nano)
+	payload := prev + eventType + actorID + action + canonicalJSON(data) + createdAt.UTC().Format(time.RFC3339Nano)
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
+}
+
+func canonicalJSON(data json.RawMessage) string {
+	if len(data) == 0 {
+		return ""
+	}
+	var decoded any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return string(data)
+	}
+	canonical, err := json.Marshal(decoded)
+	if err != nil {
+		return string(data)
+	}
+	return string(canonical)
 }
 
 func VerifyChain(events []Event) (bool, int, error) {
@@ -189,14 +204,20 @@ func (s *Service) RecordCaseEventTx(
 	if !IsRegistered(eventType, action) {
 		return fmt.Errorf("unregistered audit event %s.%s", eventType, action)
 	}
-	var prev string
+	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, caseID.String()); err != nil {
+		return fmt.Errorf("acquire audit chain lock: %w", err)
+	}
+	var (
+		prev        string
+		prevCreated time.Time
+	)
 	err := tx.QueryRowContext(ctx, `
-SELECT event_hash
+SELECT event_hash, created_at
 FROM case_events
 WHERE case_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT 1
-`, caseID).Scan(&prev)
+`, caseID).Scan(&prev, &prevCreated)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			prev = GenesisHash(caseID)
@@ -208,7 +229,10 @@ LIMIT 1
 	if err != nil {
 		return fmt.Errorf("marshal event payload: %w", err)
 	}
-	now := time.Now().UTC()
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	if !prevCreated.IsZero() && !now.After(prevCreated) {
+		now = prevCreated.Add(time.Microsecond)
+	}
 	hash := ComputeHash(prev, eventType, actorID.String(), action, raw, now)
 
 	var eventID uuid.UUID

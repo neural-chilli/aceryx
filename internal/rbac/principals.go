@@ -37,6 +37,10 @@ func (s *PrincipalService) CreatePrincipal(ctx context.Context, tenantID uuid.UU
 	var passwordHash *string
 	apiKeyPlaintext := ""
 	apiKeyHash := ""
+	metadataJSON := "{}"
+	if len(req.Metadata) > 0 {
+		metadataJSON = string(req.Metadata)
+	}
 	if req.Type == "human" {
 		if req.Email == "" || req.Password == "" {
 			return Principal{}, "", fmt.Errorf("email and password are required for human principals")
@@ -61,7 +65,7 @@ func (s *PrincipalService) CreatePrincipal(ctx context.Context, tenantID uuid.UU
 INSERT INTO principals (tenant_id, type, name, email, password_hash, api_key_hash, status, metadata)
 VALUES ($1, $2, $3, NULLIF($4, ''), $5, NULLIF($6, ''), 'active', COALESCE($7::jsonb, '{}'::jsonb))
 RETURNING id, tenant_id, type, name, COALESCE(email, ''), status, metadata, created_at
-`, tenantID, req.Type, req.Name, strings.ToLower(strings.TrimSpace(req.Email)), passwordHash, apiKeyHash, string(req.Metadata)).Scan(&p.ID, &p.TenantID, &p.Type, &p.Name, &p.Email, &p.Status, &p.Metadata, &p.CreatedAt)
+`, tenantID, req.Type, req.Name, strings.ToLower(strings.TrimSpace(req.Email)), passwordHash, apiKeyHash, metadataJSON).Scan(&p.ID, &p.TenantID, &p.Type, &p.Name, &p.Email, &p.Status, &p.Metadata, &p.CreatedAt)
 	if err != nil {
 		return Principal{}, "", fmt.Errorf("insert principal: %w", err)
 	}

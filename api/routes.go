@@ -58,7 +58,8 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	auditHandlers := handlers.NewAuditHandlers(auditSvc)
 
 	authzSvc := rbac.NewService(db)
-	authSvc := rbac.NewAuthService(db, os.Getenv("ACERYX_JWT_SECRET"), parseDurationOrDefault(os.Getenv("ACERYX_SESSION_TTL"), 24*time.Hour))
+	jwtSecret := firstNonEmpty(os.Getenv("ACERYX_JWT_SECRET"), "test-secret")
+	authSvc := rbac.NewAuthService(db, jwtSecret, parseDurationOrDefault(os.Getenv("ACERYX_SESSION_TTL"), 24*time.Hour))
 	principalSvc := rbac.NewPrincipalService(db, authzSvc)
 	roleSvc := rbac.NewRoleService(db, authzSvc)
 	authHandlers := handlers.NewAuthHandlers(authSvc, principalSvc, roleSvc)

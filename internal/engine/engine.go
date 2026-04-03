@@ -231,6 +231,10 @@ func (e *Engine) triggerEvaluation(caseID uuid.UUID) {
 }
 
 func (e *Engine) dispatchStep(caseID uuid.UUID, step WorkflowStep) {
+	if step.Type == "human_task" {
+		_ = e.executeWithRetry(context.Background(), caseID, step)
+		return
+	}
 	e.executions.Submit(func() {
 		_ = e.executeWithRetry(context.Background(), caseID, step)
 	})
@@ -309,12 +313,12 @@ func (e *Engine) incrementRetryCount(ctx context.Context, caseID uuid.UUID, step
 
 	var retryCount int
 	err = tx.QueryRowContext(ctx, `
-UPDATE case_steps
-SET
-    retry_count = retry_count + 1,
-    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(
-        jsonb_build_object('type', 'retry_attempt', 'attempt', $3, 'error', $4, 'at', now())
-    )
+	UPDATE case_steps
+	SET
+	    retry_count = retry_count + 1,
+	    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(
+	        jsonb_build_object('type', 'retry_attempt', 'attempt', $3::int, 'error', $4::text, 'at', now())
+	    )
 WHERE case_id = $1 AND step_id = $2 AND state = 'active'
 RETURNING retry_count
 `, caseID, stepID, attempt, execErr.Error()).Scan(&retryCount)
@@ -408,10 +412,10 @@ func (e *Engine) completeStep(ctx context.Context, caseID uuid.UUID, stepID stri
 		return fmt.Errorf("marshal step result: %w", err)
 	}
 
-	if _, err := tx.ExecContext(ctx, `
-UPDATE case_steps
-SET
-    state = 'completed',
+	res, err := tx.ExecContext(ctx, `
+	UPDATE case_steps
+	SET
+	    state = 'completed',
     completed_at = now(),
     result = $3::jsonb,
     error = NULL,
@@ -421,11 +425,16 @@ SET
             ELSE jsonb_build_array($5::jsonb)
          END
       || jsonb_build_array(
-        jsonb_build_object('type', 'completed', 'attempts', $4, 'at', now())
-    )
-WHERE case_id = $1 AND step_id = $2 AND state = 'active'
-`, caseID, stepID, string(resultJSON), result.Attempts, string(result.ExecutionEvent)); err != nil {
+        jsonb_build_object('type', 'completed', 'attempts', $4::int, 'at', now())
+	    )
+	WHERE case_id = $1 AND step_id = $2 AND state = 'active'
+	`, caseID, stepID, string(resultJSON), result.Attempts, string(result.ExecutionEvent))
+	if err != nil {
 		return fmt.Errorf("update completed step state: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	if affected == 0 {
+		return ErrStepNotActive
 	}
 
 	if result.WritesCaseData && len(result.CaseDataPatch) > 0 {
@@ -550,14 +559,14 @@ func (e *Engine) skipStepTerminal(ctx context.Context, caseID uuid.UUID, stepID 
 	defer func() { _ = audit.RollbackTx(tx) }()
 
 	if _, err := tx.ExecContext(ctx, `
-UPDATE case_steps
-SET
-    state = 'skipped',
-    completed_at = now(),
-    error = jsonb_build_object('message', $3),
-    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(
-        jsonb_build_object('type', 'skipped_on_exhausted', 'attempts', $4, 'error', $3, 'at', now())
-    )
+	UPDATE case_steps
+	SET
+	    state = 'skipped',
+	    completed_at = now(),
+	    error = jsonb_build_object('message', $3::text),
+	    events = COALESCE(events, '[]'::jsonb) || jsonb_build_array(
+	        jsonb_build_object('type', 'skipped_on_exhausted', 'attempts', $4::int, 'error', $3::text, 'at', now())
+	    )
 WHERE case_id = $1 AND step_id = $2 AND state = 'active'
 `, caseID, stepID, cause.Error(), attempts); err != nil {
 		return fmt.Errorf("mark step skipped on exhausted policy: %w", err)
@@ -661,6 +670,8 @@ func calculateBackoff(policy ErrorPolicy, retryCount int) time.Duration {
 	policy = defaultErrorPolicyForStep("", policy)
 	delay := policy.InitialDelay
 	switch policy.Backoff {
+	case "none":
+		delay = 0
 	case "linear":
 		delay = time.Duration(retryCount) * policy.InitialDelay
 	case "exponential":

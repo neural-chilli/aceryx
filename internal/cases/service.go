@@ -230,8 +230,8 @@ RETURNING id, tenant_id, case_type_id, case_number, status, data, created_at, up
 	}
 	for _, stepID := range stepIDs {
 		if _, err := tx.ExecContext(ctx, `
-INSERT INTO case_steps (case_id, step_id, state, events, retry_count)
-VALUES ($1, $2, 'pending', '[]'::jsonb, 0)
+INSERT INTO case_steps (case_id, step_id, state, result, events, error, retry_count, draft_data, metadata)
+VALUES ($1, $2, 'pending', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, 0, '{}'::jsonb, '{}'::jsonb)
 `, c.ID, stepID); err != nil {
 			return Case{}, nil, fmt.Errorf("insert case step %s: %w", stepID, err)
 		}
@@ -745,12 +745,12 @@ func (r *ReportsService) CasesSummary(ctx context.Context, tenantID uuid.UUID, w
 	}
 	rows, err := r.db.QueryContext(ctx, `
 SELECT period, period + interval '6 day' AS period_end,
-       SUM(case_count) FILTER (WHERE status='open') AS opened,
-       SUM(case_count) FILTER (WHERE status='completed') AS closed,
-       SUM(case_count) FILTER (WHERE status='cancelled') AS cancelled,
+       COALESCE(SUM(case_count) FILTER (WHERE status='open'), 0) AS opened,
+       COALESCE(SUM(case_count) FILTER (WHERE status='completed'), 0) AS closed,
+       COALESCE(SUM(case_count) FILTER (WHERE status='cancelled'), 0) AS cancelled,
        COALESCE(AVG(avg_days), 0)
 FROM mv_cases_summary
-WHERE tenant_id = $1 AND period >= date_trunc('week', now() - ($2 || ' week')::interval)
+WHERE tenant_id = $1 AND period >= date_trunc('week', now() - make_interval(weeks => $2::int))
 GROUP BY period
 ORDER BY period
 `, tenantID, weeks)
@@ -823,7 +823,7 @@ func (r *ReportsService) SLACompliance(ctx context.Context, tenantID uuid.UUID, 
 	rows, err := r.db.QueryContext(ctx, `
 SELECT period, total, within_sla
 FROM mv_sla_compliance
-WHERE tenant_id = $1 AND period >= date_trunc('week', now() - ($2 || ' week')::interval)
+WHERE tenant_id = $1 AND period >= date_trunc('week', now() - make_interval(weeks => $2::int))
 ORDER BY period
 `, tenantID, weeks)
 	if err != nil {
@@ -906,14 +906,14 @@ func (r *ReportsService) Decisions(ctx context.Context, tenantID uuid.UUID, week
 		weeks = 12
 	}
 	rows, err := r.db.QueryContext(ctx, `
-SELECT date_trunc('week', created_at) AS period,
+SELECT date_trunc('week', ce.created_at) AS period,
        COUNT(*) FILTER (WHERE actor_type = 'agent' AND ((event_type = 'agent' AND action = 'completed') OR (event_type = 'case' AND action = 'updated'))),
        COUNT(*) FILTER (WHERE actor_type = 'human' AND ((event_type = 'task' AND action = 'completed') OR (event_type = 'case' AND action = 'updated'))),
        COUNT(*) FILTER (WHERE event_type = 'agent' AND action = 'escalated')
 FROM case_events ce
 JOIN cases c ON c.id = ce.case_id
-WHERE c.tenant_id = $1 AND ce.created_at >= date_trunc('week', now() - ($2 || ' week')::interval)
-GROUP BY date_trunc('week', created_at)
+WHERE c.tenant_id = $1 AND ce.created_at >= date_trunc('week', now() - make_interval(weeks => $2::int))
+GROUP BY date_trunc('week', ce.created_at)
 ORDER BY period
 `, tenantID, weeks)
 	if err != nil {
@@ -1150,7 +1150,15 @@ func resolveSchemaField(schema CaseTypeSchema, path string) (SchemaField, bool) 
 
 func (s *CaseService) loadCaseSteps(ctx context.Context, caseID uuid.UUID) ([]CaseStep, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, step_id, state, started_at, completed_at, result, events, error, assigned_to, sla_deadline, retry_count, draft_data, metadata
+SELECT id, step_id, state, started_at, completed_at,
+       COALESCE(result, '{}'::jsonb),
+       COALESCE(events, '[]'::jsonb),
+       COALESCE(error, '{}'::jsonb),
+       assigned_to,
+       sla_deadline,
+       retry_count,
+       COALESCE(draft_data, '{}'::jsonb),
+       COALESCE(metadata, '{}'::jsonb)
 FROM case_steps
 WHERE case_id = $1
 ORDER BY step_id

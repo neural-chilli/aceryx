@@ -56,8 +56,17 @@ func NewHandler(db *sql.DB, secrets connectors.SecretStore) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	path := r.PathValue("path")
-	cfg, err := h.loadRoute(r.Context(), "/"+strings.TrimPrefix(path, "/"))
+	paths := normalizeCandidatePaths(r)
+	var (
+		cfg RouteConfig
+		err error
+	)
+	for _, path := range paths {
+		cfg, err = h.loadRoute(r.Context(), path)
+		if err == nil {
+			break
+		}
+	}
 	if err != nil {
 		http.Error(w, "not found", http.StatusNotFound)
 		return
@@ -81,7 +90,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	idempotencyKey := r.Header.Get("Idempotency-Key")
 	if idempotencyKey == "" && cfg.IdempotencyKeyPath != "" {
-		idempotencyKey = strings.TrimSpace(connectors.ResolveTemplateString("{{"+cfg.IdempotencyKeyPath+"}}", map[string]any{"payload": payload}))
+		idempotencyKey = strings.TrimSpace(connectors.ResolveTemplateString("{{"+cfg.IdempotencyKeyPath+"}}", payload))
+		if idempotencyKey == "" {
+			idempotencyKey = strings.TrimSpace(connectors.ResolveTemplateString("{{"+cfg.IdempotencyKeyPath+"}}", map[string]any{"payload": payload}))
+		}
 	}
 	if idempotencyKey == "" {
 		sum := sha256.Sum256(body)
@@ -111,11 +123,46 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) loadRoute(ctx context.Context, path string) (RouteConfig, error) {
 	var cfg RouteConfig
 	err := h.db.QueryRowContext(ctx, `
-SELECT tenant_id, path, case_type, mode, signature_header, signature_secret_key, idempotency_key_path, case_number_field_path, created_by
+SELECT tenant_id,
+       path,
+       case_type,
+       mode,
+       COALESCE(signature_header, ''),
+       COALESCE(signature_secret_key, ''),
+       COALESCE(idempotency_key_path, ''),
+       COALESCE(case_number_field_path, ''),
+       created_by
 FROM webhook_routes
-WHERE path = $1
+WHERE trim(both '/' from path) = trim(both '/' from $1)
 `, path).Scan(&cfg.TenantID, &cfg.Path, &cfg.CaseType, &cfg.Mode, &cfg.SignatureHeader, &cfg.SignatureSecretKey, &cfg.IdempotencyKeyPath, &cfg.CaseNumberFieldPath, &cfg.CreatedBy)
 	return cfg, err
+}
+
+func normalizeCandidatePaths(r *http.Request) []string {
+	rawPathValue := strings.TrimSpace(r.PathValue("path"))
+	rawURLPath := strings.TrimSpace(r.URL.Path)
+	candidates := []string{
+		rawPathValue,
+		strings.TrimPrefix(rawPathValue, "/webhooks/"),
+		strings.TrimPrefix(rawPathValue, "/webhooks"),
+		rawURLPath,
+		strings.TrimPrefix(rawURLPath, "/webhooks/"),
+		strings.TrimPrefix(rawURLPath, "/webhooks"),
+	}
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(candidates))
+	for _, c := range candidates {
+		c = "/" + strings.Trim(strings.TrimSpace(c), "/")
+		if c == "/" {
+			continue
+		}
+		if _, ok := seen[c]; ok {
+			continue
+		}
+		seen[c] = struct{}{}
+		out = append(out, c)
+	}
+	return out
 }
 
 func (h *Handler) recordWebhookDelivery(ctx context.Context, tenantID uuid.UUID, key string, payload map[string]any) (bool, error) {
@@ -134,7 +181,10 @@ ON CONFLICT (idempotency_key) DO NOTHING
 
 func (h *Handler) createOrUpdateCase(ctx context.Context, cfg RouteConfig, payload map[string]any) (uuid.UUID, error) {
 	if cfg.Mode == "update" && cfg.CaseNumberFieldPath != "" {
-		caseNumber := connectors.ResolveTemplateString("{{payload."+cfg.CaseNumberFieldPath+"}}", map[string]any{"payload": payload})
+		caseNumber := strings.TrimSpace(connectors.ResolveTemplateString("{{"+cfg.CaseNumberFieldPath+"}}", payload))
+		if caseNumber == "" {
+			caseNumber = strings.TrimSpace(connectors.ResolveTemplateString("{{payload."+cfg.CaseNumberFieldPath+"}}", map[string]any{"payload": payload}))
+		}
 		if caseNumber != "" {
 			var caseID uuid.UUID
 			if err := h.db.QueryRowContext(ctx, `SELECT id FROM cases WHERE tenant_id = $1 AND case_number = $2`, cfg.TenantID, caseNumber).Scan(&caseID); err == nil {

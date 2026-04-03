@@ -71,7 +71,10 @@ func (h *VaultHandlers) Upload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	mimeType := header.Header.Get("Content-Type")
+	mimeType := strings.TrimSpace(r.Header.Get("X-File-Content-Type"))
+	if mimeType == "" {
+		mimeType = header.Header.Get("Content-Type")
+	}
 	if mimeType == "" {
 		mimeType = mime.TypeByExtension(strings.ToLower(filepath.Ext(header.Filename)))
 	}
