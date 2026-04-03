@@ -14,7 +14,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -588,7 +590,93 @@ func (s *Service) pgDump(ctx context.Context, dbURL, outPath string) error {
 		"--file", outPath,
 	}
 	if err := s.runCommand(ctx, s.pgDumpBin, args, details.Env()); err != nil {
+		if isPGVersionMismatchError(err) {
+			major, parseErr := extractServerMajorFromError(err)
+			if parseErr != nil {
+				return fmt.Errorf("run pg_dump: %w", err)
+			}
+			if dockerErr := s.pgDumpViaDocker(ctx, details, outPath, major); dockerErr == nil {
+				return nil
+			}
+		}
 		return fmt.Errorf("run pg_dump: %w", err)
+	}
+	return nil
+}
+
+var serverVersionRegexp = regexp.MustCompile(`server version:\s*([0-9]+)\.`)
+
+func isPGVersionMismatchError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "server version mismatch")
+}
+
+func extractServerMajorFromError(err error) (int, error) {
+	if err == nil {
+		return 0, fmt.Errorf("nil error")
+	}
+	matches := serverVersionRegexp.FindStringSubmatch(err.Error())
+	if len(matches) < 2 {
+		return 0, fmt.Errorf("server major version not found in error")
+	}
+	major, convErr := strconv.Atoi(matches[1])
+	if convErr != nil {
+		return 0, fmt.Errorf("parse server major version: %w", convErr)
+	}
+	return major, nil
+}
+
+func (s *Service) pgDumpViaDocker(ctx context.Context, details connDetails, outPath string, serverMajor int) error {
+	if serverMajor <= 0 {
+		return fmt.Errorf("invalid server major version %d", serverMajor)
+	}
+	if _, err := exec.LookPath("docker"); err != nil {
+		return fmt.Errorf("docker not available for pg_dump fallback: %w", err)
+	}
+
+	absOut, err := filepath.Abs(outPath)
+	if err != nil {
+		return fmt.Errorf("resolve absolute dump path: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(absOut), 0o755); err != nil {
+		return fmt.Errorf("create dump directory: %w", err)
+	}
+
+	outDir := filepath.Dir(absOut)
+	outFile := filepath.Base(absOut)
+
+	args := []string{
+		"run", "--rm",
+		"--network", "host",
+		"-v", fmt.Sprintf("%s:/backup", outDir),
+	}
+	if details.Password != "" {
+		args = append(args, "-e", "PGPASSWORD="+details.Password)
+	}
+
+	host := details.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+
+	args = append(args,
+		fmt.Sprintf("postgres:%d", serverMajor),
+		"pg_dump",
+		"--format=custom",
+		"--no-owner",
+		"--no-privileges",
+		"--host", host,
+		"--port", details.Port,
+		"--username", details.User,
+		"--dbname", details.DBName,
+		"--file", "/backup/"+outFile,
+	)
+
+	if err := s.runCommand(ctx, "docker", args, nil); err != nil {
+		return fmt.Errorf("run dockerized pg_dump: %w", err)
 	}
 	return nil
 }
