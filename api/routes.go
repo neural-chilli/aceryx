@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -109,9 +110,11 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
 	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
 	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
-	go vaultSvc.StartOrphanCleanupTicker(context.Background())
-	go reportingSvc.StartViewRefreshTicker(context.Background())
-	go reportingSvc.StartScheduleTicker(context.Background())
+	if shouldStartBackgroundTickers() {
+		go vaultSvc.StartOrphanCleanupTicker(context.Background())
+		go reportingSvc.StartViewRefreshTicker(context.Background())
+		go reportingSvc.StartScheduleTicker(context.Background())
+	}
 
 	authMW := middleware.AuthMiddleware(authSvc)
 	withAuth := func(h http.HandlerFunc) http.Handler {
@@ -224,6 +227,16 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func shouldStartBackgroundTickers() bool {
+	// In integration/unit tests, routers are created many times and DB handles are
+	// short-lived. Starting process-lifetime tickers there leaks goroutines and
+	// causes noisy "database is closed" churn that can destabilize CI.
+	if strings.HasSuffix(os.Args[0], ".test") {
+		return false
+	}
+	return true
 }
 
 func chainMiddlewares(next http.Handler) http.Handler {
