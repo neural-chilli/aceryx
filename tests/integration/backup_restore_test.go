@@ -206,16 +206,10 @@ func setupPostgresWithMigrationsDSN(t *testing.T) (*sql.DB, string, func()) {
 	}
 
 	dsn := fmt.Sprintf("postgres://postgres:postgres@%s:%s/aceryx?sslmode=disable", host, port.Port())
-	db, err := sql.Open("pgx", dsn)
+	db, err := openAndWaitForDB(ctx, dsn, 30*time.Second)
 	if err != nil {
 		_ = container.Terminate(ctx)
-		t.Fatalf("open db: %v", err)
-	}
-
-	if err := db.PingContext(ctx); err != nil {
-		_ = db.Close()
-		_ = container.Terminate(ctx)
-		t.Fatalf("ping db: %v", err)
+		t.Fatalf("open and wait for db: %v", err)
 	}
 
 	runner := internalmigrations.NewRunner(db)
