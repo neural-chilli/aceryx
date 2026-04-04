@@ -2,6 +2,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import PrimeVue from 'primevue/config'
 import Aura from '@primevue/themes/aura'
 import { flushPromises, mount } from '@vue/test-utils'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '../composables/useAuth'
 import CaseListView from './CaseList.vue'
@@ -9,6 +10,27 @@ import CaseListView from './CaseList.vue'
 function setViewport(width: number) {
   Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: width })
   window.dispatchEvent(new Event('resize'))
+}
+
+function mountCaseList(path = '/cases') {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/cases', component: CaseListView }],
+  })
+  return router.push(path).then(async () => {
+    await router.isReady()
+    const wrapper = mount(CaseListView, {
+      global: {
+        plugins: [createPinia(), router, [PrimeVue, { theme: { preset: Aura } }]],
+        stubs: {
+          teleport: true,
+          transition: false,
+          Dialog: true,
+        },
+      },
+    })
+    return { wrapper, router }
+  })
 }
 
 describe('Case list view', () => {
@@ -42,16 +64,7 @@ describe('Case list view', () => {
       return new Response('[]', { status: 200 })
     }))
 
-    const wrapper = mount(CaseListView, {
-      global: {
-        plugins: [[PrimeVue, { theme: { preset: Aura } }]],
-        stubs: {
-          teleport: true,
-          transition: false,
-          Dialog: true,
-        },
-      },
-    })
+    const { wrapper } = await mountCaseList('/cases')
     await flushPromises()
 
     expect(wrapper.text()).toContain('LA-000001')
@@ -73,16 +86,7 @@ describe('Case list view', () => {
       },
     ]), { status: 200 })))
 
-    const wrapper = mount(CaseListView, {
-      global: {
-        plugins: [[PrimeVue, { theme: { preset: Aura } }]],
-        stubs: {
-          teleport: true,
-          transition: false,
-          Dialog: true,
-        },
-      },
-    })
+    const { wrapper } = await mountCaseList('/cases')
     await flushPromises()
 
     expect(wrapper.find('.case-cards').exists()).toBe(true)

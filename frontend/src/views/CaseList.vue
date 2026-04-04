@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Dropdown from 'primevue/dropdown'
@@ -16,6 +16,7 @@ import { useTerminology } from '../composables/useTerminology'
 import type { DashboardCase } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const { authFetch } = useAuth()
 const { t } = useTerminology()
 const { register, unregister } = useKeyboard()
@@ -41,6 +42,45 @@ const showFilters = ref(false)
 const mobileList = ref<HTMLElement | null>(null)
 const pullStartY = ref(0)
 const pullDistance = ref(0)
+
+function parsePositiveInt(value: unknown): number | null {
+  const parsed = Number.parseInt(String(value ?? ''), 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function readQueryState() {
+  const statusRaw = String(route.query.status ?? '').trim()
+  statuses.value = statusRaw ? statusRaw.split(',').map((value) => value.trim()).filter(Boolean) : []
+  caseType.value = String(route.query.case_type ?? '').trim()
+  const assignedRaw = String(route.query.assigned_to ?? '').trim()
+  assignedTo.value = assignedRaw === 'me' || assignedRaw === 'unassigned' ? assignedRaw : 'anyone'
+  olderThanDays.value = parsePositiveInt(route.query.older_than_days)
+  priority.value = parsePositiveInt(route.query.priority)
+  search.value = String(route.query.q ?? '').trim()
+  page.value = parsePositiveInt(route.query.page) ?? 1
+  perPage.value = parsePositiveInt(route.query.per_page) ?? 25
+  const sortByRaw = String(route.query.sort_by ?? '').trim()
+  sortBy.value = sortByRaw || 'created_at'
+  const sortDirRaw = String(route.query.sort_dir ?? '').trim()
+  sortDir.value = sortDirRaw === 'asc' ? 'asc' : 'desc'
+}
+
+async function syncQuery() {
+  const query: Record<string, string> = {}
+  if (statuses.value.length > 0) query.status = statuses.value.join(',')
+  if (caseType.value) query.case_type = caseType.value
+  if (assignedTo.value !== 'anyone') query.assigned_to = assignedTo.value
+  if (olderThanDays.value) query.older_than_days = String(olderThanDays.value)
+  if (priority.value !== null) query.priority = String(priority.value)
+  if (search.value.trim()) query.q = search.value.trim()
+  query.page = String(page.value)
+  query.per_page = String(perPage.value)
+  query.sort_by = sortBy.value
+  query.sort_dir = sortDir.value
+  if (JSON.stringify(query) !== JSON.stringify(route.query)) {
+    await router.replace({ query })
+  }
+}
 
 async function load() {
   loading.value = true
@@ -76,6 +116,12 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+async function applyFilters() {
+  page.value = 1
+  await syncQuery()
+  await load()
 }
 
 function clampSelection() {
@@ -155,6 +201,7 @@ async function onPullEnd() {
 }
 
 onMounted(() => {
+  readQueryState()
   void load()
   register('j', () => moveSelection(1), 'Next case', 'case_list')
   register('k', () => moveSelection(-1), 'Previous case', 'case_list')
@@ -174,6 +221,10 @@ onUnmounted(() => {
 watch(rows, () => {
   clampSelection()
 }, { deep: true })
+
+watch(() => route.query, () => {
+  readQueryState()
+}, { deep: true })
 </script>
 
 <template>
@@ -188,7 +239,7 @@ watch(rows, () => {
       <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" />
       <InputNumber v-model="olderThanDays" placeholder="Older than days" />
       <InputNumber v-model="priority" placeholder="Priority" />
-      <Button label="Apply" @click="load" />
+      <Button label="Apply" @click="applyFilters" />
     </div>
 
     <div
@@ -228,7 +279,7 @@ watch(rows, () => {
         <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" />
         <InputNumber v-model="olderThanDays" placeholder="Older than days" />
         <InputNumber v-model="priority" placeholder="Priority" />
-        <Button label="Apply" @click="showFilters = false; load()" />
+        <Button label="Apply" @click="showFilters = false; applyFilters()" />
       </div>
     </Dialog>
   </section>
