@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -328,6 +329,86 @@ WHERE case_id=$1 AND step_id='review' AND event_type='task' AND action='escalati
 	}
 	if !hasEscalated {
 		t.Fatalf("expected task_escalated notification, got %+v", notify.events)
+	}
+}
+
+func TestTasksIntegration_CompleteTaskRollsBackOnAuditInsertFailure(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	tenantID, ownerID := seedTenantAndPrincipal(t, ctx, db, "t004-tx-rollback")
+	assigneeID := seedPrincipal(t, ctx, db, tenantID, "assignee", "assignee@rollback.local")
+
+	cfgRaw, _ := json.Marshal(map[string]any{
+		"assign_to_user": assigneeID.String(),
+		"form_schema": map[string]any{
+			"fields": []map[string]any{
+				{"id": "notes", "type": "string", "required": true},
+			},
+		},
+	})
+	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{
+		{ID: "review", Type: "human_task", Config: cfgRaw, Outcomes: map[string][]string{"approve": []string{}}},
+	}}
+	caseID := seedTaskCase(t, ctx, db, tenantID, ownerID, "rollback_case", ast)
+
+	taskSvc := tasks.NewTaskService(db, nil, nil)
+	if err := taskSvc.CreateTaskFromActivation(ctx, caseID, "review", tasks.AssignmentConfig{
+		AssignToUser: assigneeID.String(),
+		FormSchema:   tasks.FormSchema{Fields: []tasks.FormField{{ID: "notes", Type: "string", Required: true}}},
+	}); err != nil {
+		t.Fatalf("activate task: %v", err)
+	}
+
+	if _, err := db.ExecContext(ctx, `
+CREATE OR REPLACE FUNCTION fail_case_events_insert()
+RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'forced case_events failure';
+END;
+$$ LANGUAGE plpgsql
+`); err != nil {
+		t.Fatalf("create failing trigger function: %v", err)
+	}
+	defer func() {
+		_, _ = db.ExecContext(context.Background(), `DROP TRIGGER IF EXISTS case_events_force_fail ON case_events`)
+		_, _ = db.ExecContext(context.Background(), `DROP FUNCTION IF EXISTS fail_case_events_insert()`)
+	}()
+	if _, err := db.ExecContext(ctx, `
+CREATE TRIGGER case_events_force_fail
+BEFORE INSERT ON case_events
+FOR EACH ROW
+EXECUTE FUNCTION fail_case_events_insert()
+`); err != nil {
+		t.Fatalf("create failing trigger: %v", err)
+	}
+
+	err := taskSvc.CompleteTask(ctx, tenantID, assigneeID, caseID, "review", tasks.CompleteTaskRequest{
+		Outcome: "approve",
+		Data:    map[string]any{"notes": "should rollback"},
+	})
+	if err == nil {
+		t.Fatal("expected completion to fail when case_events insert fails")
+	}
+	if !strings.Contains(err.Error(), "forced case_events failure") {
+		t.Fatalf("expected forced failure in error, got %v", err)
+	}
+
+	var (
+		state     string
+		resultRaw []byte
+	)
+	if err := db.QueryRowContext(ctx, `SELECT state, COALESCE(result, '{}'::jsonb) FROM case_steps WHERE case_id=$1 AND step_id='review'`, caseID).Scan(&state, &resultRaw); err != nil {
+		t.Fatalf("load task step after failed completion: %v", err)
+	}
+	if state != engine.StateActive {
+		t.Fatalf("expected step state to remain active after rollback, got %s", state)
+	}
+	var result map[string]any
+	_ = json.Unmarshal(resultRaw, &result)
+	if _, hasOutcome := result["outcome"]; hasOutcome {
+		t.Fatalf("expected no completion result after rollback, got %#v", result)
 	}
 }
 
