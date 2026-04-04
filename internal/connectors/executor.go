@@ -142,6 +142,9 @@ WHERE c.id = $1
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("load case context: %w", err)
 	}
+	if expectedTenant := observability.TenantIDFromContext(ctx); expectedTenant != "" && expectedTenant != tenantID.String() {
+		return nil, uuid.Nil, fmt.Errorf("load case context: tenant mismatch for case %s", caseID)
+	}
 
 	caseData := map[string]any{}
 	_ = json.Unmarshal(caseDataRaw, &caseData)
@@ -150,10 +153,12 @@ WHERE c.id = $1
 
 	steps := map[string]any{}
 	rows, err := e.db.QueryContext(ctx, `
-SELECT step_id, COALESCE(result, '{}'::jsonb)
-FROM case_steps
-WHERE case_id = $1
-`, caseID)
+SELECT cs.step_id, COALESCE(cs.result, '{}'::jsonb)
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE cs.case_id = $1
+  AND c.tenant_id = $2
+`, caseID, tenantID)
 	if err != nil {
 		return nil, uuid.Nil, fmt.Errorf("load step results for template context: %w", err)
 	}
