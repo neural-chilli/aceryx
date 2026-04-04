@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -179,4 +180,84 @@ LIMIT $3
 		return nil, fmt.Errorf("iterate plugin invocations: %w", err)
 	}
 	return out, nil
+}
+
+func (s *Store) FindWorkflowsUsingPlugin(ctx context.Context, pluginID string, changes []PropertyChange) ([]WorkflowReference, error) {
+	if s == nil || s.db == nil {
+		return nil, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT w.id, w.name, wv.version, wv.ast
+FROM workflow_versions wv
+JOIN workflows w ON w.id = wv.workflow_id
+`)
+	if err != nil {
+		return nil, fmt.Errorf("query workflows for plugin impact: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	changedKeys := make(map[string]struct{})
+	for _, change := range changes {
+		switch change.Type {
+		case "removed", "renamed", "type_changed":
+			changedKeys[change.Key] = struct{}{}
+		}
+	}
+
+	out := make([]WorkflowReference, 0)
+	for rows.Next() {
+		var (
+			ref WorkflowReference
+			ast []byte
+		)
+		if err := rows.Scan(&ref.WorkflowID, &ref.WorkflowName, &ref.Version, &ast); err != nil {
+			return nil, fmt.Errorf("scan workflow impact row: %w", err)
+		}
+		if workflowUsesPluginProperties(ast, pluginID, changedKeys) {
+			out = append(out, ref)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workflow impact rows: %w", err)
+	}
+	return out, nil
+}
+
+func workflowUsesPluginProperties(ast []byte, pluginID string, keys map[string]struct{}) bool {
+	if len(ast) == 0 {
+		return false
+	}
+	var tree map[string]any
+	if err := json.Unmarshal(ast, &tree); err != nil {
+		return false
+	}
+	rawSteps, ok := tree["steps"].([]any)
+	if !ok {
+		return false
+	}
+	for _, rawStep := range rawSteps {
+		stepMap, ok := rawStep.(map[string]any)
+		if !ok {
+			continue
+		}
+		cfg, ok := stepMap["config"].(map[string]any)
+		if !ok {
+			continue
+		}
+		pluginRef, _ := cfg["plugin"].(string)
+		if strings.TrimSpace(pluginRef) == "" {
+			continue
+		}
+		ref := ParsePluginRef(pluginRef)
+		if ref.ID != pluginID {
+			continue
+		}
+		inputMap, _ := cfg["input"].(map[string]any)
+		for key := range keys {
+			if _, exists := inputMap[key]; exists {
+				return true
+			}
+		}
+	}
+	return false
 }

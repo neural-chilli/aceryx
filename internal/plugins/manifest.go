@@ -1,15 +1,6 @@
 package plugins
 
-import (
-	"crypto/sha256"
-	"encoding/hex"
-	"fmt"
-	"os"
-	"regexp"
-	"strings"
-
-	"gopkg.in/yaml.v3"
-)
+import "regexp"
 
 var pluginIDRe = regexp.MustCompile(`^[a-z][a-z0-9-]{1,63}$`)
 
@@ -35,82 +26,98 @@ var knownManifestFields = map[string]struct{}{
 	"trigger_config":   {},
 }
 
-func ParseManifest(path string) (PluginManifest, []string, string, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return PluginManifest{}, nil, "", fmt.Errorf("read manifest: %w", err)
-	}
-	hash := sha256.Sum256(raw)
-	manifestHash := hex.EncodeToString(hash[:])
+type PluginManifest struct {
+	ID       string `yaml:"id" json:"id"`
+	Name     string `yaml:"name" json:"name"`
+	Version  string `yaml:"version" json:"version"`
+	Type     string `yaml:"type" json:"type"`
+	Category string `yaml:"category" json:"category"`
 
-	meta := map[string]any{}
-	if err := yaml.Unmarshal(raw, &meta); err != nil {
-		return PluginManifest{}, nil, "", fmt.Errorf("parse manifest yaml: %w", err)
-	}
-	out := PluginManifest{}
-	if err := yaml.Unmarshal(raw, &out); err != nil {
-		return PluginManifest{}, nil, "", fmt.Errorf("decode manifest yaml: %w", err)
-	}
-	out.Metadata = meta
+	Tier     string `yaml:"tier" json:"tier"`
+	Maturity string `yaml:"maturity" json:"maturity"`
 
-	warnings := make([]string, 0)
-	for key := range meta {
-		if _, ok := knownManifestFields[key]; !ok {
-			warnings = append(warnings, fmt.Sprintf("unknown manifest field ignored: %s", key))
-		}
-	}
+	MinHostVersion string `yaml:"min_host_version" json:"min_host_version"`
+	MaxHostVersion string `yaml:"max_host_version" json:"max_host_version"`
 
-	if err := validateManifest(out); err != nil {
-		return PluginManifest{}, warnings, manifestHash, err
-	}
-	if out.Audit.HostCalls.Mode == "" {
-		out.Audit.HostCalls.Mode = "summary"
-	}
-	if out.Audit.HostCalls.MaxEntries <= 0 {
-		out.Audit.HostCalls.MaxEntries = 50
-	}
-	if out.Audit.HostCalls.SampleRate <= 0 {
-		out.Audit.HostCalls.SampleRate = 10
-	}
-	return out, warnings, manifestHash, nil
+	ToolCapable     bool   `yaml:"tool_capable" json:"tool_capable"`
+	ToolDescription string `yaml:"tool_description" json:"tool_description"`
+	ToolSafety      string `yaml:"tool_safety" json:"tool_safety"`
+
+	UI ManifestUI `yaml:"ui" json:"ui"`
+
+	HostFunctions []string `yaml:"host_functions" json:"host_functions"`
+
+	Operational *OperationalMeta `yaml:"operational" json:"operational,omitempty"`
+	Cost        *CostMeta        `yaml:"cost" json:"cost,omitempty"`
+	Audit       *AuditConfig     `yaml:"audit" json:"audit,omitempty"`
+
+	TriggerContract *TriggerContract `yaml:"trigger_contract" json:"trigger_contract,omitempty"`
+	TriggerConfig   *TriggerCfg      `yaml:"trigger_config" json:"trigger_config,omitempty"`
+
+	Metadata map[string]any `yaml:"-" json:"metadata,omitempty"`
 }
 
-func validateManifest(m PluginManifest) error {
-	required := map[string]string{
-		"id":               m.ID,
-		"name":             m.Name,
-		"version":          m.Version,
-		"type":             string(m.Type),
-		"category":         m.Category,
-		"tier":             m.Tier,
-		"maturity":         m.Maturity,
-		"min_host_version": m.MinHostVersion,
-	}
-	for field, value := range required {
-		if strings.TrimSpace(value) == "" {
-			return fmt.Errorf("manifest missing required field: %s", field)
-		}
-	}
-	if !pluginIDRe.MatchString(m.ID) {
-		return fmt.Errorf("invalid plugin id: %s", m.ID)
-	}
-	if _, err := parseSemver(m.Version); err != nil {
-		return fmt.Errorf("invalid manifest version: %w", err)
-	}
-	switch m.Type {
-	case StepPlugin, TriggerPlugin:
-	default:
-		return fmt.Errorf("invalid plugin type: %s", m.Type)
-	}
-	switch m.Tier {
-	case "open_source", "commercial":
-	default:
-		return fmt.Errorf("invalid tier: %s", m.Tier)
-	}
-	switch m.Maturity {
-	case "core", "certified", "community", "generated":
-	default:
-		return fmt.Errorf("invalid maturity: %s", m.Maturity)
-	}
-	return nil
+type ManifestUI struct {
+	IconSVG         string        `yaml:"icon_svg" json:"icon_svg"`
+	Description     string        `yaml:"description" json:"description"`
+	LongDescription string        `yaml:"long_description" json:"long_description"`
+	Properties      []PropertyDef `yaml:"properties" json:"properties"`
+}
+
+type PropertyDef struct {
+	Key        string   `yaml:"key" json:"key"`
+	Label      string   `yaml:"label" json:"label"`
+	Type       string   `yaml:"type" json:"type"`
+	Required   bool     `yaml:"required" json:"required"`
+	Default    any      `yaml:"default" json:"default,omitempty"`
+	Options    []string `yaml:"options" json:"options,omitempty"`
+	HelpText   string   `yaml:"help_text" json:"help_text"`
+	Validation string   `yaml:"validation" json:"validation"`
+}
+
+type OperationalMeta struct {
+	RetrySemantics       string        `yaml:"retry_semantics" json:"retry_semantics"`
+	TransactionGuarantee string        `yaml:"transaction_guarantee" json:"transaction_guarantee"`
+	Idempotent           bool          `yaml:"idempotent" json:"idempotent"`
+	RateLimited          bool          `yaml:"rate_limited" json:"rate_limited"`
+	RateLimitConfig      *RateLimitCfg `yaml:"rate_limit_config" json:"rate_limit_config,omitempty"`
+}
+
+type RateLimitCfg struct {
+	RequestsPerSecond float64 `yaml:"requests_per_second" json:"requests_per_second"`
+	Burst             int     `yaml:"burst" json:"burst"`
+}
+
+type CostMeta struct {
+	Level       string `yaml:"level" json:"level"`
+	BillingUnit string `yaml:"billing_unit" json:"billing_unit"`
+	Notes       string `yaml:"notes" json:"notes"`
+}
+
+type AuditConfig struct {
+	HostCalls ManifestAuditHostCalls `yaml:"host_calls" json:"host_calls"`
+}
+
+type ManifestAuditHostCalls struct {
+	Mode       string `yaml:"mode" json:"mode"`
+	MaxEntries int    `yaml:"max_entries" json:"max_entries"`
+	SampleRate int    `yaml:"sample_rate" json:"sample_rate"`
+}
+
+type TriggerContract struct {
+	Delivery    string         `yaml:"delivery" json:"delivery"`
+	State       string         `yaml:"state" json:"state"`
+	Concurrency string         `yaml:"concurrency" json:"concurrency"`
+	Ordering    string         `yaml:"ordering" json:"ordering"`
+	Checkpoint  *CheckpointCfg `yaml:"checkpoint" json:"checkpoint,omitempty"`
+}
+
+type CheckpointCfg struct {
+	Strategy   string `yaml:"strategy" json:"strategy"`
+	IntervalMS int    `yaml:"interval_ms" json:"interval_ms"`
+}
+
+type TriggerCfg struct {
+	PollingIntervalMS    int  `yaml:"polling_interval_ms" json:"polling_interval_ms"`
+	ConfigurableInterval bool `yaml:"configurable_interval" json:"configurable_interval"`
 }

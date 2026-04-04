@@ -31,14 +31,16 @@ type RuntimeConfig struct {
 }
 
 type Runtime struct {
-	mu           sync.RWMutex
-	runtime      wazero.Runtime
-	store        *Store
-	hostfns      HostFunctions
-	plugins      map[string]map[string]*Plugin
-	pluginDirs   map[string]string
-	triggerStops map[string]context.CancelFunc
-	maxHTTP      time.Duration
+	mu            sync.RWMutex
+	runtime       wazero.Runtime
+	store         *Store
+	hostfns       HostFunctions
+	registry      *PluginRegistry
+	plugins       map[string]map[string]*Plugin
+	pluginDirs    map[string]string
+	triggerStops  map[string]context.CancelFunc
+	schemaChanges map[string]SchemaChangeReport
+	maxHTTP       time.Duration
 }
 
 func NewRuntime(ctx context.Context, cfg RuntimeConfig) *Runtime {
@@ -47,13 +49,15 @@ func NewRuntime(ctx context.Context, cfg RuntimeConfig) *Runtime {
 		maxHTTP = 60 * time.Second
 	}
 	return &Runtime{
-		runtime:      wazero.NewRuntime(ctx),
-		store:        cfg.Store,
-		hostfns:      cfg.HostFunctions,
-		plugins:      make(map[string]map[string]*Plugin),
-		pluginDirs:   make(map[string]string),
-		triggerStops: make(map[string]context.CancelFunc),
-		maxHTTP:      maxHTTP,
+		runtime:       wazero.NewRuntime(ctx),
+		store:         cfg.Store,
+		hostfns:       cfg.HostFunctions,
+		registry:      NewPluginRegistry(),
+		plugins:       make(map[string]map[string]*Plugin),
+		pluginDirs:    make(map[string]string),
+		triggerStops:  make(map[string]context.CancelFunc),
+		schemaChanges: make(map[string]SchemaChangeReport),
+		maxHTTP:       maxHTTP,
 	}
 }
 
@@ -86,6 +90,17 @@ func (r *Runtime) LoadAll(pluginsDir string, licence LicenceKey) error {
 }
 
 func (r *Runtime) Load(pluginDir string, licence LicenceKey) (*Plugin, error) {
+	p, err := r.loadPluginArtifact(pluginDir, licence)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.putLoadedPlugin(p, pluginDir); err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+func (r *Runtime) loadPluginArtifact(pluginDir string, licence LicenceKey) (*Plugin, error) {
 	manifestPath := filepath.Join(pluginDir, "manifest.yaml")
 	wasmPath := filepath.Join(pluginDir, "plugin.wasm")
 	if _, err := os.Stat(manifestPath); err != nil {
@@ -120,7 +135,7 @@ func (r *Runtime) Load(pluginDir string, licence LicenceKey) (*Plugin, error) {
 		ID:           manifest.ID,
 		Name:         manifest.Name,
 		Version:      manifest.Version,
-		Type:         manifest.Type,
+		Type:         PluginType(manifest.Type),
 		Category:     manifest.Category,
 		LicenceTier:  manifest.Tier,
 		MaturityTier: manifest.Maturity,
@@ -131,9 +146,6 @@ func (r *Runtime) Load(pluginDir string, licence LicenceKey) (*Plugin, error) {
 		WASMHash:     wasmHash,
 		ManifestHash: manifestHash,
 		Status:       PluginActive,
-	}
-	if err := r.putLoadedPlugin(p, pluginDir); err != nil {
-		return nil, err
 	}
 	return p, nil
 }
@@ -148,9 +160,15 @@ func (r *Runtime) putLoadedPlugin(p *Plugin, pluginDir string) error {
 		r.plugins[p.ID] = versions
 	}
 	if _, exists := versions[p.Version]; exists {
-		return fmt.Errorf("duplicate plugin id+version detected: %s@%s", p.ID, p.Version)
+		return fmt.Errorf("duplicate plugin: %s@%s", p.ID, p.Version)
 	}
 	versions[p.Version] = p
+	if r.registry != nil {
+		if err := r.registry.Register(p); err != nil {
+			delete(versions, p.Version)
+			return err
+		}
+	}
 	r.pluginDirs[p.ID+"@"+p.Version] = pluginDir
 	r.markLatestLocked(p.ID)
 	return nil
@@ -166,6 +184,9 @@ func (r *Runtime) markLatestLocked(pluginID string) {
 	sortPluginsByVersionDesc(list)
 	if len(list) > 0 {
 		list[0].IsLatest = true
+	}
+	if r.registry != nil {
+		r.registry.UpdateLatest(pluginID)
 	}
 	ctx := context.Background()
 	for _, p := range list {
@@ -188,6 +209,9 @@ func (r *Runtime) Unload(ref PluginRef) error {
 	}
 	if ref.Version == "" {
 		delete(r.plugins, ref.ID)
+		if r.registry != nil {
+			_ = r.registry.Unregister(PluginRef{ID: ref.ID})
+		}
 		for key := range r.pluginDirs {
 			if strings.HasPrefix(key, ref.ID+"@") {
 				delete(r.pluginDirs, key)
@@ -202,6 +226,9 @@ func (r *Runtime) Unload(ref PluginRef) error {
 		return fmt.Errorf("%w: %s@%s", ErrPluginNotLoaded, ref.ID, ref.Version)
 	}
 	delete(versions, ref.Version)
+	if r.registry != nil {
+		_ = r.registry.Unregister(PluginRef{ID: ref.ID, Version: ref.Version})
+	}
 	delete(r.pluginDirs, ref.ID+"@"+ref.Version)
 	if len(versions) == 0 {
 		delete(r.plugins, ref.ID)
@@ -227,16 +254,40 @@ func (r *Runtime) Reload(ref PluginRef) error {
 	if dir == "" {
 		return fmt.Errorf("plugin source directory unknown for %s", key)
 	}
-	loaded, err := r.Load(dir, AllowAllLicence{})
+	loaded, err := r.loadPluginArtifact(dir, AllowAllLicence{})
 	if err != nil {
 		return fmt.Errorf("reload %s failed; old module preserved: %w", key, err)
 	}
-	if loaded.Version != current.Version {
-		return nil
+	changes := DetectSchemaChanges(current.Manifest.UI.Properties, loaded.Manifest.UI.Properties)
+
+	if err := r.Unload(PluginRef{ID: current.ID, Version: current.Version}); err != nil {
+		return fmt.Errorf("unload %s before reload: %w", key, err)
 	}
-	_ = r.Unload(PluginRef{ID: current.ID, Version: current.Version})
-	_, err = r.Load(dir, AllowAllLicence{})
-	return err
+	if err := r.putLoadedPlugin(loaded, dir); err != nil {
+		_ = r.putLoadedPlugin(current, dir)
+		return fmt.Errorf("register %s after reload: %w", key, err)
+	}
+
+	if len(changes) > 0 {
+		for _, change := range changes {
+			slog.Warn("plugin schema change detected", "plugin_id", loaded.ID, "old_version", current.Version, "new_version", loaded.Version, "change_type", change.Type, "key", change.Key, "message", change.Message)
+		}
+		affected, impactErr := r.schemaImpact(loaded.ID, changes)
+		if impactErr != nil {
+			slog.Warn("plugin schema impact query failed", "plugin_id", loaded.ID, "error", impactErr)
+		}
+		r.storeSchemaChange(SchemaChangeReport{
+			SchemaChange: SchemaChange{
+				PluginID:   loaded.ID,
+				OldVersion: current.Version,
+				NewVersion: loaded.Version,
+				Changes:    changes,
+			},
+			AffectedWorkflows: affected,
+			RecordedAt:        time.Now().UTC(),
+		})
+	}
+	return nil
 }
 
 func (r *Runtime) ExecuteStep(ctx context.Context, ref PluginRef, input StepInput) (StepResult, error) {
@@ -467,72 +518,35 @@ func (r *Runtime) StopTrigger(ref PluginRef) error {
 }
 
 func (r *Runtime) List() []*Plugin {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	out := make([]*Plugin, 0)
-	for _, versions := range r.plugins {
-		for _, p := range versions {
-			out = append(out, clonePlugin(p))
-		}
+	if r.registry == nil {
+		return nil
 	}
-	sortPluginsByVersionDesc(out)
-	return out
+	return r.registry.All()
 }
 
 func (r *Runtime) Get(ref PluginRef) (*Plugin, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	versions, ok := r.plugins[ref.ID]
-	if !ok {
-		if ref.Version == "" {
-			return nil, fmt.Errorf("%w: %s", ErrPluginNotLoaded, ref.ID)
-		}
-		return nil, fmt.Errorf("%w: %s@%s", ErrPluginNotLoaded, ref.ID, ref.Version)
+	if r.registry == nil {
+		return nil, fmt.Errorf("%w: %s", ErrPluginNotLoaded, ref.ID)
 	}
-	if ref.Version != "" {
-		p, ok := versions[ref.Version]
-		if !ok {
-			return nil, fmt.Errorf("plugin %s@%s not loaded", ref.ID, ref.Version)
-		}
-		return clonePlugin(p), nil
-	}
-	var latest *Plugin
-	for _, p := range versions {
-		if p.IsLatest {
-			latest = p
-			break
-		}
-	}
-	if latest == nil {
-		return nil, fmt.Errorf("plugin %s not loaded", ref.ID)
-	}
-	return clonePlugin(latest), nil
+	return r.registry.ByRef(ref)
 }
 
 func (r *Runtime) ListVersions(pluginID string) ([]*Plugin, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	versions, ok := r.plugins[pluginID]
-	if !ok {
+	if r.registry == nil {
 		return nil, fmt.Errorf("%w: %s", ErrPluginNotLoaded, pluginID)
 	}
-	out := make([]*Plugin, 0, len(versions))
-	for _, p := range versions {
-		out = append(out, clonePlugin(p))
-	}
-	sortPluginsByVersionDesc(out)
-	return out, nil
+	return r.registry.ListVersions(pluginID)
 }
 
 func (r *Runtime) SetStatus(pluginID string, status PluginStatus) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	versions, ok := r.plugins[pluginID]
-	if !ok {
+	if r.registry == nil {
 		return fmt.Errorf("%w: %s", ErrPluginNotLoaded, pluginID)
 	}
+	if err := r.registry.SetStatus(pluginID, status); err != nil {
+		return err
+	}
+	versions, _ := r.registry.ListVersions(pluginID)
 	for _, p := range versions {
-		p.Status = status
 		if r.store != nil {
 			_ = r.store.UpsertPlugin(context.Background(), p)
 		}
@@ -549,4 +563,18 @@ func clonePlugin(p *Plugin) *Plugin {
 	}
 	cp := *p
 	return &cp
+}
+
+func (r *Runtime) validateHostFunctionCall(plugin *Plugin, functionName string) error {
+	if plugin == nil {
+		return fmt.Errorf("plugin is nil")
+	}
+	for _, declared := range plugin.Manifest.HostFunctions {
+		if declared == functionName {
+			return nil
+		}
+	}
+	err := fmt.Errorf("undeclared host function: %s", functionName)
+	slog.Warn("blocked host function call", "plugin_id", plugin.ID, "plugin_version", plugin.Version, "function", functionName, "error", err)
+	return err
 }

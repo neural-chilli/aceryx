@@ -78,3 +78,20 @@ func TestRuntimeExecuteStep(t *testing.T) {
 		t.Fatalf("unexpected status: %s", out.Status)
 	}
 }
+
+func TestValidateHostFunctionCall(t *testing.T) {
+	rt := NewRuntime(context.Background(), RuntimeConfig{})
+	p := &Plugin{
+		ID:      "test-plugin",
+		Version: "1.0.0",
+		Manifest: PluginManifest{
+			HostFunctions: []string{"host_http_request", "host_log"},
+		},
+	}
+	if err := rt.validateHostFunctionCall(p, "host_http_request"); err != nil {
+		t.Fatalf("expected declared function to pass, got %v", err)
+	}
+	if err := rt.validateHostFunctionCall(p, "host_secret_get"); err == nil || err.Error() != "undeclared host function: host_secret_get" {
+		t.Fatalf("expected undeclared function error, got %v", err)
+	}
+}

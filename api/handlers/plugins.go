@@ -143,6 +143,49 @@ func (h *PluginHandlers) Invocations(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, items)
 }
 
+func (h *PluginHandlers) StepPalette(w http.ResponseWriter, _ *http.Request) {
+	if h.Runtime == nil {
+		writeJSON(w, http.StatusOK, []plugins.PaletteCategory{})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.Runtime.StepPalette())
+}
+
+func (h *PluginHandlers) ToolPalette(w http.ResponseWriter, _ *http.Request) {
+	if h.Runtime == nil {
+		writeJSON(w, http.StatusOK, []plugins.PaletteCategory{})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.Runtime.ToolPalette())
+}
+
+func (h *PluginHandlers) Search(w http.ResponseWriter, r *http.Request) {
+	if h.Runtime == nil {
+		writeJSON(w, http.StatusOK, []*plugins.Plugin{})
+		return
+	}
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	writeJSON(w, http.StatusOK, h.Runtime.Search(query))
+}
+
+func (h *PluginHandlers) SchemaChanges(w http.ResponseWriter, r *http.Request) {
+	if h.Runtime == nil {
+		writeError(w, http.StatusNotFound, "plugin_not_found")
+		return
+	}
+	pluginID := strings.TrimSpace(r.PathValue("id"))
+	if pluginID == "" {
+		writeError(w, http.StatusBadRequest, "invalid_plugin_id")
+		return
+	}
+	report, ok := h.Runtime.LastSchemaChange(pluginID)
+	if !ok {
+		writeError(w, http.StatusNotFound, "schema_change_not_found")
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
 func parseRefFromRequest(r *http.Request) (plugins.PluginRef, error) {
 	id := strings.TrimSpace(r.PathValue("id"))
 	if id == "" {

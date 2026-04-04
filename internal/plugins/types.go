@@ -63,31 +63,6 @@ const (
 	PluginError    PluginStatus = "error"
 )
 
-type PluginManifest struct {
-	ID             string         `yaml:"id" json:"id"`
-	Name           string         `yaml:"name" json:"name"`
-	Version        string         `yaml:"version" json:"version"`
-	Type           PluginType     `yaml:"type" json:"type"`
-	Category       string         `yaml:"category" json:"category"`
-	Tier           string         `yaml:"tier" json:"tier"`
-	Maturity       string         `yaml:"maturity" json:"maturity"`
-	MinHostVersion string         `yaml:"min_host_version" json:"min_host_version"`
-	ToolCapable    bool           `yaml:"tool_capable" json:"tool_capable"`
-	ToolSafety     string         `yaml:"tool_safety" json:"tool_safety"`
-	Audit          ManifestAudit  `yaml:"audit" json:"audit"`
-	Metadata       map[string]any `yaml:"-" json:"metadata,omitempty"`
-}
-
-type ManifestAudit struct {
-	HostCalls ManifestAuditHostCalls `yaml:"host_calls" json:"host_calls"`
-}
-
-type ManifestAuditHostCalls struct {
-	Mode       string `yaml:"mode" json:"mode"`
-	MaxEntries int    `yaml:"max_entries" json:"max_entries"`
-	SampleRate int    `yaml:"sample_rate" json:"sample_rate"`
-}
-
 type Plugin struct {
 	ID           string
 	Name         string
@@ -175,4 +150,8 @@ type PluginRuntime interface {
 	List() []*Plugin
 	Get(ref PluginRef) (*Plugin, error)
 	ListVersions(pluginID string) ([]*Plugin, error)
+	StepPalette() []PaletteCategory
+	ToolPalette() []PaletteCategory
+	Search(query string) []*Plugin
+	LastSchemaChange(pluginID string) (SchemaChangeReport, bool)
 }
