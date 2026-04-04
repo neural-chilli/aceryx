@@ -107,8 +107,20 @@ function renderMarkdown(input: string): string {
     .replace(/^# (.+)$/gm, '<h1>$1</h1>')
     .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
     .replace(/\*(.+?)\*/g, '<em>$1</em>')
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_match, text, href) => {
+      const safeHref = sanitizeLinkHref(String(href))
+      return `<a href="${safeHref}" target="_blank" rel="noopener noreferrer">${text}</a>`
+    })
     .replace(/\n/g, '<br />')
+}
+
+function sanitizeLinkHref(href: string): string {
+  const value = href.trim()
+  const lowered = value.toLowerCase()
+  if (lowered.startsWith('http://') || lowered.startsWith('https://')) {
+    return value
+  }
+  return '#'
 }
 
 const markdownHTML = computed(() => renderMarkdown(selectedContent.value))

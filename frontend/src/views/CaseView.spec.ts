@@ -245,6 +245,48 @@ describe('CaseView document panel', () => {
     expect(confirmSpy).toHaveBeenCalledOnce()
   })
 
+  it('sanitizes markdown links with unsafe protocols', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input)
+        if (url.startsWith('/tasks/case-1/review') && (!init?.method || init.method === 'GET')) {
+          return new Response(JSON.stringify(defaultTaskPayload()), { status: 200 })
+        }
+        if (url === '/cases/case-1/documents' && (!init?.method || init.method === 'GET')) {
+          return new Response(JSON.stringify([
+            {
+              id: 'doc-md',
+              case_id: 'case-1',
+              filename: 'notes.md',
+              mime_type: 'text/markdown',
+              size_bytes: 64,
+              uploaded_by: 'p1',
+              uploaded_at: '2026-03-30T00:00:00Z',
+              display_mode: 'inline',
+            },
+          ]), { status: 200 })
+        }
+        if (url.includes('/documents/doc-md')) {
+          return new Response('[click](javascript:alert(1))', { status: 200, headers: { 'Content-Type': 'text/markdown' } })
+        }
+        return new Response('{}', { status: 200 })
+      }),
+    )
+
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    const openButton = wrapper.findAll('button').find((b) => b.text() === 'Open')
+    expect(openButton).toBeTruthy()
+    await openButton!.trigger('click')
+    await flushPromises()
+
+    const link = wrapper.find('[data-testid="markdown-preview"] a')
+    expect(link.exists()).toBe(true)
+    expect(link.attributes('href')).toBe('#')
+  })
+
   it('uses terminology overrides for document labels', async () => {
     installFetchMock([])
     const pinia = createPinia()
