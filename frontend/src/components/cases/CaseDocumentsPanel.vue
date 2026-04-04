@@ -4,6 +4,7 @@ import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Message from 'primevue/message'
+import Papa from 'papaparse'
 import { useAuth } from '../../composables/useAuth'
 import { useBreakpoint } from '../../composables/useBreakpoint'
 import { useTerminology } from '../../composables/useTerminology'
@@ -83,23 +84,17 @@ function resetPreviewState() {
 }
 
 function parseCSV(text: string) {
-  const lines = text.split(/\r?\n/).filter((line) => line.trim() !== '')
-  if (lines.length === 0) {
+  const parsed = Papa.parse<Record<string, string>>(text, {
+    header: true,
+    skipEmptyLines: true,
+  })
+  if (parsed.errors.length > 0 || !parsed.meta.fields) {
     csvColumns.value = []
     csvRows.value = []
     return
   }
-  const headers = lines[0].split(',').map((h) => h.trim())
-  const rows = lines.slice(1).map((line) => {
-    const values = line.split(',')
-    const row: Record<string, string> = {}
-    headers.forEach((header, index) => {
-      row[header] = (values[index] ?? '').trim()
-    })
-    return row
-  })
-  csvColumns.value = headers
-  csvRows.value = rows
+  csvColumns.value = parsed.meta.fields
+  csvRows.value = parsed.data
 }
 
 function escapeHTML(input: string): string {

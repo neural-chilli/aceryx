@@ -13,8 +13,10 @@
   },
   "dependencies": {
     "@primevue/themes": "^4.4.1",
+    "@types/papaparse": "^5.5.2",
     "@vue-flow/core": "^1.48.2",
     "chart.js": "^4.5.1",
+    "papaparse": "^5.5.3",
     "pinia": "^3.0.4",
     "primeicons": "^7.0.0",
     "primevue": "^4.4.1",
