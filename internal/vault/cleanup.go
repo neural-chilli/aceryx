@@ -1,0 +1,87 @@
+package vault
+
+import (
+	"context"
+	"fmt"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+func (s *Service) OrphanCleanup(ctx context.Context, tenantID *uuid.UUID) (int, int64, error) {
+	query := `
+SELECT DISTINCT vd1.tenant_id, vd1.content_hash, vd1.storage_uri
+FROM vault_documents vd1
+WHERE vd1.deleted_at IS NOT NULL
+`
+	args := []any{}
+	if tenantID != nil {
+		query += ` AND vd1.tenant_id = $1`
+		args = append(args, *tenantID)
+	}
+	if tenantID != nil {
+		query += ` AND NOT EXISTS (
+  SELECT 1 FROM vault_documents vd2
+  WHERE vd2.content_hash = vd1.content_hash
+    AND vd2.tenant_id = vd1.tenant_id
+    AND vd2.deleted_at IS NULL
+)`
+	} else {
+		query += ` AND NOT EXISTS (
+  SELECT 1 FROM vault_documents vd2
+  WHERE vd2.content_hash = vd1.content_hash
+    AND vd2.tenant_id = vd1.tenant_id
+    AND vd2.deleted_at IS NULL
+)`
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return 0, 0, fmt.Errorf("query orphan documents: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	type orphan struct {
+		TenantID    uuid.UUID
+		ContentHash string
+		StorageURI  string
+	}
+	orphans := make([]orphan, 0)
+	for rows.Next() {
+		var o orphan
+		if err := rows.Scan(&o.TenantID, &o.ContentHash, &o.StorageURI); err != nil {
+			return 0, 0, fmt.Errorf("scan orphan row: %w", err)
+		}
+		orphans = append(orphans, o)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, fmt.Errorf("iterate orphan rows: %w", err)
+	}
+
+	filesDeleted := 0
+	var bytesDeleted int64
+	for _, o := range orphans {
+		if data, err := s.store.Get(o.StorageURI); err == nil {
+			bytesDeleted += int64(len(data))
+		}
+		_ = s.store.Delete(o.StorageURI)
+		if _, err := s.db.ExecContext(ctx, `DELETE FROM vault_documents WHERE tenant_id = $1 AND content_hash = $2 AND deleted_at IS NOT NULL`, o.TenantID, o.ContentHash); err != nil {
+			return filesDeleted, bytesDeleted, fmt.Errorf("delete orphan metadata rows: %w", err)
+		}
+		filesDeleted++
+	}
+	return filesDeleted, bytesDeleted, nil
+}
+
+func (s *Service) StartOrphanCleanupTicker(ctx context.Context) {
+	ticker := time.NewTicker(s.cleanupInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			_, _, _ = s.OrphanCleanup(ctx, nil)
+		case <-ctx.Done():
+			return
+		}
+	}
+}
