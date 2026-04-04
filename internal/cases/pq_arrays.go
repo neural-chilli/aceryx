@@ -3,7 +3,13 @@ package cases
 import (
 	"database/sql/driver"
 	"strings"
+
+	"github.com/google/uuid"
 )
+
+type pqStringArray []string
+
+type pqUUIDArray []uuid.UUID
 
 func (a pqStringArray) Value() (driver.Value, error) {
 	if len(a) == 0 {
