@@ -98,6 +98,9 @@ VALUES ($1, $2, 'doc.txt', 'text/plain', $3, repeat('a',64), $4, $5)
 	if _, err := db.ExecContext(ctx, `DELETE FROM vault_documents`); err != nil {
 		t.Fatalf("delete vault metadata: %v", err)
 	}
+	if _, err := db.ExecContext(ctx, `DELETE FROM case_events`); err != nil {
+		t.Fatalf("delete case events: %v", err)
+	}
 	if _, err := db.ExecContext(ctx, `DELETE FROM cases`); err != nil {
 		t.Fatalf("delete cases: %v", err)
 	}

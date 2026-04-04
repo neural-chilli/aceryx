@@ -108,7 +108,6 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 			LLMClient:    agents.NewLLMClientFromEnv(120 * time.Second),
 			AuditService: auditSvc,
 		}))
-		eng.SetAuditService(auditSvc)
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
 	tenantSvc := tenants.NewTenantService(db)
