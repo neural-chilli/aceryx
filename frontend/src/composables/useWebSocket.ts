@@ -47,9 +47,8 @@ function connect() {
   }
 
   intentionalClose = false
-  const params = new URLSearchParams({ token: token.value })
-  const url = backendWSURL('/ws', params)
-  socket = new WebSocket(url)
+  const url = backendWSURL('/ws', new URLSearchParams())
+  socket = new WebSocket(url, ['aceryx.v1', `bearer.${token.value}`])
 
   socket.onopen = () => {
     retries = 0

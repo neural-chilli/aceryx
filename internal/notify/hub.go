@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,13 +41,7 @@ func NewHub(db *sql.DB, validate TokenValidator) *Hub {
 }
 
 func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		hdr := r.Header.Get("Authorization")
-		if len(hdr) > 7 && hdr[:7] == "Bearer " {
-			token = hdr[7:]
-		}
-	}
+	token := websocketTokenFromRequest(r)
 	if h.validate == nil || token == "" {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -64,6 +59,23 @@ func (h *Hub) HandleWS(w http.ResponseWriter, r *http.Request) {
 	h.add(principalID, tenantID, conn)
 
 	go h.readLoop(conn)
+}
+
+func websocketTokenFromRequest(r *http.Request) string {
+	for _, protocol := range strings.Split(r.Header.Get("Sec-WebSocket-Protocol"), ",") {
+		token := strings.TrimSpace(protocol)
+		if token == "" {
+			continue
+		}
+		if strings.HasPrefix(token, "bearer.") {
+			return strings.TrimPrefix(token, "bearer.")
+		}
+	}
+	hdr := strings.TrimSpace(r.Header.Get("Authorization"))
+	if len(hdr) > 7 && strings.HasPrefix(hdr, "Bearer ") {
+		return strings.TrimSpace(hdr[7:])
+	}
+	return ""
 }
 
 func (h *Hub) readLoop(conn *websocket.Conn) {

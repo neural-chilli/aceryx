@@ -26,17 +26,16 @@ func TestHubWebSocketValidationAndSend(t *testing.T) {
 	defer srv.Close()
 
 	u, _ := url.Parse(srv.URL)
-	wsURL := "ws://" + u.Host + "/ws?token=valid-token"
+	wsURL := "ws://" + u.Host + "/ws"
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Subprotocols: []string{"aceryx.v1", "bearer.valid-token"}})
 	if err != nil {
 		t.Fatalf("dial valid websocket: %v", err)
 	}
 	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "bye") }()
 
-	invalidURL := "ws://" + u.Host + "/ws?token=invalid"
-	if _, _, err := websocket.Dial(ctx, invalidURL, nil); err == nil {
+	if _, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Subprotocols: []string{"aceryx.v1", "bearer.invalid"}}); err == nil {
 		t.Fatal("expected invalid websocket token to fail")
 	}
 
@@ -64,16 +63,16 @@ func TestHubMultipleConnectionsAndCleanup(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(hub.HandleWS))
 	defer srv.Close()
 	u, _ := url.Parse(srv.URL)
-	wsURL := "ws://" + u.Host + "/ws?token=ok"
+	wsURL := "ws://" + u.Host + "/ws"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	conn1, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn1, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Subprotocols: []string{"aceryx.v1", "bearer.ok"}})
 	if err != nil {
 		t.Fatalf("dial websocket conn1: %v", err)
 	}
 	defer func() { _ = conn1.Close(websocket.StatusNormalClosure, "bye") }()
-	conn2, _, err := websocket.Dial(ctx, wsURL, nil)
+	conn2, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{Subprotocols: []string{"aceryx.v1", "bearer.ok"}})
 	if err != nil {
 		t.Fatalf("dial websocket conn2: %v", err)
 	}
