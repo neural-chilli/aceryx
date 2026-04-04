@@ -79,6 +79,19 @@ func TestHubMultipleConnectionsAndCleanup(t *testing.T) {
 	}
 	defer func() { _ = conn2.Close(websocket.StatusNormalClosure, "bye") }()
 
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer waitCancel()
+	for {
+		if hub.TotalConnections() >= 2 {
+			break
+		}
+		select {
+		case <-waitCtx.Done():
+			t.Fatalf("expected 2 websocket connections, got %d", hub.TotalConnections())
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+
 	if err := hub.Send(principalID, map[string]any{"type": "task_update", "action": "created"}); err != nil {
 		t.Fatalf("hub send both: %v", err)
 	}
