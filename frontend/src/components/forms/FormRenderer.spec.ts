@@ -21,7 +21,16 @@ function baseSchema(fields: FieldDef[], actions: Action[] = [{ label: 'Approve',
   }
 }
 
-function mountRenderer(schema: FormSchema, opts?: { caseData?: Record<string, unknown>; stepResults?: Record<string, unknown>; draftData?: Record<string, unknown> }) {
+function mountRenderer(
+  schema: FormSchema,
+  opts?: {
+    caseData?: Record<string, unknown>
+    stepResults?: Record<string, unknown>
+    draftData?: Record<string, unknown>
+    locale?: string
+    currencyCode?: string
+  },
+) {
   return mount(FormRenderer, {
     props: {
       schema,
@@ -30,6 +39,8 @@ function mountRenderer(schema: FormSchema, opts?: { caseData?: Record<string, un
       draftData: opts?.draftData,
       caseId: 'case-1',
       stepId: 'step-1',
+      locale: opts?.locale,
+      currencyCode: opts?.currencyCode,
     },
     global: {
       plugins: [createPinia(), [PrimeVue, { theme: { preset: Aura } }]],
@@ -217,5 +228,26 @@ describe('FormRenderer', () => {
     )
     await flushPromises()
     expect(wrapper.text()).toContain('Draft saved at')
+  })
+
+  it('uses configurable locale and currency for currency fields', async () => {
+    const wrapper = mountRenderer(
+      baseSchema([{ bind: 'decision.amount', label: 'Amount', type: 'currency' }]),
+      { locale: 'en-US', currencyCode: 'usd' },
+    )
+    await flushPromises()
+    const currencyInput = wrapper.findAllComponents(InputNumber)[0]
+    expect(currencyInput.props('locale')).toBe('en-US')
+    expect(currencyInput.props('currency')).toBe('USD')
+  })
+
+  it('falls back to case currency when explicit currency is not provided', async () => {
+    const wrapper = mountRenderer(
+      baseSchema([{ bind: 'decision.amount', label: 'Amount', type: 'currency' }]),
+      { caseData: { currency: 'eur' } },
+    )
+    await flushPromises()
+    const currencyInput = wrapper.findAllComponents(InputNumber)[0]
+    expect(currencyInput.props('currency')).toBe('EUR')
   })
 })

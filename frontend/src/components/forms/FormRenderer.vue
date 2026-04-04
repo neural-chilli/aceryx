@@ -34,6 +34,8 @@ const props = defineProps<{
   caseId: string
   stepId: string
   primaryShortcutHint?: string
+  locale?: string
+  currencyCode?: string
 }>()
 
 const emit = defineEmits<{
@@ -71,6 +73,27 @@ const bindingContext = computed(() => ({
   },
   case_type: (props.caseData as Record<string, unknown>).case_type ?? {},
 }))
+
+const currencyLocale = computed(() => {
+  if (props.locale && props.locale.trim().length > 0) {
+    return props.locale
+  }
+  if (typeof navigator !== 'undefined' && navigator.language) {
+    return navigator.language
+  }
+  return 'en-GB'
+})
+
+const currencyCode = computed(() => {
+  if (props.currencyCode && /^[A-Za-z]{3}$/.test(props.currencyCode.trim())) {
+    return props.currencyCode.trim().toUpperCase()
+  }
+  const caseCurrency = (props.caseData.currency ?? props.caseData.currency_code)
+  if (typeof caseCurrency === 'string' && /^[A-Za-z]{3}$/.test(caseCurrency.trim())) {
+    return caseCurrency.trim().toUpperCase()
+  }
+  return 'GBP'
+})
 
 function fieldValue(field: FieldDef): unknown {
   if (field.readonly) {
@@ -307,8 +330,8 @@ defineExpose({
           v-else-if="fieldType(field) === 'currency'"
           :input-id="decisionKey(field)"
           mode="currency"
-          currency="GBP"
-          locale="en-GB"
+          :currency="currencyCode"
+          :locale="currencyLocale"
           :model-value="asNumber(fieldValue(field))"
           :min="field.min"
           :max="field.max"
