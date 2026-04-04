@@ -81,10 +81,7 @@ func TestHubMultipleConnectionsAndCleanup(t *testing.T) {
 
 	waitCtx, waitCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer waitCancel()
-	for {
-		if hub.TotalConnections() >= 2 {
-			break
-		}
+	for hub.TotalConnections() < 2 {
 		select {
 		case <-waitCtx.Done():
 			t.Fatalf("expected 2 websocket connections, got %d", hub.TotalConnections())
