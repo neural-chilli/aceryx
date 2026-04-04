@@ -385,14 +385,17 @@ WHERE id = $1
 		return TenantBranding{}, nil, err
 	}
 	branding := defaultBranding()
-	_ = json.Unmarshal(brandingRaw, &branding)
+	if err := json.Unmarshal(brandingRaw, &branding); err != nil {
+		return TenantBranding{}, nil, fmt.Errorf("decode tenant branding: %w", err)
+	}
 	terms := defaultTerminology()
 	rawTerms := map[string]string{}
-	if err := json.Unmarshal(termsRaw, &rawTerms); err == nil {
-		for k, v := range rawTerms {
-			if strings.TrimSpace(v) != "" {
-				terms[k] = v
-			}
+	if err := json.Unmarshal(termsRaw, &rawTerms); err != nil {
+		return TenantBranding{}, nil, fmt.Errorf("decode tenant terminology: %w", err)
+	}
+	for k, v := range rawTerms {
+		if strings.TrimSpace(v) != "" {
+			terms[k] = v
 		}
 	}
 	ensureTerminologyVariants(terms)

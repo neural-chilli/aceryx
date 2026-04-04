@@ -65,7 +65,9 @@ func (c *Connector) callChatPostMessage(ctx context.Context, base string, token 
 		return nil, fmt.Errorf("slack api status %d: %s", status, string(body))
 	}
 	out := map[string]any{}
-	_ = json.Unmarshal(body, &out)
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("decode slack response: %w", err)
+	}
 	if ok, _ := out["ok"].(bool); !ok {
 		return nil, fmt.Errorf("slack api error: %v", out["error"])
 	}

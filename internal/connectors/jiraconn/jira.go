@@ -91,7 +91,9 @@ func (c *Connector) call(ctx context.Context, auth map[string]string, method str
 		return nil, fmt.Errorf("jira api status %d: %s", status, string(body))
 	}
 	out := map[string]any{}
-	_ = json.Unmarshal(body, &out)
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("decode jira response: %w", err)
+	}
 	if len(out) == 0 {
 		out["status"] = status
 	}

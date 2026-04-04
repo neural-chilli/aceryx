@@ -31,7 +31,9 @@ RETURNING id, tenant_id, created_by, name, COALESCE(description,''), COALESCE(or
 	if err != nil {
 		return SavedReport{}, fmt.Errorf("insert saved report: %w", err)
 	}
-	_ = json.Unmarshal(colsRaw, &out.Columns)
+	if err := json.Unmarshal(colsRaw, &out.Columns); err != nil {
+		return SavedReport{}, fmt.Errorf("decode saved report columns: %w", err)
+	}
 	return out, nil
 }
 
@@ -74,7 +76,9 @@ WHERE tenant_id = $1
 		if err := rows.Scan(&item.ID, &item.TenantID, &item.CreatedBy, &item.Name, &item.Description, &item.OriginalQuestion, &item.QuerySQL, &item.Visualisation, &raw, &item.Parameters, &item.IsPublished, &item.Pinned, &item.Schedule, &item.Recipients, &item.CreatedAt, &item.UpdatedAt, &item.LastRunAt); err != nil {
 			return nil, err
 		}
-		_ = json.Unmarshal(raw, &item.Columns)
+		if err := json.Unmarshal(raw, &item.Columns); err != nil {
+			return nil, fmt.Errorf("decode saved report columns %s: %w", item.ID, err)
+		}
 		out = append(out, item)
 	}
 	return out, rows.Err()
@@ -93,7 +97,9 @@ WHERE tenant_id = $1 AND id = $2
 	if err != nil {
 		return SavedReport{}, err
 	}
-	_ = json.Unmarshal(raw, &item.Columns)
+	if err := json.Unmarshal(raw, &item.Columns); err != nil {
+		return SavedReport{}, fmt.Errorf("decode saved report columns %s: %w", item.ID, err)
+	}
 	return item, nil
 }
 

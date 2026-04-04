@@ -78,7 +78,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	payload := map[string]any{}
-	_ = json.Unmarshal(body, &payload)
+	if err := json.Unmarshal(body, &payload); err != nil {
+		http.Error(w, "invalid json body", http.StatusBadRequest)
+		return
+	}
 
 	if cfg.SignatureHeader != "" && cfg.SignatureSecretKey != "" {
 		secret, serr := h.secrets.Get(r.Context(), cfg.TenantID, cfg.SignatureSecretKey)

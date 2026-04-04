@@ -247,7 +247,9 @@ func formatEventText(eventType, action, actorName, caseNumber, stepID, stepLabel
 	case "task.completed":
 		outcome := ""
 		var raw map[string]any
-		_ = json.Unmarshal(metadata, &raw)
+		if err := json.Unmarshal(metadata, &raw); err != nil {
+			raw = nil
+		}
 		if v, ok := raw["outcome"].(string); ok && strings.TrimSpace(v) != "" {
 			outcome = strings.ToLower(strings.TrimSpace(v))
 		}
@@ -258,7 +260,9 @@ func formatEventText(eventType, action, actorName, caseNumber, stepID, stepLabel
 	case "agent.completed":
 		conf := ""
 		var raw map[string]any
-		_ = json.Unmarshal(metadata, &raw)
+		if err := json.Unmarshal(metadata, &raw); err != nil {
+			raw = nil
+		}
 		if v, ok := raw["confidence"].(float64); ok {
 			conf = fmt.Sprintf(" (confidence: %.2f)", v)
 		}
@@ -311,7 +315,9 @@ func (s *Service) loadTerminology(ctx context.Context, tenantID uuid.UUID) (map[
 		"tasks": "tasks",
 	}
 	existing := map[string]string{}
-	_ = json.Unmarshal(raw, &existing)
+	if err := json.Unmarshal(raw, &existing); err != nil {
+		return nil, fmt.Errorf("decode terminology: %w", err)
+	}
 	for k, v := range existing {
 		if strings.TrimSpace(v) != "" {
 			out[k] = v

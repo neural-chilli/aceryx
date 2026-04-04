@@ -41,9 +41,15 @@ WHERE id = $1
 	if err != nil {
 		return Tenant{}, err
 	}
-	_ = json.Unmarshal(brandingRaw, &t.Branding)
-	_ = json.Unmarshal(terminologyRaw, &t.Terminology)
-	_ = json.Unmarshal(settingsRaw, &t.Settings)
+	if err := json.Unmarshal(brandingRaw, &t.Branding); err != nil {
+		return Tenant{}, fmt.Errorf("decode tenant branding: %w", err)
+	}
+	if err := json.Unmarshal(terminologyRaw, &t.Terminology); err != nil {
+		return Tenant{}, fmt.Errorf("decode tenant terminology: %w", err)
+	}
+	if err := json.Unmarshal(settingsRaw, &t.Settings); err != nil {
+		return Tenant{}, fmt.Errorf("decode tenant settings: %w", err)
+	}
 	t.Terminology = ResolveTerminology(t.Terminology)
 	return t, nil
 }
@@ -116,7 +122,9 @@ func (s *TenantService) GetTerminology(ctx context.Context, tenantID uuid.UUID) 
 		return nil, err
 	}
 	terms := Terminology{}
-	_ = json.Unmarshal(raw, &terms)
+	if err := json.Unmarshal(raw, &terms); err != nil {
+		return nil, fmt.Errorf("decode terminology: %w", err)
+	}
 	return ResolveTerminology(terms), nil
 }
 
@@ -137,7 +145,9 @@ func (s *TenantService) GetSettings(ctx context.Context, tenantID uuid.UUID) (Te
 		return nil, err
 	}
 	settings := TenantSettings{}
-	_ = json.Unmarshal(raw, &settings)
+	if err := json.Unmarshal(raw, &settings); err != nil {
+		return nil, fmt.Errorf("decode tenant settings: %w", err)
+	}
 	return settings, nil
 }
 
