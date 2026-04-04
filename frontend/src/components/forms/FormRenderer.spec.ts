@@ -230,6 +230,19 @@ describe('FormRenderer', () => {
     expect(wrapper.text()).toContain('Draft saved at')
   })
 
+  it('applies aria-required and aria-invalid on validation errors', async () => {
+    const wrapper = mountRenderer(baseSchema([{ bind: 'decision.comment', label: 'Comment', type: 'string', required: true }]))
+    await flushPromises()
+
+    const input = wrapper.findComponent(InputText)
+    expect(input.attributes('aria-required')).toBe('true')
+    expect(input.attributes('aria-invalid')).toBe('false')
+
+    await wrapper.get('button').trigger('click')
+    await flushPromises()
+    expect(input.attributes('aria-invalid')).toBe('true')
+  })
+
   it('uses configurable locale and currency for currency fields', async () => {
     const wrapper = mountRenderer(
       baseSchema([{ bind: 'decision.amount', label: 'Amount', type: 'currency' }]),

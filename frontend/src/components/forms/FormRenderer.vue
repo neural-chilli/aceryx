@@ -144,6 +144,14 @@ function resolveOptions(field: FieldDef): string[] {
     .filter((item) => item.length > 0)
 }
 
+function ariaRequired(field: FieldDef): boolean {
+  return Boolean(field.required)
+}
+
+function ariaInvalid(field: FieldDef): boolean {
+  return Boolean(errors[decisionKey(field)])
+}
+
 function validate(action: Action): boolean {
   Object.keys(errors).forEach((key) => {
     delete errors[key]
@@ -313,6 +321,9 @@ defineExpose({
           v-else-if="fieldType(field) === 'string'"
           :id="decisionKey(field)"
           :model-value="String(fieldValue(field) ?? '')"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
@@ -323,6 +334,9 @@ defineExpose({
           :min="field.min"
           :max="field.max"
           :max-fraction-digits="fieldType(field) === 'integer' ? 0 : undefined"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
@@ -335,6 +349,9 @@ defineExpose({
           :model-value="asNumber(fieldValue(field))"
           :min="field.min"
           :max="field.max"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
@@ -344,6 +361,9 @@ defineExpose({
           :model-value="String(fieldValue(field) ?? '')"
           rows="4"
           auto-resize
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
@@ -351,6 +371,9 @@ defineExpose({
           v-else-if="fieldType(field) === 'select'"
           :model-value="String(fieldValue(field) ?? '')"
           :options="resolveOptions(field)"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
@@ -359,6 +382,9 @@ defineExpose({
           :input-id="decisionKey(field)"
           :model-value="Boolean(fieldValue(field))"
           binary
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
@@ -367,12 +393,18 @@ defineExpose({
           :input-id="decisionKey(field)"
           :model-value="fieldValue(field) as Date | null"
           date-format="yy-mm-dd"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
         <Chips
           v-else-if="fieldType(field) === 'tag_list'"
           :model-value="(Array.isArray(fieldValue(field)) ? fieldValue(field) : []) as string[]"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val: string[]) => onChipUpdate(field, val)"
         />
 
@@ -380,6 +412,9 @@ defineExpose({
           v-else
           :id="decisionKey(field)"
           :model-value="String(fieldValue(field) ?? '')"
+          :aria-label="fieldLabel(field)"
+          :aria-required="ariaRequired(field)"
+          :aria-invalid="ariaInvalid(field)"
           @update:model-value="(val) => setFieldValue(field, val)"
         />
 
