@@ -141,7 +141,11 @@ func (s *TaskService) loadEscalationConfig(ctx context.Context, caseID uuid.UUID
 		return EscalationConfig{}, uuid.Nil, err
 	}
 	cfg := AssignmentConfig{}
-	_ = json.Unmarshal(step.Config, &cfg)
+	if len(step.Config) > 0 {
+		if err := json.Unmarshal(step.Config, &cfg); err != nil {
+			return EscalationConfig{}, uuid.Nil, fmt.Errorf("decode task assignment config: %w", err)
+		}
+	}
 	var tenantID uuid.UUID
 	if err := s.db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id=$1`, caseID).Scan(&tenantID); err != nil {
 		return EscalationConfig{}, uuid.Nil, err

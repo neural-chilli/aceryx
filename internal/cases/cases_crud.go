@@ -138,21 +138,23 @@ WHERE c.tenant_id = $1 AND c.id = $2
 		return Case{}, err
 	}
 	c.CaseType = ctName
-	_ = json.Unmarshal(rawData, &c.Data)
+	if err := json.Unmarshal(rawData, &c.Data); err != nil {
+		return Case{}, fmt.Errorf("decode case data: %w", err)
+	}
 
-	steps, err := s.loadCaseSteps(ctx, caseID)
+	steps, err := s.loadCaseSteps(ctx, tenantID, caseID)
 	if err != nil {
 		return Case{}, err
 	}
 	c.Steps = steps
 
-	events, err := s.loadCaseEvents(ctx, caseID)
+	events, err := s.loadCaseEvents(ctx, tenantID, caseID)
 	if err != nil {
 		return Case{}, err
 	}
 	c.Events = events
 
-	docs, err := s.loadCaseDocuments(ctx, caseID)
+	docs, err := s.loadCaseDocuments(ctx, tenantID, caseID)
 	if err != nil {
 		return Case{}, err
 	}
@@ -230,7 +232,9 @@ WHERE c.tenant_id = $1
 			&c.WorkflowID, &c.WorkflowVersion, &c.CaseType); err != nil {
 			return nil, fmt.Errorf("scan list case row: %w", err)
 		}
-		_ = json.Unmarshal(raw, &c.Data)
+		if err := json.Unmarshal(raw, &c.Data); err != nil {
+			return nil, fmt.Errorf("decode list case data %s: %w", c.ID, err)
+		}
 		cases = append(cases, c)
 	}
 	return cases, rows.Err()

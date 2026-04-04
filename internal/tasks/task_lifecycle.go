@@ -57,7 +57,7 @@ SELECT EXISTS(SELECT 1 FROM claim)
 
 	if s.notify != nil {
 		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
-		roleName, _ := s.lookupStepRole(ctx, caseID, stepID)
+		roleName, _ := s.lookupStepRole(ctx, tenantID, caseID, stepID)
 		recipients := make([]notify.Recipient, 0)
 		if roleName != "" {
 			recipients, _ = s.resolveRoleRecipients(ctx, tenantID, roleName, []string{"websocket"})

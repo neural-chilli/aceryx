@@ -127,7 +127,11 @@ WHERE c.id = $1
 		return uuid.Nil, "", "", nil, nil, fmt.Errorf("load case context: %w", err)
 	}
 	caseData := map[string]any{}
-	_ = json.Unmarshal(caseDataB, &caseData)
+	if len(caseDataB) > 0 {
+		if err := json.Unmarshal(caseDataB, &caseData); err != nil {
+			return uuid.Nil, "", "", nil, nil, fmt.Errorf("decode case context data: %w", err)
+		}
+	}
 
 	rows, err := a.db.QueryContext(ctx, `
 SELECT step_id, COALESCE(result, '{}'::jsonb)
@@ -147,7 +151,11 @@ WHERE case_id = $1
 			return uuid.Nil, "", "", nil, nil, fmt.Errorf("scan step context: %w", err)
 		}
 		decoded := map[string]any{}
-		_ = json.Unmarshal(raw, &decoded)
+		if len(raw) > 0 {
+			if err := json.Unmarshal(raw, &decoded); err != nil {
+				return uuid.Nil, "", "", nil, nil, fmt.Errorf("decode step context result %s: %w", sid, err)
+			}
+		}
 		steps[sid] = map[string]any{"result": decoded}
 	}
 	if err := rows.Err(); err != nil {

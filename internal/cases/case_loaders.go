@@ -9,7 +9,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/notify"
 )
 
-func (s *CaseService) loadCaseSteps(ctx context.Context, caseID uuid.UUID) ([]CaseStep, error) {
+func (s *CaseService) loadCaseSteps(ctx context.Context, tenantID, caseID uuid.UUID) ([]CaseStep, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, step_id, state, started_at, completed_at,
        COALESCE(result, '{}'::jsonb),
@@ -22,8 +22,9 @@ SELECT id, step_id, state, started_at, completed_at,
        COALESCE(metadata, '{}'::jsonb)
 FROM case_steps
 WHERE case_id = $1
+  AND case_id IN (SELECT id FROM cases WHERE id = $1 AND tenant_id = $2)
 ORDER BY step_id
-`, caseID)
+`, caseID, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("load case steps: %w", err)
 	}
@@ -42,13 +43,14 @@ ORDER BY step_id
 	return out, rows.Err()
 }
 
-func (s *CaseService) loadCaseEvents(ctx context.Context, caseID uuid.UUID) ([]CaseEvent, error) {
+func (s *CaseService) loadCaseEvents(ctx context.Context, tenantID, caseID uuid.UUID) ([]CaseEvent, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, COALESCE(step_id, ''), event_type, actor_id, actor_type, action, data, created_at, prev_event_hash, event_hash
 FROM case_events
 WHERE case_id = $1
+  AND case_id IN (SELECT id FROM cases WHERE id = $1 AND tenant_id = $2)
 ORDER BY created_at
-`, caseID)
+`, caseID, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("load case events: %w", err)
 	}
@@ -64,20 +66,23 @@ ORDER BY created_at
 			return nil, fmt.Errorf("scan case event: %w", err)
 		}
 		if len(raw) > 0 {
-			_ = json.Unmarshal(raw, &event.Data)
+			if err := json.Unmarshal(raw, &event.Data); err != nil {
+				return nil, fmt.Errorf("decode case event data %s: %w", event.ID, err)
+			}
 		}
 		out = append(out, event)
 	}
 	return out, rows.Err()
 }
 
-func (s *CaseService) loadCaseDocuments(ctx context.Context, caseID uuid.UUID) ([]CaseDocument, error) {
+func (s *CaseService) loadCaseDocuments(ctx context.Context, tenantID, caseID uuid.UUID) ([]CaseDocument, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, filename, mime_type, size_bytes, uploaded_by, uploaded_at, deleted_at
 FROM vault_documents
 WHERE case_id = $1
+  AND case_id IN (SELECT id FROM cases WHERE id = $1 AND tenant_id = $2)
 ORDER BY uploaded_at DESC
-`, caseID)
+`, caseID, tenantID)
 	if err != nil {
 		return nil, fmt.Errorf("load case documents: %w", err)
 	}

@@ -53,13 +53,14 @@ func (s *TaskService) lookupCaseAssignee(ctx context.Context, tenantID, caseID u
 	return &id, nil
 }
 
-func (s *TaskService) lookupStepRole(ctx context.Context, caseID uuid.UUID, stepID string) (string, error) {
+func (s *TaskService) lookupStepRole(ctx context.Context, tenantID, caseID uuid.UUID, stepID string) (string, error) {
 	var role string
 	err := s.db.QueryRowContext(ctx, `
 SELECT COALESCE(metadata->>'role', '')
-FROM case_steps
-WHERE case_id = $1 AND step_id = $2
-`, caseID, stepID).Scan(&role)
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
+`, caseID, stepID, tenantID).Scan(&role)
 	if err != nil {
 		return "", err
 	}
