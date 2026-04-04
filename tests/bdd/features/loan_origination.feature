@@ -31,3 +31,22 @@ Feature: Loan origination workflow
     Then a task should be created for role "senior_underwriter"
     And the task SLA should be 48 hours
     And the underwriter review task should be completed
+
+  Scenario: Underwriter rejects application
+    Given a case with an active underwriter review task
+    When the underwriter submits outcome "reject"
+    Then the case should transition to "rejected"
+    And no additional human task should be created
+
+  Scenario: SLA breach escalates overdue underwriter task
+    Given a case with an active underwriter review task
+    And the underwriter task SLA deadline is in the past
+    When the SLA monitor runs
+    Then an escalation notification should be sent
+    And an audit event "sla_breach" should be recorded
+
+  Scenario: Cancellation during review halts workflow progression
+    Given a case with an active underwriter review task
+    When the case is cancelled by an authorised user
+    Then no downstream steps should activate
+    And the case status should remain "cancelled"

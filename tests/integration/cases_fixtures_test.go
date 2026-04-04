@@ -119,8 +119,8 @@ func testCaseSchema() cases.CaseTypeSchema {
 
 func waitAndLoadCaseSteps(t *testing.T, ctx context.Context, db *sql.DB, caseID uuid.UUID, expected int) []cases.CaseStep {
 	t.Helper()
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
+	var out []cases.CaseStep
+	waitForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
 		rows, err := db.QueryContext(ctx, `
 SELECT id, step_id, state, started_at, completed_at, result, events, error, assigned_to, sla_deadline, retry_count, draft_data, metadata
 FROM case_steps
@@ -130,23 +130,23 @@ ORDER BY step_id
 		if err != nil {
 			t.Fatalf("query steps: %v", err)
 		}
-		out := make([]cases.CaseStep, 0)
+		current := make([]cases.CaseStep, 0)
 		for rows.Next() {
 			var st cases.CaseStep
 			if err := rows.Scan(&st.ID, &st.StepID, &st.State, &st.StartedAt, &st.CompletedAt, &st.Result, &st.Events, &st.Error, &st.AssignedTo, &st.SLADeadline, &st.RetryCount, &st.DraftData, &st.Metadata); err != nil {
 				_ = rows.Close()
 				t.Fatalf("scan steps: %v", err)
 			}
-			out = append(out, st)
+			current = append(current, st)
 		}
 		_ = rows.Close()
-		if len(out) >= expected {
-			return out
+		if len(current) >= expected {
+			out = current
+			return true
 		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("steps did not reach expected count=%d in time", expected)
-	return nil
+		return false
+	}, "steps did not reach expected count in time")
+	return out
 }
 
 type stubCaseEngine struct {

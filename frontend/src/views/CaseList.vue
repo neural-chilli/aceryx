@@ -239,14 +239,14 @@ watch(() => route.query, () => {
     <h1>{{ t('Cases') }}</h1>
     <Message v-if="loadError" severity="error">{{ loadError }}</Message>
 
-    <Button v-if="isMobileOrTablet" label="Filters" icon="pi pi-filter" @click="showFilters = true" />
+    <Button v-if="isMobileOrTablet" label="Filters" icon="pi pi-filter" aria-label="Open case filters" @click="showFilters = true" />
 
     <div v-if="isDesktop" ref="filterPanel" class="filters">
-      <InputText ref="searchInput" v-model="search" placeholder="Search" />
-      <MultiSelect v-model="statuses" :options="['open', 'in_progress', 'completed', 'cancelled']" placeholder="Status" />
-      <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" />
-      <InputNumber v-model="olderThanDays" placeholder="Older than days" />
-      <InputNumber v-model="priority" placeholder="Priority" />
+      <InputText ref="searchInput" v-model="search" placeholder="Search" aria-label="Search cases" />
+      <MultiSelect v-model="statuses" :options="['open', 'in_progress', 'completed', 'cancelled']" placeholder="Status" aria-label="Filter by status" />
+      <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" aria-label="Filter by assignment" />
+      <InputNumber v-model="olderThanDays" placeholder="Older than days" aria-label="Filter by age in days" />
+      <InputNumber v-model="priority" placeholder="Priority" aria-label="Filter by priority" />
       <Button label="Apply" @click="applyFilters" />
     </div>
 
@@ -282,11 +282,11 @@ watch(() => route.query, () => {
 
     <Dialog v-model:visible="showFilters" header="Filters" modal position="bottom">
       <div ref="filterPanel" class="filters filters-mobile">
-        <InputText ref="searchInput" v-model="search" placeholder="Search" />
-        <MultiSelect v-model="statuses" :options="['open', 'in_progress', 'completed', 'cancelled']" placeholder="Status" />
-        <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" />
-        <InputNumber v-model="olderThanDays" placeholder="Older than days" />
-        <InputNumber v-model="priority" placeholder="Priority" />
+        <InputText ref="searchInput" v-model="search" placeholder="Search" aria-label="Search cases" />
+        <MultiSelect v-model="statuses" :options="['open', 'in_progress', 'completed', 'cancelled']" placeholder="Status" aria-label="Filter by status" />
+        <Dropdown v-model="assignedTo" :options="['anyone', 'me', 'unassigned']" placeholder="Assigned" aria-label="Filter by assignment" />
+        <InputNumber v-model="olderThanDays" placeholder="Older than days" aria-label="Filter by age in days" />
+        <InputNumber v-model="priority" placeholder="Priority" aria-label="Filter by priority" />
         <Button label="Apply" @click="showFilters = false; applyFilters()" />
       </div>
     </Dialog>

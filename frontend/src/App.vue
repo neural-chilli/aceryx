@@ -150,6 +150,11 @@ function onBrandLogoError() {
 </template>
 
 <style scoped>
+:global(:root) {
+  --acx-z-menu: 12;
+  --acx-z-mobile-tabbar: 20;
+}
+
 .shell {
   min-height: 100vh;
   display: grid;
@@ -225,7 +230,7 @@ function onBrandLogoError() {
   display: grid;
   gap: 0.55rem;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
-  z-index: 12;
+  z-index: var(--acx-z-menu);
 }
 
 .content {

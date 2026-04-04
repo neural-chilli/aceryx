@@ -58,8 +58,7 @@ func TestConnectorsIntegration_HTTPConnector(t *testing.T) {
 
 	t.Run("timeout enforced", func(t *testing.T) {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			time.Sleep(2 * time.Second)
-			_, _ = w.Write([]byte(`ok`))
+			<-r.Context().Done()
 		}))
 		defer srv.Close()
 

@@ -42,7 +42,7 @@ function isActive(path: string): boolean {
 .bottom-tab-bar {
   position: sticky;
   bottom: 0;
-  z-index: 20;
+  z-index: var(--acx-z-mobile-tabbar);
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   border-top: 1px solid var(--acx-surface-200);

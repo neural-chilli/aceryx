@@ -240,6 +240,7 @@ watch(caseId, async () => {
           data-testid="document-upload-input"
           type="file"
           accept=".pdf,.png,.jpg,.jpeg,.gif,.txt,.md,.csv"
+          aria-label="Upload case document"
           @change="uploadDocument"
         />
         <span>{{ t('Upload') }}</span>

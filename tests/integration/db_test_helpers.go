@@ -25,6 +25,6 @@ func openAndWaitForDB(ctx context.Context, dsn string, timeout time.Duration) (*
 			_ = db.Close()
 			return nil, fmt.Errorf("ping db: %w", pingErr)
 		}
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(adjustedWaitInterval(250 * time.Millisecond))
 	}
 }

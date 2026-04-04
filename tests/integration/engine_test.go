@@ -264,6 +264,56 @@ WHERE case_id=$1 AND step_id='sla'
 	}
 }
 
+func TestEngineIntegration_SLAEscalationRaceWithStepCompletion(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{{ID: "sla", Type: "human_task"}}}
+	caseID := seedEngineCase(t, ctx, db, ast)
+	mustExec(t, ctx, db, `
+UPDATE case_steps
+SET state='active', sla_deadline=now() - interval '1 minute'
+WHERE case_id=$1 AND step_id='sla'
+`, caseID)
+
+	en := engine.New(db, expressions.NewEvaluator(), engine.Config{SLAInterval: 100 * time.Millisecond})
+	var escalations int32
+	en.SetEscalationCallback(func(_ context.Context, _ engine.OverdueTask) error {
+		atomic.AddInt32(&escalations, 1)
+		return nil
+	})
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_, _ = en.CheckOverdueTasksForTest(ctx)
+	}()
+	go func() {
+		defer wg.Done()
+		_ = en.CompleteStep(ctx, caseID, "sla", &engine.StepResult{Output: json.RawMessage(`{"done":true}`)})
+	}()
+	wg.Wait()
+
+	waitForStepState(t, ctx, db, caseID, "sla", engine.StateCompleted)
+
+	var breaches int
+	if err := db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM case_events
+WHERE case_id = $1 AND step_id = 'sla' AND event_type = 'system' AND action = 'sla_breach'
+`, caseID).Scan(&breaches); err != nil {
+		t.Fatalf("count sla breach events: %v", err)
+	}
+	if breaches > 1 {
+		t.Fatalf("expected at most one sla_breach event in race, got %d", breaches)
+	}
+	if got := atomic.LoadInt32(&escalations); got > 1 {
+		t.Fatalf("expected at most one escalation callback in race, got %d", got)
+	}
+}
+
 func TestEngineIntegration_DAGEvaluationMetricIncrements(t *testing.T) {
 	ctx := context.Background()
 	db, cleanup := setupPostgresWithMigrations(t)
@@ -364,17 +414,13 @@ VALUES ($1, $2, 'pending', '[]'::jsonb, 0)
 
 func waitForStepState(t *testing.T, ctx context.Context, db *sql.DB, caseID uuid.UUID, stepID, wanted string) {
 	t.Helper()
-	deadline := time.Now().Add(4 * time.Second)
-	for time.Now().Before(deadline) {
+	waitForCondition(t, 4*time.Second, 50*time.Millisecond, func() bool {
 		var state string
-		if err := db.QueryRowContext(ctx, `SELECT state FROM case_steps WHERE case_id=$1 AND step_id=$2`, caseID, stepID).Scan(&state); err == nil {
-			if state == wanted {
-				return
-			}
+		if err := db.QueryRowContext(ctx, `SELECT state FROM case_steps WHERE case_id=$1 AND step_id=$2`, caseID, stepID).Scan(&state); err != nil {
+			return false
 		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	t.Fatalf("step %s did not reach state %s before timeout", stepID, wanted)
+		return state == wanted
+	}, "step "+stepID+" did not reach state "+wanted+" before timeout")
 }
 
 func mustExec(t *testing.T, ctx context.Context, db *sql.DB, q string, args ...interface{}) {
