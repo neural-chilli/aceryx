@@ -1,28 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import LoginView from '../views/Login.vue'
-import InboxView from '../views/Inbox.vue'
-import CaseListView from '../views/CaseList.vue'
-import CaseView from '../views/CaseView.vue'
-import PasswordChangeView from '../views/PasswordChange.vue'
-import BuilderView from '../views/Builder.vue'
-import ReportsView from '../views/Reports.vue'
-import ActivityView from '../views/Activity.vue'
-import ProfileView from '../views/Profile.vue'
 import { installAuthGuards } from './guards'
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', redirect: '/inbox' },
-    { path: '/login', component: LoginView },
-    { path: '/inbox', component: InboxView, meta: { requiresAuth: true } },
-    { path: '/activity', component: ActivityView, meta: { requiresAuth: true } },
-    { path: '/cases', component: CaseListView, meta: { requiresAuth: true } },
-    { path: '/cases/:id', component: CaseView, meta: { requiresAuth: true } },
-    { path: '/builder', component: BuilderView, meta: { requiresAuth: true } },
-    { path: '/reports', component: ReportsView, meta: { requiresAuth: true } },
-    { path: '/profile', component: ProfileView, meta: { requiresAuth: true } },
-    { path: '/auth/password', component: PasswordChangeView, meta: { requiresAuth: true } },
+    { path: '/login', component: () => import('../views/Login.vue') },
+    { path: '/inbox', component: () => import('../views/Inbox.vue'), meta: { requiresAuth: true } },
+    { path: '/activity', component: () => import('../views/Activity.vue'), meta: { requiresAuth: true } },
+    { path: '/cases', component: () => import('../views/CaseList.vue'), meta: { requiresAuth: true } },
+    { path: '/cases/:id', component: () => import('../views/CaseView.vue'), meta: { requiresAuth: true } },
+    { path: '/builder', component: () => import('../views/Builder.vue'), meta: { requiresAuth: true } },
+    { path: '/reports', component: () => import('../views/Reports.vue'), meta: { requiresAuth: true } },
+    { path: '/profile', component: () => import('../views/Profile.vue'), meta: { requiresAuth: true } },
+    { path: '/auth/password', component: () => import('../views/PasswordChange.vue'), meta: { requiresAuth: true } },
   ],
 })
 
