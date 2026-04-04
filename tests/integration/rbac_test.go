@@ -143,6 +143,12 @@ WHERE tenant_id = $1
 	if _, err := authSvc.AuthenticateBearer(ctx, apiKey); err != nil {
 		t.Fatalf("authenticate api key: %v", err)
 	}
+	if err := principalSvc.DisablePrincipal(ctx, tenantID, agent.ID); err != nil {
+		t.Fatalf("disable agent principal: %v", err)
+	}
+	if _, err := authSvc.AuthenticateBearer(ctx, apiKey); err == nil {
+		t.Fatal("expected disabled agent api key authentication to fail")
+	}
 
 	if err := principalSvc.DisablePrincipal(ctx, tenantID, human.ID); err != nil {
 		t.Fatalf("disable principal: %v", err)

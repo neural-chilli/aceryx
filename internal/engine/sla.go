@@ -78,14 +78,10 @@ LIMIT 1000
 	}
 
 	for _, task := range tasks {
-		var state string
-		if err := e.db.QueryRowContext(ctx, `SELECT state FROM case_steps WHERE id = $1`, task.ID).Scan(&state); err != nil {
+		recorded, err := e.recordSLABreach(ctx, task)
+		if err != nil || !recorded {
 			continue
 		}
-		if state != StateActive {
-			continue
-		}
-		_ = e.recordSLABreach(ctx, task)
 		_ = cb(ctx, task)
 		tenantID, terr := e.lookupTenantID(ctx, task.CaseID)
 		if terr == nil {
@@ -108,19 +104,19 @@ func (e *Engine) CheckOverdueTasksForTest(ctx context.Context) (int, error) {
 	return e.checkOverdueTasks(ctx)
 }
 
-func (e *Engine) recordSLABreach(ctx context.Context, task OverdueTask) error {
+func (e *Engine) recordSLABreach(ctx context.Context, task OverdueTask) (bool, error) {
 	tx, err := e.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer func() { _ = audit.RollbackTx(tx) }()
 
 	var caseStatus string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, task.CaseID).Scan(&caseStatus); err != nil {
-		return err
+		return false, err
 	}
 	if caseStatus == "cancelled" {
-		return audit.CommitTx(tx)
+		return false, audit.CommitTx(tx)
 	}
 
 	var state string
@@ -131,17 +127,17 @@ FROM case_steps
 WHERE id = $1 AND case_id = $2 AND step_id = $3
 FOR UPDATE
 `, task.ID, task.CaseID, task.StepID).Scan(&state, &deadline); err != nil {
-		return err
+		return false, err
 	}
 	if state != StateActive || !deadline.Valid || !deadline.Time.Before(time.Now().UTC()) {
-		return audit.CommitTx(tx)
+		return false, audit.CommitTx(tx)
 	}
 
 	if err := audit.RecordCaseEventTx(ctx, tx, task.CaseID, task.StepID, "system", e.systemActor(), "system", "sla_breach", map[string]any{
 		"sla_deadline": deadline.Time.UTC().Format(time.RFC3339Nano),
 		"task_id":      task.ID.String(),
 	}); err != nil {
-		return err
+		return false, err
 	}
-	return audit.CommitTx(tx)
+	return true, audit.CommitTx(tx)
 }

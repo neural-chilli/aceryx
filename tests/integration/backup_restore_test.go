@@ -16,7 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/backup"
 	internalmigrations "github.com/neural-chilli/aceryx/internal/migrations"
 	"github.com/testcontainers/testcontainers-go"
@@ -32,6 +34,30 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 
 	tenantID, principalID, caseTypeID, workflowID := insertBaseFixtures(t, ctx, db, "backup")
 	caseID := insertCase(t, ctx, db, tenantID, principalID, caseTypeID, workflowID, "BKP-001")
+	caseUUID, err := uuid.Parse(caseID)
+	if err != nil {
+		t.Fatalf("parse case id: %v", err)
+	}
+	principalUUID, err := uuid.Parse(principalID)
+	if err != nil {
+		t.Fatalf("parse principal id: %v", err)
+	}
+	auditSvc := audit.NewService(db)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatalf("begin audit seed tx: %v", err)
+	}
+	if err := auditSvc.RecordCaseEventTx(ctx, tx, caseUUID, "seed", "case", principalUUID, "human", "created", map[string]any{"source": "backup_test"}); err != nil {
+		_ = auditSvc.RollbackTx(tx)
+		t.Fatalf("record first audit event: %v", err)
+	}
+	if err := auditSvc.RecordCaseEventTx(ctx, tx, caseUUID, "seed", "case", principalUUID, "human", "updated", map[string]any{"field": "status"}); err != nil {
+		_ = auditSvc.RollbackTx(tx)
+		t.Fatalf("record second audit event: %v", err)
+	}
+	if err := auditSvc.CommitTx(tx); err != nil {
+		t.Fatalf("commit audit seed tx: %v", err)
+	}
 
 	vaultRoot := filepath.Join(t.TempDir(), "vault")
 	uri := filepath.Join(tenantID, "2026", "03", "ab", "cd", "doc.txt")
@@ -92,6 +118,14 @@ VALUES ($1, $2, 'doc.txt', 'text/plain', $3, repeat('a',64), $4, $5)
 
 	if _, err := os.Stat(archivePath + ".pre-restore.tar.gz"); err != nil {
 		t.Fatalf("expected pre-restore backup to exist: %v", err)
+	}
+
+	verify, err := auditSvc.VerifyCaseChain(ctx, caseUUID)
+	if err != nil {
+		t.Fatalf("verify audit chain after restore: %v", err)
+	}
+	if !verify.Valid {
+		t.Fatalf("expected restored audit chain to be valid: %+v", verify)
 	}
 }
 

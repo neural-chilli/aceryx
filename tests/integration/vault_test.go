@@ -9,6 +9,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -289,6 +290,46 @@ func TestVaultIntegration_GDPR_ErasureAndTenantIsolation(t *testing.T) {
 	}
 	if _, _, err := svc.Download(ctx, tenantB, caseB, docB.ID, principalB); err != nil {
 		t.Fatalf("tenant B document should remain accessible: %v", err)
+	}
+}
+
+func TestVaultIntegration_PathTraversalFilenameIsSafe(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	tenantID, principalID := seedTenantAndPrincipal(t, ctx, db, "vault-path")
+	caseID := seedVaultCase(t, ctx, db, tenantID, principalID, "vault_path_case")
+
+	root := t.TempDir()
+	store := vault.NewLocalVaultStore(root, "secret")
+	svc := vault.NewService(db, store, time.Hour)
+
+	doc, err := svc.Upload(ctx, tenantID, vault.UploadInput{
+		CaseID:     caseID,
+		Filename:   "../../etc/passwd",
+		MimeType:   "text/plain",
+		Data:       []byte("sensitive"),
+		UploadedBy: principalID,
+	})
+	if err != nil {
+		t.Fatalf("upload traversal filename: %v", err)
+	}
+
+	var storageURI string
+	if err := db.QueryRowContext(ctx, `SELECT storage_uri FROM vault_documents WHERE id = $1`, doc.ID).Scan(&storageURI); err != nil {
+		t.Fatalf("load storage uri: %v", err)
+	}
+	if strings.Contains(storageURI, "..") {
+		t.Fatalf("expected sanitized storage uri, got %q", storageURI)
+	}
+
+	fullPath := filepath.Join(root, filepath.FromSlash(storageURI))
+	if _, err := os.Stat(fullPath); err != nil {
+		t.Fatalf("expected stored file to exist under vault root: %v", err)
+	}
+	if rel, err := filepath.Rel(root, fullPath); err != nil || strings.HasPrefix(rel, "..") {
+		t.Fatalf("expected stored file to remain under vault root, rel=%q err=%v", rel, err)
 	}
 }
 

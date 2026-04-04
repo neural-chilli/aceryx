@@ -224,6 +224,44 @@ WHERE case_id=$1 AND step_id='sla'
 	}
 }
 
+func TestEngineIntegration_SLACancelledCaseDoesNotEscalate(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{{ID: "sla", Type: "human_task"}}}
+	caseID := seedEngineCase(t, ctx, db, ast)
+	mustExec(t, ctx, db, `
+UPDATE case_steps
+SET state='active', sla_deadline=now() - interval '1 minute'
+WHERE case_id=$1 AND step_id='sla'
+`, caseID)
+	mustExec(t, ctx, db, `UPDATE cases SET status='cancelled' WHERE id=$1`, caseID)
+
+	en := engine.New(db, expressions.NewEvaluator(), engine.Config{SLAInterval: 100 * time.Millisecond})
+	var escalations int32
+	en.SetEscalationCallback(func(_ context.Context, _ engine.OverdueTask) error {
+		atomic.AddInt32(&escalations, 1)
+		return nil
+	})
+
+	_, err := en.CheckOverdueTasksForTest(ctx)
+	if err != nil {
+		t.Fatalf("check overdue tasks: %v", err)
+	}
+	if got := atomic.LoadInt32(&escalations); got != 0 {
+		t.Fatalf("expected no escalation callback for cancelled case, got %d", got)
+	}
+
+	var breaches int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM case_events WHERE case_id = $1 AND event_type = 'system' AND action = 'sla_breach'`, caseID).Scan(&breaches); err != nil {
+		t.Fatalf("count sla breach events: %v", err)
+	}
+	if breaches != 0 {
+		t.Fatalf("expected no sla_breach event for cancelled case, got %d", breaches)
+	}
+}
+
 func TestEngineIntegration_DAGEvaluationMetricIncrements(t *testing.T) {
 	ctx := context.Background()
 	db, cleanup := setupPostgresWithMigrations(t)

@@ -32,6 +32,12 @@ func TestValidateReportSQL_AST(t *testing.T) {
 		}
 	})
 
+	t.Run("schema qualified view rejected", func(t *testing.T) {
+		if err := inspector.Validate(`SELECT * FROM public.mv_report_cases`); err == nil {
+			t.Fatal("expected schema-qualified view to be rejected")
+		}
+	})
+
 	t.Run("unapproved function rejected", func(t *testing.T) {
 		if err := inspector.Validate(`SELECT pg_sleep(1) FROM mv_report_cases`); err == nil {
 			t.Fatal("expected unapproved function to be rejected")
@@ -65,8 +71,20 @@ func TestScopeToTenant_ASTRewriteContract(t *testing.T) {
 	if !strings.Contains(strings.ToLower(scopedGroup), "tenant_id = $1") {
 		t.Fatalf("expected tenant filter before aggregation: %s", scopedGroup)
 	}
+	if !strings.Contains(strings.ToLower(scopedGroup), "with mv_report_cases as (select * from public.mv_report_cases where tenant_id = $1)") {
+		t.Fatalf("expected cte-based tenant scoping: %s", scopedGroup)
+	}
 	if !strings.Contains(strings.ToLower(scopedGroup), "limit $2") {
 		t.Fatalf("expected top-level limit injection: %s", scopedGroup)
+	}
+
+	sqlLiteral := `SELECT COUNT(*) FROM mv_report_cases WHERE case_type = 'FROM mv_report_steps'`
+	scopedLiteral, err := inspector.ScopeToTenant(sqlLiteral)
+	if err != nil {
+		t.Fatalf("scope literal query: %v", err)
+	}
+	if strings.Count(strings.ToLower(scopedLiteral), "tenant_id = $1") < 3 {
+		t.Fatalf("expected tenant ctes to be injected safely: %s", scopedLiteral)
 	}
 }
 

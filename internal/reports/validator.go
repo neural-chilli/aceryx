@@ -3,7 +3,6 @@ package reports
 import (
 	"encoding/json"
 	"fmt"
-	"regexp"
 	"strings"
 
 	pg_query "github.com/pganalyze/pg_query_go/v6"
@@ -56,22 +55,13 @@ func (i SQLInspector) ScopeToTenant(sqlText string) (string, error) {
 	if err := i.Validate(sqlText); err != nil {
 		return "", err
 	}
-	joinedViews := strings.Join(i.Views, "|")
-	pattern := regexp.MustCompile(`(?is)\b(from|join)\s+((?:[a-zA-Z_][a-zA-Z0-9_]*\.)?(` + joinedViews + `))\b(?:\s+(?:as\s+)?([a-zA-Z_][a-zA-Z0-9_]*))?`)
-	rewritten := pattern.ReplaceAllStringFunc(sqlText, func(match string) string {
-		m := pattern.FindStringSubmatch(match)
-		if len(m) < 5 {
-			return match
-		}
-		keyword := m[1]
-		relName := strings.ToLower(strings.TrimSpace(m[3]))
-		alias := strings.TrimSpace(m[4])
-		if alias == "" {
-			alias = relName
-		}
-		return fmt.Sprintf("%s (SELECT * FROM %s WHERE tenant_id = $1) AS %s", keyword, relName, alias)
-	})
-	return fmt.Sprintf("SELECT * FROM (%s) AS __acx_report LIMIT $2", rewritten), nil
+	cte := make([]string, 0, len(i.Views)+1)
+	for _, view := range i.Views {
+		view = strings.ToLower(strings.TrimSpace(view))
+		cte = append(cte, fmt.Sprintf("%s AS (SELECT * FROM public.%s WHERE tenant_id = $1)", view, view))
+	}
+	cte = append(cte, fmt.Sprintf("__acx_report AS (%s)", sqlText))
+	return fmt.Sprintf("WITH %s SELECT * FROM __acx_report LIMIT $2", strings.Join(cte, ", ")), nil
 }
 
 func (i SQLInspector) validateNode(node any) error {
@@ -88,6 +78,9 @@ func (i SQLInspector) validateNode(node any) error {
 					rel = strings.ToLower(strings.TrimSpace(rel))
 					schema, _ := mv["schemaname"].(string)
 					schema = strings.ToLower(strings.TrimSpace(schema))
+					if schema != "" {
+						return fmt.Errorf("schema-qualified references are not allowed")
+					}
 					if strings.HasPrefix(rel, "pg_") || strings.HasPrefix(schema, "pg_") {
 						return fmt.Errorf("system catalog access is not allowed")
 					}
