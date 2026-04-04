@@ -1,0 +1,11 @@
+id: test-plugin
+name: Test Plugin
+version: 1.0.0
+type: step
+category: Testing
+tier: open_source
+maturity: community
+min_host_version: 0.0.1
+audit:
+  host_calls:
+    mode: summary

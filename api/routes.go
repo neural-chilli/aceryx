@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -27,6 +28,8 @@ import (
 	"github.com/neural-chilli/aceryx/internal/connectors/webhooksender"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/notify"
+	"github.com/neural-chilli/aceryx/internal/plugins"
+	"github.com/neural-chilli/aceryx/internal/plugins/hostfns"
 	"github.com/neural-chilli/aceryx/internal/rbac"
 	"github.com/neural-chilli/aceryx/internal/reports"
 	"github.com/neural-chilli/aceryx/internal/tasks"
@@ -79,6 +82,34 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	connectorRegistry.Register(jiraconn.New())
 	connectorRegistry.Register(docgenconn.New(db, nil))
 	connectorHandlers := handlers.NewConnectorHandlers(connectorRegistry, secretStore)
+	pluginStore := plugins.NewStore(db)
+	httpHost := hostfns.NewHTTPHost(&http.Client{
+		Timeout: 60 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        1000,
+			MaxIdleConnsPerHost: 100,
+			IdleConnTimeout:     90 * time.Second,
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+		},
+	}, nil, 60*time.Second)
+	hostRegistry := &hostfns.Registry{
+		HTTP:      httpHost,
+		Connector: &hostfns.ConnectorCaller{Registry: connectorRegistry},
+		Secrets:   &hostfns.SecretGetter{Store: secretStore},
+		Logger:    hostfns.LoggerHost{},
+		Auditor:   hostfns.NewAuditor("summary", 50, 10),
+	}
+	pluginRuntime := plugins.NewRuntime(bgCtx, plugins.RuntimeConfig{
+		Store:                pluginStore,
+		HostFunctions:        hostRegistry,
+		SystemMaxHTTPTimeout: 60 * time.Second,
+	})
+	pluginHandlers := handlers.NewPluginHandlers(pluginRuntime, pluginStore)
+	pluginsDir := firstNonEmpty(os.Getenv("ACERYX_PLUGINS_DIR"), "./testdata")
+	_ = pluginRuntime.LoadAll(pluginsDir, plugins.AllowAllLicence{})
 	webhookHandler := webhookreceiver.NewHandler(db, secretStore)
 	wsHub := notify.NewHub(db, notify.DefaultTokenValidator(func(ctx context.Context, token string) (uuid.UUID, uuid.UUID, error) {
 		ap, err := authSvc.AuthenticateBearer(ctx, token)
@@ -108,6 +139,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 			LLMClient:    agents.NewLLMClientFromEnv(120 * time.Second),
 			AuditService: auditSvc,
 		}))
+		eng.RegisterExecutor("plugin", plugins.NewStepExecutor(db, pluginRuntime))
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
 	tenantSvc := tenants.NewTenantService(db)
@@ -199,6 +231,20 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("PUT /reports/{id}", withPerm("reports:query", reportsHandlers.Update))
 	mux.Handle("DELETE /reports/{id}", withPerm("reports:query", reportsHandlers.Delete))
 	mux.Handle("POST /admin/erasure", withPerm("admin:audit", vaultHandlers.Erasure))
+	mux.Handle("GET /admin/plugins", withPerm("admin:tenant", pluginHandlers.List))
+	mux.Handle("GET /v1/admin/plugins", withPerm("admin:tenant", pluginHandlers.List))
+	mux.Handle("GET /admin/plugins/{id}", withPerm("admin:tenant", pluginHandlers.Get))
+	mux.Handle("GET /v1/admin/plugins/{id}", withPerm("admin:tenant", pluginHandlers.Get))
+	mux.Handle("GET /admin/plugins/{id}/versions", withPerm("admin:tenant", pluginHandlers.ListVersions))
+	mux.Handle("GET /v1/admin/plugins/{id}/versions", withPerm("admin:tenant", pluginHandlers.ListVersions))
+	mux.Handle("GET /admin/plugins/{id}/invocations", withPerm("admin:tenant", pluginHandlers.Invocations))
+	mux.Handle("GET /v1/admin/plugins/{id}/invocations", withPerm("admin:tenant", pluginHandlers.Invocations))
+	mux.Handle("POST /admin/plugins/{id}/reload", withPerm("admin:tenant", pluginHandlers.Reload))
+	mux.Handle("POST /v1/admin/plugins/{id}/reload", withPerm("admin:tenant", pluginHandlers.Reload))
+	mux.Handle("POST /admin/plugins/{id}/disable", withPerm("admin:tenant", pluginHandlers.Disable))
+	mux.Handle("POST /v1/admin/plugins/{id}/disable", withPerm("admin:tenant", pluginHandlers.Disable))
+	mux.Handle("POST /admin/plugins/{id}/enable", withPerm("admin:tenant", pluginHandlers.Enable))
+	mux.Handle("POST /v1/admin/plugins/{id}/enable", withPerm("admin:tenant", pluginHandlers.Enable))
 	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
