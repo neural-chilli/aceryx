@@ -256,19 +256,19 @@ tasks:
 
   vet:
     desc: Run go vet
-    scope: cli
+    scope: cmd
     cmd: go vet ./...
     safety: idempotent
 
   vulncheck:
     desc: Run go vulncheck
-    scope: cli
+    scope: cmd
     cmd: govulncheck ./...
     safety: idempotent
 
   check:
     desc: Run the default local verification pipeline
-    scope: cli
+    scope: cmd
     needs:
       - fmt
       - lint
@@ -281,105 +281,313 @@ tasks:
     safety: idempotent
 
   arch-check:
-    desc: Enforce internal package boundaries
+    desc: Enforce internal package boundaries and layer direction
     cmd: qp arch-check --json
-    scope: cli
+    scope: cmd
     safety: idempotent
+    agent_visible: true
+    agent_hint: >
+      Run this after any change that adds or modifies import statements.
+      Failures indicate a package boundary or layer violation — fix the
+      dependency direction, extract a shared interface, or move logic
+      to the correct layer.
+
+  # ─────────────────────────────────────────────────────────────────
+  # Aceryx — qp.yaml (architecture, scope, and arch-check sections)
+  # ─────────────────────────────────────────────────────────────────
+
+  # ── Scopes ──────────────────────────────────────────────────────
+  #
+  # Scopes define the boundaries of the codebase. Every task should
+  # reference a scope. Agents use scopes to understand which files
+  # are relevant to a given piece of work.
 
 scopes:
-  cli:
-    desc: Main CLI commands and closely-related execution packages.
-    paths:
-      - cmd/aceryx/
-      - internal/engine/
-      - internal/connectors/
-      - internal/expressions/
-      - internal/migrations/
-      - internal/search/
-      - internal/rbac/
+  # ── Foundation ──────────────────────────────────────────────
+  audit:
+    desc: Append-only event recording, hash chain, verification
+    root: internal/audit
+    include: ["**/*.go"]
+
+  rbac:
+    desc: Principals, roles, permissions, Authorize function
+    root: internal/rbac
+    include: ["**/*.go"]
+
+  expressions:
+    desc: JavaScript expression evaluation via goja
+    root: internal/expressions
+    include: ["**/*.go"]
+
+  # ── Core ────────────────────────────────────────────────────
+  workflows:
+    desc: Workflow AST, YAML serialisation, versioning
+    root: internal/workflows
+    include: ["**/*.go"]
+
+  cases:
+    desc: Case CRUD, case type schema validation, lifecycle
+    root: internal/cases
+    include: ["**/*.go"]
+
+  connectors:
+    desc: Connector interface, registry, built-in implementations
+    root: internal/connectors
+    include: ["**/*.go"]
+
+  vault:
+    desc: Document storage, metadata, content hashing
+    root: internal/vault
+    include: ["**/*.go"]
+
+  # ── Domain ──────────────────────────────────────────────────
+  engine:
+    desc: DAG scheduler, step lifecycle, recovery
+    root: internal/engine
+    include: ["**/*.go"]
+
+  steps:
+    desc: Step execution dispatch (human, agent, integration, rule, timer)
+    root: internal/steps
+    include: ["**/*.go"]
+
+  tasks:
+    desc: Human task assignment, claiming, completion, SLA, escalation
+    root: internal/tasks
+    include: ["**/*.go"]
+
+  agents:
+    desc: Agent step execution, context assembly, LLM invocation
+    root: internal/agents
+    include: ["**/*.go"]
+
+  notify:
+    desc: Notification dispatch (email, WebSocket)
+    root: internal/notify
+    include: ["**/*.go"]
+
+  search:
+    desc: Full-text search across cases
+    root: internal/search
+    include: ["**/*.go"]
+
+  plugins:
+    desc: Two-tier plugin runtime (goja + Wazero/WASM)
+    root: internal/plugins
+    include: ["**/*.go"]
+
+  mcpclient:
+    desc: MCP client — outbound tool invocation
+    root: internal/mcpclient
+    include: ["**/*.go"]
+
+  mcpserver:
+    desc: MCP server — expose Aceryx as an MCP tool provider
+    root: internal/mcpserver
+    include: ["**/*.go"]
+
+  rag:
+    desc: RAG infrastructure, pgvector, document chunking
+    root: internal/rag
+    include: ["**/*.go"]
+
+  reasoning:
+    desc: Agentic reasoning steps, visual tool connections
+    root: internal/reasoning
+    include: ["**/*.go"]
+
+  # ── API ─────────────────────────────────────────────────────
+  handlers:
+    desc: HTTP handlers grouped by domain
+    root: api/handlers
+    include: ["**/*.go"]
+
+  middleware:
+    desc: Auth, RBAC, logging, recovery middleware
+    root: api/middleware
+    include: ["**/*.go"]
+
+  routes:
+    desc: Route registration
+    root: api
+    include: ["routes.go"]
+
+  # ── CLI / Entrypoint ────────────────────────────────────────
+  cmd:
+    desc: Main entrypoint and CLI wiring
+    root: cmd/aceryx
+    include: ["**/*.go"]
+
+  # ── Migrations ──────────────────────────────────────────────
+  migrations:
+    desc: Forward-only SQL schema migrations
+    root: migrations
+    include: ["**/*.sql"]
+
+  # ── Frontend ────────────────────────────────────────────────
+  frontend-views:
+    desc: Page-level Vue components (inbox, case view, builder)
+    root: frontend/src/views
+    include: ["**/*.vue", "**/*.ts"]
+
+  frontend-components:
+    desc: Reusable PrimeVue UI components
+    root: frontend/src/components
+    include: ["**/*.vue", "**/*.ts"]
+
+  frontend-composables:
+    desc: Vue composables (API client, WebSocket, auth)
+    root: frontend/src/composables
+    include: ["**/*.ts"]
+
+  # ── Docs & Specs ────────────────────────────────────────────
+  specs:
+    desc: Feature specifications (BDD scenarios, design decisions)
+    root: docs/specs
+    include: ["**/*.md"]
+
+  design:
+    desc: Design documents and architecture decisions
+    root: docs/design
+    include: ["**/*.md"]
+
+
+  # ── Architecture ────────────────────────────────────────────────
+  #
+  # Layers enforce dependency direction. Domains enforce feature
+  # isolation. cross_domain: deny prevents same-layer packages from
+  # importing each other's internals. direction: forward prevents
+  # lower layers from importing higher layers.
+  #
+  # Layer order (forward = left to right):
+  #   foundation → core → domain → orchestration → api → cmd
+  #
+  # Foundation packages (audit, rbac, expressions) are importable
+  # by everything above them. Core packages (workflows, cases,
+  # connectors, vault) are importable by domain and above.
+  # Domain packages must NOT import each other — they communicate
+  # through the engine or through interfaces.
+
+architecture:
+  layers:
+    - foundation
+    - core
+    - domain
+    - orchestration
+    - api
+    - cmd
+
+  domains:
+    # ── Foundation ──────────────────────────────────────────
+    audit:
+      root: internal/audit
+      layers: [foundation]
+
+    rbac:
+      root: internal/rbac
+      layers: [foundation]
+
+    expressions:
+      root: internal/expressions
+      layers: [foundation]
+
+    # ── Core ────────────────────────────────────────────────
+    workflows:
+      root: internal/workflows
+      layers: [core]
+
+    cases:
+      root: internal/cases
+      layers: [core]
+
+    connectors:
+      root: internal/connectors
+      layers: [core]
+
+    vault:
+      root: internal/vault
+      layers: [core]
+
+    # ── Domain ──────────────────────────────────────────────
+    steps:
+      root: internal/steps
+      layers: [domain]
+
+    tasks:
+      root: internal/tasks
+      layers: [domain]
+
+    agents:
+      root: internal/agents
+      layers: [domain]
+
+    notify:
+      root: internal/notify
+      layers: [domain]
+
+    search:
+      root: internal/search
+      layers: [domain]
+
+    plugins:
+      root: internal/plugins
+      layers: [domain]
+
+    mcpclient:
+      root: internal/mcpclient
+      layers: [domain]
+
+    mcpserver:
+      root: internal/mcpserver
+      layers: [domain]
+
+    rag:
+      root: internal/rag
+      layers: [domain]
+
+    reasoning:
+      root: internal/reasoning
+      layers: [domain]
+
+    # ── Orchestration ───────────────────────────────────────
+    engine:
+      root: internal/engine
+      layers: [orchestration]
+
+    # ── API ─────────────────────────────────────────────────
+    handlers:
+      root: api/handlers
+      layers: [api]
+
+    middleware:
+      root: api/middleware
+      layers: [api]
+
+    # ── CMD ─────────────────────────────────────────────────
+    cli:
+      root: cmd/aceryx
+      layers: [cmd]
+
+  rules:
+    # Imports must flow forward through the layer stack.
+    # foundation → core → domain → orchestration → api → cmd.
+    # A core package cannot import a domain package.
+    # A domain package cannot import the engine.
+    - direction: forward
+
+
+
+
+  # ── Guard Integration ───────────────────────────────────────────
+  #
+  # Add arch-check to the default guard so it runs on every commit.
+  # Place it after vet and before build — if the architecture is
+  # broken, there's no point building.
 
 guards:
   default:
     steps:
       - test
       - vet
+      - arch-check
       - build
-
-architecture:
-  layers:
-    - foundation
-    - core
-    - features
-    - cli
-
-  domains:
-    foundation:
-      root: internal/ordered
-      layers: [foundation]
-
-    cel:
-      root: internal/cel
-      layers: [foundation]
-
-    config:
-      root: internal/config
-      layers: [core]
-
-    runner:
-      root: internal/runner
-      layers: [core]
-
-    guard:
-      root: internal/guard
-      layers: [features]
-
-    repair:
-      root: internal/repair
-      layers: [features]
-
-    plan:
-      root: internal/plan
-      layers: [features]
-
-    context:
-      root: internal/context
-      layers: [features]
-
-    brief:
-      root: internal/brief
-      layers: [features]
-
-    scope:
-      root: internal/scope
-      layers: [features]
-
-    prompt:
-      root: internal/prompt
-      layers: [features]
-
-    codemap:
-      root: internal/codemap
-      layers: [features]
-
-    initcmd:
-      root: internal/initcmd
-      layers: [features]
-
-    archcheck:
-      root: internal/archcheck
-      layers: [features]
-
-    watch:
-      root: internal/watch
-      layers: [features]
-
-    mcp:
-      root: internal/mcp
-      layers: [features]
-
-    cli:
-      root: cmd/qp
-      layers: [cli]
-
-  rules:
-    - direction: forward
