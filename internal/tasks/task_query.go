@@ -160,7 +160,14 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 	}
 
 	d.StepResults = map[string]any{}
-	rows, qerr := s.db.QueryContext(ctx, `SELECT step_id, COALESCE(result, '{}'::jsonb) FROM case_steps WHERE case_id = $1 AND state = 'completed'`, caseID)
+	rows, qerr := s.db.QueryContext(ctx, `
+SELECT cs.step_id, COALESCE(cs.result, '{}'::jsonb)
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE cs.case_id = $1
+  AND cs.state = 'completed'
+  AND c.tenant_id = $2
+`, caseID, tenantID)
 	if qerr == nil {
 		defer func() { _ = rows.Close() }()
 		for rows.Next() {
