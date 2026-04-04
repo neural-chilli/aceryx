@@ -5,6 +5,7 @@ import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
 import Button from 'primevue/button'
 import Tag from 'primevue/tag'
+import Message from 'primevue/message'
 import { useAuth } from '../composables/useAuth'
 import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
@@ -27,6 +28,7 @@ const swipedID = ref<string>('')
 const pullStartY = ref(0)
 const pullDistance = ref(0)
 const swipeStartX = ref(0)
+const loadError = ref('')
 
 const emptyMessage = computed(() => `No ${t('tasks')} right now`)
 
@@ -42,21 +44,29 @@ function severity(status: string): 'success' | 'warn' | 'danger' {
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await authFetch('/tasks')
     if (res.ok) {
       tasks.value = (await res.json()) as TaskItem[]
+      return
     }
+    loadError.value = 'Unable to load tasks right now. Please try again.'
+  } catch {
+    loadError.value = 'Unable to load tasks right now. Please try again.'
   } finally {
     loading.value = false
   }
 }
 
 async function claim(item: TaskItem) {
+  loadError.value = ''
   const res = await authFetch(`/tasks/${item.case_id}/${encodeURIComponent(item.step_id)}/claim`, { method: 'POST' })
   if (res.ok) {
     await load()
+    return
   }
+  loadError.value = 'Unable to claim this task right now. Please try again.'
 }
 
 function openTask(item: TaskItem) {
@@ -203,6 +213,7 @@ watch(tasks, () => {
 <template>
   <section class="inbox">
     <h1>{{ t('Inbox') }}</h1>
+    <Message v-if="loadError" severity="error">{{ loadError }}</Message>
 
     <div v-if="isMobileOrTablet" ref="mobileList" class="mobile-list">
       <div v-if="pullDistance > 0" class="pull-indicator">Pull to refresh</div>

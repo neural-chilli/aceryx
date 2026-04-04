@@ -3,6 +3,7 @@ import { computed, reactive, ref } from 'vue'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Button from 'primevue/button'
+import Message from 'primevue/message'
 import StepPalette from '../components/builder/StepPalette.vue'
 import WorkflowCanvas from '../components/builder/WorkflowCanvas.vue'
 import StepConfigPanel from '../components/builder/StepConfigPanel.vue'
@@ -43,6 +44,7 @@ const issues = ref<ValidationIssue[]>([])
 const unsaved = ref(false)
 const connectors = ref<Array<{ key: string; name: string; actions?: Array<{ key: string; name?: string }> }>>([])
 const promptTemplates = ref<string[]>([])
+const operationError = ref('')
 
 const ast = reactive<WorkflowAST>({
   steps: [],
@@ -83,27 +85,33 @@ function updateFormSchema(schema: FormSchema) {
 }
 
 async function loadWorkflows() {
+  operationError.value = ''
   const res = await authFetch('/workflows')
   if (!res.ok) {
     workflows.value = []
+    operationError.value = 'Unable to load workflows right now.'
     return
   }
   workflows.value = (await res.json()) as WorkflowSummary[]
 }
 
 async function loadConnectors() {
+  operationError.value = ''
   const res = await authFetch('/connectors')
   if (!res.ok) {
     connectors.value = []
+    operationError.value = 'Unable to load connectors right now.'
     return
   }
   connectors.value = (await res.json()) as Array<{ key: string; name: string; actions?: Array<{ key: string; name?: string }> }>
 }
 
 async function loadPromptTemplates() {
+  operationError.value = ''
   const res = await authFetch('/prompt-templates')
   if (!res.ok) {
     promptTemplates.value = []
+    operationError.value = 'Unable to load prompt templates right now.'
     return
   }
   const payload = (await res.json()) as Array<{ name: string }>
@@ -124,9 +132,11 @@ function replaceAST(next: WorkflowAST) {
 }
 
 async function openWorkflow(id: string) {
+  operationError.value = ''
   selectedWorkflowID.value = id
   const res = await authFetch(`/workflows/${id}/versions/draft`)
   if (!res.ok) {
+    operationError.value = 'Unable to open this workflow right now.'
     return
   }
   const payload = (await res.json()) as WorkflowAST
@@ -139,12 +149,14 @@ async function createWorkflow() {
   if (!createState.name || !createState.caseTypeID) {
     return
   }
+  operationError.value = ''
   const res = await authFetch('/workflows', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: createState.name, case_type_id: createState.caseTypeID }),
   })
   if (!res.ok) {
+    operationError.value = 'Unable to create workflow right now.'
     return
   }
   const payload = (await res.json()) as WorkflowSummary
@@ -186,6 +198,7 @@ async function saveDraft() {
   if (!selectedWorkflowID.value) {
     return
   }
+  operationError.value = ''
   issues.value = validateAST(ast)
   const res = await authFetch(`/workflows/${selectedWorkflowID.value}/versions/draft`, {
     method: 'PUT',
@@ -193,6 +206,7 @@ async function saveDraft() {
     body: JSON.stringify(ast),
   })
   if (!res.ok) {
+    operationError.value = 'Unable to save draft right now.'
     return
   }
   original.value = normalizeForRoundTrip(ast)
@@ -200,6 +214,7 @@ async function saveDraft() {
 }
 
 async function publish() {
+  operationError.value = ''
   issues.value = validateAST(ast)
   if (issues.value.some((issue) => issue.severity === 'error')) {
     return
@@ -207,15 +222,20 @@ async function publish() {
   if (!selectedWorkflowID.value) {
     return
   }
-  await authFetch(`/workflows/${selectedWorkflowID.value}/publish`, { method: 'POST' })
+  const res = await authFetch(`/workflows/${selectedWorkflowID.value}/publish`, { method: 'POST' })
+  if (!res.ok) {
+    operationError.value = 'Unable to publish workflow right now.'
+  }
 }
 
 async function exportYAML() {
   if (!selectedWorkflowID.value) {
     return
   }
+  operationError.value = ''
   const res = await authFetch(`/workflows/${selectedWorkflowID.value}/yaml/latest`)
   if (!res.ok) {
+    operationError.value = 'Unable to export workflow YAML right now.'
     return
   }
   const content = await res.text()
@@ -232,6 +252,7 @@ async function importYAML(file: File) {
   if (!selectedWorkflowID.value || !file) {
     return
   }
+  operationError.value = ''
   const body = new FormData()
   body.append('file', file)
   const res = await authFetch(`/workflows/${selectedWorkflowID.value}/yaml/draft`, {
@@ -239,6 +260,7 @@ async function importYAML(file: File) {
     body,
   })
   if (!res.ok) {
+    operationError.value = 'Unable to import workflow YAML right now.'
     return
   }
   await openWorkflow(selectedWorkflowID.value)
@@ -258,6 +280,7 @@ if (ast.steps.length === 0) {
 <template>
   <DesktopOnlyNotice v-if="!isDesktop" title="Builder" />
   <section v-else class="builder-page">
+    <Message v-if="operationError" severity="error">{{ operationError }}</Message>
     <WorkflowToolbar
       :unsaved="unsaved"
       @save="saveDraft"

@@ -40,4 +40,25 @@ describe('Builder view mobile gating', () => {
     expect(wrapper.text()).toContain('Please use a desktop browser for this feature.')
     expect(wrapper.find('.builder-page').exists()).toBe(false)
   })
+
+  it('shows an error message when builder data fails to load', async () => {
+    setViewport(1280)
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })))
+
+    const wrapper = mount(BuilderView, {
+      global: {
+        plugins: [[PrimeVue, { theme: { preset: Aura } }]],
+        stubs: {
+          StepPalette: true,
+          WorkflowCanvas: true,
+          StepConfigPanel: true,
+          WorkflowToolbar: true,
+          ValidationPanel: true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to load')
+  })
 })

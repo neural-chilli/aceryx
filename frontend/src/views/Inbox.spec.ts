@@ -239,4 +239,13 @@ describe('Inbox view', () => {
 
     expect(fetchSpy.mock.calls.length).toBeGreaterThan(initialCalls)
   })
+
+  it('shows an error message when loading tasks fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })))
+
+    const { wrapper } = await mountInbox()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to load tasks right now. Please try again.')
+  })
 })

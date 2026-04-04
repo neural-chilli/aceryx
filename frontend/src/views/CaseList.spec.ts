@@ -98,4 +98,13 @@ describe('Case list view', () => {
     await flushPromises()
     expect((wrapper.vm as unknown as { showFilters: boolean }).showFilters).toBe(true)
   })
+
+  it('shows an error message when loading cases fails', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('boom', { status: 500 })))
+
+    const { wrapper } = await mountCaseList('/cases')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Unable to load cases right now. Please try again.')
+  })
 })

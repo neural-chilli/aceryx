@@ -9,6 +9,7 @@ import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
+import Message from 'primevue/message'
 import { useAuth } from '../composables/useAuth'
 import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
@@ -42,6 +43,7 @@ const showFilters = ref(false)
 const mobileList = ref<HTMLElement | null>(null)
 const pullStartY = ref(0)
 const pullDistance = ref(0)
+const loadError = ref('')
 
 function parsePositiveInt(value: unknown): number | null {
   const parsed = Number.parseInt(String(value ?? ''), 10)
@@ -84,6 +86,7 @@ async function syncQuery() {
 
 async function load() {
   loading.value = true
+  loadError.value = ''
   try {
     const q = new URLSearchParams()
     if (statuses.value.length > 0) {
@@ -112,7 +115,11 @@ async function load() {
     const res = await authFetch(`/cases/dashboard?${q.toString()}`)
     if (res.ok) {
       rows.value = (await res.json()) as DashboardCase[]
+      return
     }
+    loadError.value = 'Unable to load cases right now. Please try again.'
+  } catch {
+    loadError.value = 'Unable to load cases right now. Please try again.'
   } finally {
     loading.value = false
   }
@@ -230,6 +237,7 @@ watch(() => route.query, () => {
 <template>
   <section class="case-list">
     <h1>{{ t('Cases') }}</h1>
+    <Message v-if="loadError" severity="error">{{ loadError }}</Message>
 
     <Button v-if="isMobileOrTablet" label="Filters" icon="pi pi-filter" @click="showFilters = true" />
 
