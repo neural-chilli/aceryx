@@ -28,6 +28,8 @@ const stepID = computed(() => String(route.query.step ?? ''))
 const submitHint = computed(() => prettyShortcut('mod+enter'))
 const caseSummaryOpen = ref(true)
 const aiOpen = ref(false)
+let draftSaveInFlight = false
+let pendingDraft: Record<string, unknown> | null = null
 
 const formSchema = computed<TaskFormSchema>(() => {
   if (!task.value) {
@@ -86,14 +88,28 @@ async function loadTask() {
 }
 
 async function saveDraft(data: Record<string, unknown>) {
-  if (!task.value) {
+  pendingDraft = data
+  if (draftSaveInFlight) {
     return
   }
-  await authFetch(`/tasks/${task.value.case_id}/${encodeURIComponent(task.value.step_id)}/draft`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ data }),
-  })
+  draftSaveInFlight = true
+  try {
+    while (pendingDraft) {
+      if (!task.value) {
+        pendingDraft = null
+        break
+      }
+      const nextDraft = pendingDraft
+      pendingDraft = null
+      await authFetch(`/tasks/${task.value.case_id}/${encodeURIComponent(task.value.step_id)}/draft`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ data: nextDraft }),
+      })
+    }
+  } finally {
+    draftSaveInFlight = false
+  }
 }
 
 async function complete(outcome: string, data: Record<string, unknown>) {

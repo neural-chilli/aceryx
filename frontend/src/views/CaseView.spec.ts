@@ -386,6 +386,58 @@ describe('CaseView document panel', () => {
     expect(draftCall).toBeTruthy()
   })
 
+  it('serializes draft saves and avoids concurrent draft requests', async () => {
+    const pendingResolvers: Array<() => void> = []
+    let draftCalls = 0
+    let activeDraftCalls = 0
+    let maxConcurrentDraftCalls = 0
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/tasks/case-1/review') && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify(defaultTaskPayload()), { status: 200 })
+      }
+      if (url === '/cases/case-1/documents' && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url.endsWith('/draft') && init?.method === 'PUT') {
+        draftCalls++
+        activeDraftCalls++
+        maxConcurrentDraftCalls = Math.max(maxConcurrentDraftCalls, activeDraftCalls)
+        return await new Promise<Response>((resolve) => {
+          pendingResolvers.push(() => {
+            activeDraftCalls--
+            resolve(new Response(JSON.stringify({ status: 'saved' }), { status: 200 }))
+          })
+        })
+      }
+      return new Response('{}', { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    const input = wrapper.find('input')
+    input.element.focus()
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }))
+    await flushPromises()
+
+    expect(draftCalls).toBe(1)
+    expect(maxConcurrentDraftCalls).toBe(1)
+
+    pendingResolvers.shift()?.()
+    await flushPromises()
+    expect(draftCalls).toBe(2)
+    expect(maxConcurrentDraftCalls).toBe(1)
+
+    while (pendingResolvers.length > 0) {
+      pendingResolvers.shift()?.()
+    }
+    await flushPromises()
+  })
+
   it('task view stacks sections vertically on mobile', async () => {
     setViewport(375)
     installFetchMock([])
