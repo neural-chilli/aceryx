@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/audit"
 )
 
 const (
@@ -134,6 +135,7 @@ type Engine struct {
 	mu            sync.RWMutex
 	defaultPolicy ErrorPolicy
 	slaInterval   time.Duration
+	auditSvc      *audit.Service
 }
 
 type ExpressionEvaluator interface {
@@ -188,6 +190,7 @@ func New(db *sql.DB, evaluator ExpressionEvaluator, cfg Config) *Engine {
 		systemActorID: uuid.Nil,
 		slaInterval:   cfg.SLAInterval,
 		defaultPolicy: ErrorPolicy{MaxAttempts: 1, Backoff: "none", InitialDelay: 5 * time.Second, MaxDelay: 60 * time.Second, OnExhausted: "fail"},
+		auditSvc:      audit.NewService(db),
 	}
 }
 
@@ -207,6 +210,15 @@ func (e *Engine) SetSystemActorID(actorID uuid.UUID) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.systemActorID = actorID
+}
+
+func (e *Engine) SetAuditService(svc *audit.Service) {
+	if svc == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.auditSvc = svc
 }
 
 func (e *Engine) executorFor(stepType string) (StepExecutor, error) {

@@ -33,6 +33,7 @@ type CaseService struct {
 	db     *sql.DB
 	engine Engine
 	notify Notifier
+	audit  *audit.Service
 }
 
 type Notifier interface {
@@ -49,11 +50,18 @@ func NewCaseTypeService(db *sql.DB) *CaseTypeService {
 }
 
 func NewCaseService(db *sql.DB, eng Engine) *CaseService {
-	return &CaseService{db: db, engine: eng}
+	return &CaseService{db: db, engine: eng, audit: audit.NewService(db)}
 }
 
 func (s *CaseService) SetNotifier(n Notifier) {
 	s.notify = n
+}
+
+func (s *CaseService) SetAuditService(auditSvc *audit.Service) {
+	if auditSvc == nil {
+		return
+	}
+	s.audit = auditSvc
 }
 
 func NewReportsService(db *sql.DB, refreshInterval time.Duration) *ReportsService {
@@ -75,7 +83,7 @@ func (s *CaseTypeService) RegisterCaseType(ctx context.Context, tenantID, create
 	if err != nil {
 		return CaseType{}, nil, fmt.Errorf("begin register case type tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = tx.Rollback() }()
 
 	var nextVersion int
 	if err := tx.QueryRowContext(ctx, `
@@ -237,14 +245,14 @@ VALUES ($1, $2, 'pending', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, 0, '{}'::jsonb
 		}
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, c.ID, "", "case", createdBy, "human", "created", map[string]interface{}{
+	if err := s.audit.RecordCaseEventTx(ctx, tx, c.ID, "", "case", createdBy, "human", "created", map[string]interface{}{
 		"case_number": c.CaseNumber,
 		"case_type":   c.CaseType,
 	}); err != nil {
 		return Case{}, nil, err
 	}
 
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.audit.CommitTx(tx); err != nil {
 		return Case{}, nil, fmt.Errorf("commit create case tx: %w", err)
 	}
 
@@ -389,7 +397,7 @@ func (s *CaseService) UpdateCaseData(ctx context.Context, tenantID, caseID, acto
 	if err != nil {
 		return PatchResult{}, nil, fmt.Errorf("begin patch case tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.audit.RollbackTx(tx) }()
 
 	var (
 		rawData    []byte
@@ -448,11 +456,11 @@ WHERE tenant_id = $1 AND id = $2 AND version = $4
 	}
 
 	diff := ComputeFieldDiff(before, merged)
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "updated", map[string]interface{}{"diff": diff}); err != nil {
+	if err := s.audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "updated", map[string]interface{}{"diff": diff}); err != nil {
 		return PatchResult{}, nil, err
 	}
 
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.audit.CommitTx(tx); err != nil {
 		return PatchResult{}, nil, fmt.Errorf("commit patch case tx: %w", err)
 	}
 
@@ -484,7 +492,7 @@ WHERE c.tenant_id = $1 AND c.id = $2 AND cs.state = 'active'
 	if err != nil {
 		return fmt.Errorf("begin close case tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.audit.RollbackTx(tx) }()
 
 	if _, err := tx.ExecContext(ctx, `
 UPDATE cases
@@ -494,11 +502,11 @@ WHERE tenant_id = $1 AND id = $2
 		return fmt.Errorf("set case completed: %w", err)
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "closed", map[string]interface{}{"reason": reason}); err != nil {
+	if err := s.audit.RecordCaseEventTx(ctx, tx, caseID, "", "case", actorID, "human", "closed", map[string]interface{}{"reason": reason}); err != nil {
 		return err
 	}
 
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.audit.CommitTx(tx); err != nil {
 		return err
 	}
 	s.updateCaseStatusMetrics(ctx, tenantID)

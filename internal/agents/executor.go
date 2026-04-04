@@ -27,6 +27,7 @@ type AgentExecutor struct {
 	db              *sql.DB
 	tasks           TaskCreator
 	prompts         *PromptTemplateService
+	auditSvc        *audit.Service
 	llm             *LLMClient
 	defaultModel    string
 	contextTimeout  time.Duration
@@ -64,6 +65,7 @@ func NewAgentExecutor(cfg ExecutorConfig) *AgentExecutor {
 		db:              cfg.DB,
 		tasks:           cfg.TaskCreator,
 		prompts:         NewPromptTemplateService(cfg.DB),
+		auditSvc:        resolveAuditService(cfg.DB, cfg.AuditService),
 		llm:             llm,
 		defaultModel:    model,
 		contextTimeout:  ctxTimeout,
@@ -71,6 +73,13 @@ func NewAgentExecutor(cfg ExecutorConfig) *AgentExecutor {
 		contextMaxBytes: ctxMaxBytes,
 		llmTimeout:      llmTimeout,
 	}
+}
+
+func resolveAuditService(db *sql.DB, svc *audit.Service) *audit.Service {
+	if svc != nil {
+		return svc
+	}
+	return audit.NewService(db)
 }
 
 func (a *AgentExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepID string, raw json.RawMessage) (*engine.StepResult, error) {
@@ -488,16 +497,16 @@ func (a *AgentExecutor) createHumanReviewTask(ctx context.Context, caseID uuid.U
 	if err != nil {
 		return fmt.Errorf("begin agent escalation audit tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = a.auditSvc.RollbackTx(tx) }()
 
 	actorID := uuid.MustParse("00000000-0000-0000-0000-000000000000")
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "agent", actorID, "system", "escalated", map[string]any{
+	if err := a.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "agent", actorID, "system", "escalated", map[string]any{
 		"confidence": confidence,
 		"threshold":  cfg.ConfidenceThreshold,
 	}); err != nil {
 		return err
 	}
-	return audit.CommitTx(tx)
+	return a.auditSvc.CommitTx(tx)
 }
 
 func (a *AgentExecutor) loadCaseAndSteps(ctx context.Context, caseID uuid.UUID) (uuid.UUID, string, string, map[string]any, map[string]any, error) {

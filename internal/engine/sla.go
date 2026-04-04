@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
@@ -109,14 +108,14 @@ func (e *Engine) recordSLABreach(ctx context.Context, task OverdueTask) (bool, e
 	if err != nil {
 		return false, err
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = e.auditSvc.RollbackTx(tx) }()
 
 	var caseStatus string
 	if err := tx.QueryRowContext(ctx, `SELECT status FROM cases WHERE id = $1 FOR UPDATE`, task.CaseID).Scan(&caseStatus); err != nil {
 		return false, err
 	}
 	if caseStatus == "cancelled" {
-		return false, audit.CommitTx(tx)
+		return false, e.auditSvc.CommitTx(tx)
 	}
 
 	var state string
@@ -130,14 +129,14 @@ FOR UPDATE
 		return false, err
 	}
 	if state != StateActive || !deadline.Valid || !deadline.Time.Before(time.Now().UTC()) {
-		return false, audit.CommitTx(tx)
+		return false, e.auditSvc.CommitTx(tx)
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, task.CaseID, task.StepID, "system", e.systemActor(), "system", "sla_breach", map[string]any{
+	if err := e.auditSvc.RecordCaseEventTx(ctx, tx, task.CaseID, task.StepID, "system", e.systemActor(), "system", "sla_breach", map[string]any{
 		"sla_deadline": deadline.Time.UTC().Format(time.RFC3339Nano),
 		"task_id":      task.ID.String(),
 	}); err != nil {
 		return false, err
 	}
-	return true, audit.CommitTx(tx)
+	return true, e.auditSvc.CommitTx(tx)
 }

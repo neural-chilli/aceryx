@@ -59,7 +59,6 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	reportingSvc := reports.NewService(db, agents.NewLLMClientFromEnv(120*time.Second))
 	reportsHandlers := handlers.NewReportsHandlers(reportingSvc)
 	auditSvc := audit.NewService(db)
-	audit.SetDefaultService(auditSvc)
 	auditHandlers := handlers.NewAuditHandlers(auditSvc)
 
 	authzSvc := rbac.NewService(db)
@@ -94,7 +93,9 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	auditSvc.OnCommitted(activitySvc.OnAuditEvent)
 	activityHandlers := handlers.NewActivityHandlers(activitySvc)
 	taskSvc := tasks.NewTaskService(db, eng, notifySvc)
+	taskSvc.SetAuditService(auditSvc)
 	caseSvc.SetNotifier(notifySvc)
+	caseSvc.SetAuditService(auditSvc)
 	taskHandlers := handlers.NewTaskHandlers(taskSvc)
 	promptTemplateSvc := agents.NewPromptTemplateService(db)
 	promptTemplateHandlers := handlers.NewPromptTemplateHandlers(promptTemplateSvc)
@@ -102,10 +103,12 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		eng.RegisterExecutor("human_task", tasks.NewHumanTaskExecutor(taskSvc))
 		eng.RegisterExecutor("integration", connectors.NewExecutor(db, connectorRegistry, secretStore))
 		eng.RegisterExecutor("agent", agents.NewAgentExecutor(agents.ExecutorConfig{
-			DB:          db,
-			TaskCreator: taskSvc,
-			LLMClient:   agents.NewLLMClientFromEnv(120 * time.Second),
+			DB:           db,
+			TaskCreator:  taskSvc,
+			LLMClient:    agents.NewLLMClientFromEnv(120 * time.Second),
+			AuditService: auditSvc,
 		}))
+		eng.SetAuditService(auditSvc)
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
 	tenantSvc := tenants.NewTenantService(db)
@@ -113,6 +116,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	tenantHandlers := handlers.NewTenantHandlers(tenantSvc, themeSvc)
 	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
 	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
+	vaultSvc.SetAuditService(auditSvc)
 	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
 	if bgCtx == nil {
 		bgCtx = context.Background()

@@ -37,6 +37,7 @@ type TaskService struct {
 	db       *sql.DB
 	notify   Notifier
 	engine   Engine
+	auditSvc *audit.Service
 	now      func() time.Time
 	after    func(time.Duration, func()) *time.Timer
 	sysActor uuid.UUID
@@ -136,9 +137,10 @@ type DraftRequest struct {
 
 func NewTaskService(db *sql.DB, eng Engine, notify Notifier) *TaskService {
 	return &TaskService{
-		db:     db,
-		engine: eng,
-		notify: notify,
+		db:       db,
+		engine:   eng,
+		notify:   notify,
+		auditSvc: audit.NewService(db),
 		now: func() time.Time {
 			return time.Now().UTC()
 		},
@@ -151,12 +153,19 @@ func (s *TaskService) SetSystemActorID(id uuid.UUID) {
 	s.sysActor = id
 }
 
+func (s *TaskService) SetAuditService(auditSvc *audit.Service) {
+	if auditSvc == nil {
+		return
+	}
+	s.auditSvc = auditSvc
+}
+
 func (s *TaskService) CreateTaskFromActivation(ctx context.Context, caseID uuid.UUID, stepID string, cfg AssignmentConfig) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin task creation tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	now := s.now()
 	var assignedTo *uuid.UUID
@@ -198,7 +207,7 @@ WHERE case_id = $1 AND step_id = $2
 	}
 
 	actor := s.systemActor()
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", actor, "system", "created", map[string]any{"assigned_to": assignedTo, "role": cfg.AssignToRole, "sla_hours": cfg.SLAHours}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", actor, "system", "created", map[string]any{"assigned_to": assignedTo, "role": cfg.AssignToRole, "sla_hours": cfg.SLAHours}); err != nil {
 		return err
 	}
 
@@ -206,7 +215,7 @@ WHERE case_id = $1 AND step_id = $2
 		return fmt.Errorf("touch case timestamp task create: %w", err)
 	}
 
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit task creation: %w", err)
 	}
 	tenantID, _ := s.lookupTenantID(ctx, caseID)
@@ -432,7 +441,7 @@ func (s *TaskService) ClaimTask(ctx context.Context, tenantID, principalID, case
 	if err != nil {
 		return fmt.Errorf("begin claim task tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	var claimed bool
 	err = tx.QueryRowContext(ctx, `
@@ -457,13 +466,13 @@ SELECT EXISTS(SELECT 1 FROM claim)
 		return ErrAlreadyClaimed
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", principalID, "human", "claimed", map[string]any{}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", principalID, "human", "claimed", map[string]any{}); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE cases SET updated_at = now() WHERE id = $1`, caseID); err != nil {
 		return fmt.Errorf("touch case task claim: %w", err)
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit claim task: %w", err)
 	}
 
@@ -557,7 +566,7 @@ func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, c
 	if err != nil {
 		return fmt.Errorf("begin complete task tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	resultRaw, _ := json.Marshal(map[string]any{"outcome": req.Outcome, "data": payload})
 	res, err := tx.ExecContext(ctx, `
@@ -598,11 +607,11 @@ WHERE id = $1
 		}
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", principalID, "human", "completed", map[string]any{"outcome": req.Outcome, "data": payload}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", principalID, "human", "completed", map[string]any{"outcome": req.Outcome, "data": payload}); err != nil {
 		return err
 	}
 
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit complete task tx: %w", err)
 	}
 
@@ -647,7 +656,7 @@ func (s *TaskService) ReassignTask(ctx context.Context, tenantID, actorID, caseI
 	if err != nil {
 		return fmt.Errorf("begin reassign task tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	var oldAssigned sql.NullString
 	if err := tx.QueryRowContext(ctx, `
@@ -666,10 +675,10 @@ FOR UPDATE
 	if _, err := tx.ExecContext(ctx, `UPDATE cases SET updated_at = now() WHERE id=$1`, caseID); err != nil {
 		return fmt.Errorf("touch case reassign: %w", err)
 	}
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", actorID, "human", "reassigned", map[string]any{"old_assignee": oldAssigned.String, "new_assignee": req.AssignTo, "reason": req.Reason}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", actorID, "human", "reassigned", map[string]any{"old_assignee": oldAssigned.String, "new_assignee": req.AssignTo, "reason": req.Reason}); err != nil {
 		return err
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit reassign task tx: %w", err)
 	}
 	if s.notify != nil {
@@ -694,7 +703,7 @@ func (s *TaskService) EscalateTask(ctx context.Context, tenantID uuid.UUID, case
 	if err != nil {
 		return fmt.Errorf("begin escalate task tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	var state string
 	var currentAssigned sql.NullString
@@ -708,10 +717,10 @@ FOR UPDATE
 		return err
 	}
 	if state != engine.StateActive {
-		if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", s.systemActor(), "system", "escalation_suppressed", map[string]any{"state": state}); err != nil {
+		if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", s.systemActor(), "system", "escalation_suppressed", map[string]any{"state": state}); err != nil {
 			return err
 		}
-		return audit.CommitTx(tx)
+		return s.auditSvc.CommitTx(tx)
 	}
 
 	var reassignedTo *uuid.UUID
@@ -725,14 +734,14 @@ FOR UPDATE
 		}
 	}
 
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", s.systemActor(), "system", "escalated", map[string]any{"to_role": cfg.ToRole, "action": cfg.Action, "assigned_to": reassignedTo}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "task", s.systemActor(), "system", "escalated", map[string]any{"to_role": cfg.ToRole, "action": cfg.Action, "assigned_to": reassignedTo}); err != nil {
 		return err
 	}
 
 	if _, err := tx.ExecContext(ctx, `UPDATE cases SET updated_at = now() WHERE id=$1`, caseID); err != nil {
 		return fmt.Errorf("touch case escalate: %w", err)
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit escalate tx: %w", err)
 	}
 

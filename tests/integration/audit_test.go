@@ -30,7 +30,6 @@ func TestAuditIntegration_RecordVerifyAndCallbacks(t *testing.T) {
 	caseID := seedAuditCase(t, ctx, db, tenantID, principalID, "audit_case_int")
 
 	svc := audit.NewService(db)
-	audit.SetDefaultService(svc)
 
 	for i := 0; i < 10; i++ {
 		if err := appendAuditEvent(ctx, svc, db, caseID, "step", "completed", map[string]any{"idx": i}); err != nil {

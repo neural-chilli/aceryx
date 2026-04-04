@@ -23,6 +23,7 @@ import (
 type Service struct {
 	db              *sql.DB
 	store           VaultStore
+	auditSvc        *audit.Service
 	cleanupInterval time.Duration
 	now             func() time.Time
 	systemActorID   uuid.UUID
@@ -66,11 +67,25 @@ func NewService(db *sql.DB, store VaultStore, cleanupInterval time.Duration) *Se
 	if cleanupInterval <= 0 {
 		cleanupInterval = 24 * time.Hour
 	}
-	return &Service{db: db, store: store, cleanupInterval: cleanupInterval, now: func() time.Time { return time.Now().UTC() }, systemActorID: uuid.Nil}
+	return &Service{
+		db:              db,
+		store:           store,
+		auditSvc:        audit.NewService(db),
+		cleanupInterval: cleanupInterval,
+		now:             func() time.Time { return time.Now().UTC() },
+		systemActorID:   uuid.Nil,
+	}
 }
 
 func (s *Service) SetSystemActorID(actorID uuid.UUID) {
 	s.systemActorID = actorID
+}
+
+func (s *Service) SetAuditService(auditSvc *audit.Service) {
+	if auditSvc == nil {
+		return
+	}
+	s.auditSvc = auditSvc
 }
 
 func (s *Service) Upload(ctx context.Context, tenantID uuid.UUID, in UploadInput) (Document, error) {
@@ -102,7 +117,7 @@ func (s *Service) Upload(ctx context.Context, tenantID uuid.UUID, in UploadInput
 	if err != nil {
 		return Document{}, fmt.Errorf("begin upload tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	var storageURI string
 	_ = tx.QueryRowContext(ctx, `
@@ -139,10 +154,10 @@ RETURNING id, case_id, COALESCE(step_id,''), filename, mime_type, size_bytes, co
 	if err != nil {
 		return Document{}, fmt.Errorf("insert vault metadata row: %w", err)
 	}
-	if err := audit.RecordCaseEventTx(ctx, tx, in.CaseID, in.StepID, "document", in.UploadedBy, "human", "uploaded", map[string]any{"document_id": doc.ID.String(), "filename": in.Filename, "size_bytes": doc.SizeBytes, "content_hash": hash}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, in.CaseID, in.StepID, "document", in.UploadedBy, "human", "uploaded", map[string]any{"document_id": doc.ID.String(), "filename": in.Filename, "size_bytes": doc.SizeBytes, "content_hash": hash}); err != nil {
 		return Document{}, err
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return Document{}, fmt.Errorf("commit upload tx: %w", err)
 	}
 	doc.DisplayMode = DisplayModeForMime(doc.MimeType)
@@ -200,7 +215,7 @@ func (s *Service) Delete(ctx context.Context, tenantID, caseID, docID, actorID u
 	if err != nil {
 		return fmt.Errorf("begin delete document tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	var stepID, filename string
 	err = tx.QueryRowContext(ctx, `
@@ -215,10 +230,10 @@ RETURNING COALESCE(step_id,''), filename
 		}
 		return fmt.Errorf("logical delete document: %w", err)
 	}
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "document", actorID, "human", "deleted", map[string]any{"document_id": docID.String(), "filename": filename}); err != nil {
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "document", actorID, "human", "deleted", map[string]any{"document_id": docID.String(), "filename": filename}); err != nil {
 		return err
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit delete document tx: %w", err)
 	}
 	return nil
@@ -377,7 +392,7 @@ func (s *Service) Erase(ctx context.Context, tenantID uuid.UUID, req ErasureRequ
 	if err != nil {
 		return fmt.Errorf("begin erasure tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
 	for _, caseID := range caseIDs {
 		if _, err := tx.ExecContext(ctx, `UPDATE vault_documents SET deleted_at = now() WHERE tenant_id = $1 AND case_id = $2 AND deleted_at IS NULL`, tenantID, caseID); err != nil {
@@ -386,11 +401,11 @@ func (s *Service) Erase(ctx context.Context, tenantID uuid.UUID, req ErasureRequ
 		if _, err := tx.ExecContext(ctx, `UPDATE case_steps SET events = '[]'::jsonb WHERE case_id = $1`, caseID); err != nil {
 			return fmt.Errorf("purge case step events for erasure: %w", err)
 		}
-		if err := audit.RecordCaseEventTx(ctx, tx, caseID, "", "system", actorID, "human", "erasure_completed", map[string]any{"case_id": caseID.String(), "data_subject_email": req.DataSubjectEmail}); err != nil {
+		if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, "", "system", actorID, "human", "erasure_completed", map[string]any{"case_id": caseID.String(), "data_subject_email": req.DataSubjectEmail}); err != nil {
 			return err
 		}
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit erasure tx: %w", err)
 	}
 	for _, caseID := range caseIDs {
@@ -455,11 +470,11 @@ func (s *Service) recordDownloadAudit(ctx context.Context, caseID uuid.UUID, ste
 	if err != nil {
 		return fmt.Errorf("begin download audit tx: %w", err)
 	}
-	defer func() { _ = audit.RollbackTx(tx) }()
-	if err := audit.RecordCaseEventTx(ctx, tx, caseID, stepID, "document", actorID, "human", "downloaded", map[string]any{"document_id": docID.String(), "filename": filename}); err != nil {
+	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
+	if err := s.auditSvc.RecordCaseEventTx(ctx, tx, caseID, stepID, "document", actorID, "human", "downloaded", map[string]any{"document_id": docID.String(), "filename": filename}); err != nil {
 		return err
 	}
-	if err := audit.CommitTx(tx); err != nil {
+	if err := s.auditSvc.CommitTx(tx); err != nil {
 		return fmt.Errorf("commit download audit tx: %w", err)
 	}
 	return nil

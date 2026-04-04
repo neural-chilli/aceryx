@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/tasks"
 )
 
@@ -27,6 +28,7 @@ type ExecutorConfig struct {
 	DB              *sql.DB
 	TaskCreator     TaskCreator
 	LLMClient       *LLMClient
+	AuditService    *audit.Service
 	Model           string
 	ContextTimeout  time.Duration
 	SourceTimeout   time.Duration
