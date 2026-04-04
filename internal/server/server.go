@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"io/fs"
@@ -29,7 +30,11 @@ type manifestIcon struct {
 }
 
 func NewHandler(db *sql.DB, eng *engine.Engine, uiFS fs.FS) http.Handler {
-	apiHandler := api.NewRouterWithServices(db, eng)
+	return NewHandlerWithContext(context.Background(), db, eng, uiFS)
+}
+
+func NewHandlerWithContext(ctx context.Context, db *sql.DB, eng *engine.Engine, uiFS fs.FS) http.Handler {
+	apiHandler := api.NewRouterWithServicesContext(ctx, db, eng)
 	spa := newSPAHandler(uiFS)
 
 	mux := http.NewServeMux()

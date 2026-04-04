@@ -46,6 +46,10 @@ func NewRouter() http.Handler {
 }
 
 func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
+	return NewRouterWithServicesContext(context.Background(), db, eng)
+}
+
+func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine.Engine) http.Handler {
 	mux := http.NewServeMux()
 
 	ctSvc := cases.NewCaseTypeService(db)
@@ -110,10 +114,13 @@ func NewRouterWithServices(db *sql.DB, eng *engine.Engine) http.Handler {
 	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
 	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
 	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
+	if bgCtx == nil {
+		bgCtx = context.Background()
+	}
 	if shouldStartBackgroundTickers() {
-		go vaultSvc.StartOrphanCleanupTicker(context.Background())
-		go reportingSvc.StartViewRefreshTicker(context.Background())
-		go reportingSvc.StartScheduleTicker(context.Background())
+		go vaultSvc.StartOrphanCleanupTicker(bgCtx)
+		go reportingSvc.StartViewRefreshTicker(bgCtx)
+		go reportingSvc.StartScheduleTicker(bgCtx)
 	}
 
 	authMW := middleware.AuthMiddleware(authSvc)

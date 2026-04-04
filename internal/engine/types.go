@@ -235,3 +235,15 @@ func (e *Engine) WorkerPoolStats() (active int, capacity int) {
 	}
 	return active, capacity
 }
+
+func (e *Engine) Wait() {
+	if e == nil {
+		return
+	}
+	if e.executions != nil {
+		e.executions.Wait()
+	}
+	if e.evaluations != nil {
+		e.evaluations.Wait()
+	}
+}

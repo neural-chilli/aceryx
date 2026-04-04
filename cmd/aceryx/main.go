@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/google/uuid"
@@ -253,10 +255,13 @@ func runRestore(args []string) error {
 }
 
 func runServe() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	serverCtx, stopSignals := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stopSignals()
+
+	dbCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	db, err := openDatabase(ctx)
+	db, err := openDatabase(dbCtx)
 	if err != nil {
 		return err
 	}
@@ -264,15 +269,52 @@ func runServe() error {
 
 	evaluator := expressions.NewEvaluator()
 	eng := engine.New(db, evaluator, engine.Config{})
-	handler := server.NewHandler(db, eng, frontendassets.DistFS())
+	handler := server.NewHandlerWithContext(serverCtx, db, eng, frontendassets.DistFS())
+	go eng.StartSLAMonitor(serverCtx)
 
 	addr := os.Getenv("ACERYX_HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
 
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+
+	go func() {
+		<-serverCtx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
 	slog.Info("starting server", "addr", addr)
-	return http.ListenAndServe(addr, handler)
+	err = srv.ListenAndServe()
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	if waitErr := waitForEngineDrain(eng, 20*time.Second); waitErr != nil {
+		return waitErr
+	}
+	return nil
+}
+
+func waitForEngineDrain(eng *engine.Engine, timeout time.Duration) error {
+	if eng == nil {
+		return nil
+	}
+	done := make(chan struct{})
+	go func() {
+		eng.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return nil
+	case <-time.After(timeout):
+		return fmt.Errorf("timed out waiting for engine workers to drain")
+	}
 }
 
 func openDatabase(ctx context.Context) (*sql.DB, error) {
