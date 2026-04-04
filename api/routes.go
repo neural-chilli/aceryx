@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net"
 	"net/http"
 	"os"
@@ -27,6 +28,11 @@ import (
 	"github.com/neural-chilli/aceryx/internal/connectors/webhookreceiver"
 	"github.com/neural-chilli/aceryx/internal/connectors/webhooksender"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/llm"
+	"github.com/neural-chilli/aceryx/internal/llm/anthropic"
+	"github.com/neural-chilli/aceryx/internal/llm/custom"
+	"github.com/neural-chilli/aceryx/internal/llm/ollama"
+	llmopenai "github.com/neural-chilli/aceryx/internal/llm/openai"
 	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/plugins"
 	"github.com/neural-chilli/aceryx/internal/plugins/hostfns"
@@ -82,6 +88,39 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	connectorRegistry.Register(jiraconn.New())
 	connectorRegistry.Register(docgenconn.New(db, nil))
 	connectorHandlers := handlers.NewConnectorHandlers(connectorRegistry, secretStore)
+	llmStore := llm.NewStore(db)
+	llmManager := llm.NewAdapterManager(llmStore, secretStore, func(_ context.Context, config llm.LLMProviderConfig, apiKey string) (llm.LLMAdapter, error) {
+		switch strings.TrimSpace(strings.ToLower(config.Provider)) {
+		case "openai":
+			return llmopenai.New(llmopenai.Config{
+				APIKey:       apiKey,
+				BaseURL:      config.EndpointURL,
+				DefaultModel: config.DefaultModel,
+			}), nil
+		case "anthropic":
+			return anthropic.New(anthropic.Config{
+				APIKey:       apiKey,
+				BaseURL:      config.EndpointURL,
+				DefaultModel: config.DefaultModel,
+			}), nil
+		case "ollama":
+			return ollama.New(ollama.Config{
+				BaseURL:      config.EndpointURL,
+				DefaultModel: config.DefaultModel,
+			}), nil
+		case "custom":
+			return custom.New(custom.Config{
+				APIKey:          apiKey,
+				BaseURL:         config.EndpointURL,
+				DefaultModel:    config.DefaultModel,
+				Azure:           config.Azure,
+				AzureAPIVersion: config.AzureAPIVersion,
+			}), nil
+		default:
+			return nil, fmt.Errorf("unsupported llm provider %q", config.Provider)
+		}
+	})
+	llmHandlers := handlers.NewLLMAdminHandlers(llmStore, llmManager)
 	pluginStore := plugins.NewStore(db)
 	httpHost := hostfns.NewHTTPHost(&http.Client{
 		Timeout: 60 * time.Second,
@@ -256,6 +295,22 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
+	mux.Handle("GET /admin/llm-providers", withPerm("admin:tenant", llmHandlers.ListProviders))
+	mux.Handle("GET /v1/admin/llm-providers", withPerm("admin:tenant", llmHandlers.ListProviders))
+	mux.Handle("POST /admin/llm-providers", withPerm("admin:tenant", llmHandlers.CreateProvider))
+	mux.Handle("POST /v1/admin/llm-providers", withPerm("admin:tenant", llmHandlers.CreateProvider))
+	mux.Handle("PUT /admin/llm-providers/{id}", withPerm("admin:tenant", llmHandlers.UpdateProvider))
+	mux.Handle("PUT /v1/admin/llm-providers/{id}", withPerm("admin:tenant", llmHandlers.UpdateProvider))
+	mux.Handle("DELETE /admin/llm-providers/{id}", withPerm("admin:tenant", llmHandlers.DeleteProvider))
+	mux.Handle("DELETE /v1/admin/llm-providers/{id}", withPerm("admin:tenant", llmHandlers.DeleteProvider))
+	mux.Handle("POST /admin/llm-providers/{id}/test", withPerm("admin:tenant", llmHandlers.TestProvider))
+	mux.Handle("POST /v1/admin/llm-providers/{id}/test", withPerm("admin:tenant", llmHandlers.TestProvider))
+	mux.Handle("GET /admin/llm-usage", withPerm("admin:tenant", llmHandlers.UsageSummary))
+	mux.Handle("GET /v1/admin/llm-usage", withPerm("admin:tenant", llmHandlers.UsageSummary))
+	mux.Handle("GET /admin/llm-usage/details", withPerm("admin:tenant", llmHandlers.UsageDetails))
+	mux.Handle("GET /v1/admin/llm-usage/details", withPerm("admin:tenant", llmHandlers.UsageDetails))
+	mux.Handle("GET /admin/llm-usage/by-purpose", withPerm("admin:tenant", llmHandlers.UsageByPurpose))
+	mux.Handle("GET /v1/admin/llm-usage/by-purpose", withPerm("admin:tenant", llmHandlers.UsageByPurpose))
 	mux.Handle("GET /prompt-templates", withPerm("workflows:view", promptTemplateHandlers.List))
 	mux.Handle("POST /prompt-templates", withPerm("workflows:edit", promptTemplateHandlers.Create))
 	mux.Handle("GET /prompt-templates/{name}/versions/{version}", withPerm("workflows:view", promptTemplateHandlers.GetVersion))
