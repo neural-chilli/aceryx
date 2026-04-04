@@ -1,0 +1,11 @@
+[package]
+name = "{{ .Name }}"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[dependencies]
+aceryx-plugin-sdk = "0.0.0"

@@ -1,0 +1,24 @@
+package main
+
+import "github.com/neural-chilli/aceryx-plugin-sdk-go/sdk"
+
+type stepContext interface {
+	sdk.Context
+	CaseGetString(path string) string
+}
+
+func executeWithContext(ctx stepContext) sdk.Result {
+	input := ctx.CaseGetString("input_field")
+	ctx.Log(sdk.LogInfo, "Processing: %s", input)
+	return sdk.OKWithOutput(map[string]any{
+		"result": "processed",
+	})
+}
+
+//export Execute
+func Execute() {
+	ctx := sdk.NewContext()
+	sdk.Return(executeWithContext(ctx))
+}
+
+func main() {}

@@ -1,0 +1,8 @@
+build:
+	tinygo build -o plugin.wasm -target wasi ./
+
+test:
+	go test ./...
+
+clean:
+	rm -f plugin.wasm

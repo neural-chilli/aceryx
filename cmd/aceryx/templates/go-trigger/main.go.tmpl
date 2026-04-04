@@ -1,0 +1,28 @@
+package main
+
+import (
+	"time"
+
+	"github.com/neural-chilli/aceryx-plugin-sdk-go/sdk"
+)
+
+func startWithContext(ctx sdk.TriggerContext) error {
+	_, err := ctx.PollHTTP("https://example.com", map[string]string{}, 1000)
+	return err
+}
+
+//export Start
+func Start() {
+	ctx := sdk.NewTriggerContext()
+	for {
+		if err := startWithContext(ctx); err != nil {
+			ctx.Log(sdk.LogError, "trigger loop error: %v", err)
+			time.Sleep(2 * time.Second)
+		}
+	}
+}
+
+//export Stop
+func Stop() {}
+
+func main() {}

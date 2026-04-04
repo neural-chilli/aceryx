@@ -72,6 +72,11 @@ func main() {
 			slog.Error("serve failed", "error", err)
 			os.Exit(1)
 		}
+	case "plugin":
+		if err := runPlugin(os.Args[2:]); err != nil {
+			slog.Error("plugin command failed", "error", err)
+			os.Exit(1)
+		}
 	default:
 		printUsage()
 	}
@@ -398,8 +403,9 @@ func resolveVaultPath() string {
 
 func printUsage() {
 	fmt.Println("aceryx - case orchestration engine")
-	fmt.Println("usage: aceryx [serve|migrate|seed|backup|restore|version]")
+	fmt.Println("usage: aceryx [serve|migrate|seed|backup|restore|plugin|version]")
 	fmt.Println("backup usage: aceryx backup --output /path/to/backup.tar.gz [--tenant <tenant_id>] [--pause]")
 	fmt.Println("backup verify usage: aceryx backup verify --input /path/to/backup.tar.gz")
 	fmt.Println("restore usage: aceryx restore --input /path/to/backup.tar.gz [--target-db <connection_string>] --confirm")
+	fmt.Println("plugin usage: aceryx plugin [init|build|test|validate]")
 }

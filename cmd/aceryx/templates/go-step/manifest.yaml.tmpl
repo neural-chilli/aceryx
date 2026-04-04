@@ -1,0 +1,30 @@
+# Plugin identity
+id: {{ .ID }}
+name: {{ .Name }}
+version: 0.1.0
+type: step
+category: Custom
+
+# Licensing and maturity
+tier: open_source
+maturity: community
+
+# Host compatibility
+min_host_version: 0.0.1
+
+# Tool metadata
+tool_capable: false
+# tool_description: Describe the tool for agentic reasoning use.
+# tool_safety: read_only | idempotent_write | side_effect
+
+# Declared host functions
+host_functions:
+  - host_case_get
+  - host_log
+
+# Audit settings
+audit:
+  host_calls:
+    mode: summary
+    max_entries: 50
+    sample_rate: 10

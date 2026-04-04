@@ -171,7 +171,7 @@ func (s *Service) CommitTx(tx *sql.Tx) error {
 		ev := event
 		for _, cb := range callbacks {
 			callback := cb
-			go func() {
+			func() {
 				defer func() { _ = recover() }()
 				callback(ev)
 			}()

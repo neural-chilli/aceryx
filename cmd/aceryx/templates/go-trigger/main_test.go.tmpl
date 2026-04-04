@@ -1,0 +1,16 @@
+package main
+
+import (
+	"testing"
+
+	"github.com/neural-chilli/aceryx-plugin-sdk-go/sdk"
+)
+
+func TestStartWithContext(t *testing.T) {
+	mock := sdk.NewMockContext()
+	mock.SetHTTPResponse("https://example.com", sdk.Response{Status: 200, Body: []byte("ok")})
+	if err := startWithContext(mock); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	mock.AssertCalled(t, "PollHTTP")
+}
