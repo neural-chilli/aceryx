@@ -6,7 +6,8 @@ function normalizePath(path: string): string {
   if (!path) {
     return '/'
   }
-  return path.startsWith('/') ? path : `/${path}`
+  const trimmed = path.replace(/^\/+/, '')
+  return `/${trimmed}`
 }
 
 export function backendHTTPURL(path: string): string {
@@ -15,9 +16,6 @@ export function backendHTTPURL(path: string): string {
   }
   if (isAbsoluteURL(path)) {
     return path
-  }
-  if (path.startsWith('//')) {
-    return `${window.location.protocol}${path}`
   }
   if (import.meta.env.DEV) {
     return `http://localhost:8080${normalizePath(path)}`
