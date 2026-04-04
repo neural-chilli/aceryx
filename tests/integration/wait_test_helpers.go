@@ -43,3 +43,15 @@ func waitForCondition(t *testing.T, timeout, interval time.Duration, condition f
 	}
 	t.Fatal(failure)
 }
+
+func ensureConditionNever(t *testing.T, duration, interval time.Duration, condition func() bool, failure string) {
+	t.Helper()
+	deadline := time.Now().Add(adjustedWaitTimeout(duration))
+	pollEvery := adjustedWaitInterval(interval)
+	for time.Now().Before(deadline) {
+		if condition() {
+			t.Fatal(failure)
+		}
+		time.Sleep(pollEvery)
+	}
+}

@@ -160,7 +160,7 @@ ON CONFLICT (case_id, step_id) DO UPDATE SET metadata = EXCLUDED.metadata
 	if err := auditSvc.CommitTx(tx2); err != nil {
 		t.Fatalf("commit tx: %v", err)
 	}
-	waitFor(t, 2*time.Second, func() bool { return hub.count() > beforeBroadcasts })
+	waitForCondition(t, 2*time.Second, 20*time.Millisecond, func() bool { return hub.count() > beforeBroadcasts }, "expected feed-worthy event broadcast")
 	afterCommitBroadcasts := hub.count()
 
 	tx3, err := db.BeginTx(ctx, nil)
@@ -176,7 +176,9 @@ ON CONFLICT (case_id, step_id) DO UPDATE SET metadata = EXCLUDED.metadata
 	if err := auditSvc.CommitTx(tx3); err != nil {
 		t.Fatalf("commit non-feed-worthy tx: %v", err)
 	}
-	time.Sleep(100 * time.Millisecond)
+	ensureConditionNever(t, 250*time.Millisecond, 20*time.Millisecond, func() bool {
+		return hub.count() != afterCommitBroadcasts
+	}, "non-feed-worthy event should not be broadcast")
 	if hub.count() != afterCommitBroadcasts {
 		t.Fatal("non-feed-worthy event should not be broadcast")
 	}
@@ -211,28 +213,6 @@ LIMIT 1
 	return id
 }
 
-func waitFor(t *testing.T, timeout time.Duration, condition func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if condition() {
-			return
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	t.Fatal("condition not met before timeout")
-}
-
 func containsWord(value, word string) bool {
-	var raw []rune
-	for _, r := range value {
-		if r >= 'A' && r <= 'Z' {
-			raw = append(raw, r+32)
-		} else {
-			raw = append(raw, r)
-		}
-	}
-	v := string(raw)
-	w := strings.ToLower(word)
-	return strings.Contains(v, w)
+	return strings.Contains(strings.ToLower(value), strings.ToLower(word))
 }
