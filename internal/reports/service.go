@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"regexp"
@@ -484,7 +485,7 @@ LIMIT 1
 `).Scan(&reportID, &tenantID)
 		if err != nil {
 			_ = tx.Rollback()
-			if err == sql.ErrNoRows {
+			if errors.Is(err, sql.ErrNoRows) {
 				return nil
 			}
 			return err

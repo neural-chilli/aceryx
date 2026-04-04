@@ -27,7 +27,7 @@ func (h *TaskHandlers) Inbox(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.Tasks.Inbox(r.Context(), principal.TenantID, principal.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
@@ -49,7 +49,7 @@ func (h *TaskHandlers) GetTask(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, detail)

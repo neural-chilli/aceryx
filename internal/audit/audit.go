@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -219,7 +220,7 @@ ORDER BY created_at DESC, id DESC
 LIMIT 1
 `, caseID).Scan(&prev, &prevCreated)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			prev = GenesisHash(caseID)
 		} else {
 			return fmt.Errorf("load previous event hash: %w", err)

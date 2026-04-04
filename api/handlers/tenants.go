@@ -31,7 +31,7 @@ func (h *TenantHandlers) GetBranding(w http.ResponseWriter, r *http.Request) {
 				writeError(w, http.StatusNotFound, "not_found")
 				return
 			}
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalServerError(w, r, err)
 			return
 		}
 		writeJSON(w, http.StatusOK, branding)
@@ -49,7 +49,7 @@ func (h *TenantHandlers) GetBranding(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, branding)
@@ -68,7 +68,7 @@ func (h *TenantHandlers) PutBranding(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 
@@ -114,7 +114,7 @@ func (h *TenantHandlers) PutBranding(w http.ResponseWriter, r *http.Request) {
 
 	updated, err := h.Tenants.UpdateBranding(r.Context(), principal.TenantID, payload)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
@@ -187,7 +187,7 @@ func (h *TenantHandlers) GetTerminology(w http.ResponseWriter, r *http.Request) 
 	}
 	terms, err := h.Tenants.GetTerminology(r.Context(), principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, terms)
@@ -220,7 +220,7 @@ func (h *TenantHandlers) ListThemes(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.Themes.ListThemes(r.Context(), principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, items)

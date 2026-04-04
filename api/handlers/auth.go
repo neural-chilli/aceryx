@@ -59,7 +59,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "invalid credentials")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "login successful",
@@ -78,7 +78,7 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Auth.Logout(r.Context(), principal.TenantID, principal.ID, *principal.SessionID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	slog.InfoContext(r.Context(), "logout successful",
@@ -120,7 +120,7 @@ func (h *AuthHandlers) GetPreferences(w http.ResponseWriter, r *http.Request) {
 	}
 	pref, err := h.Auth.GetPreferences(r.Context(), principal.TenantID, principal.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, pref)
@@ -176,7 +176,7 @@ func (h *AuthHandlers) ListPrincipals(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := h.Principals.ListPrincipals(r.Context(), principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -259,7 +259,7 @@ func (h *AuthHandlers) ListRoles(w http.ResponseWriter, r *http.Request) {
 	}
 	roles, err := h.Roles.ListRoles(r.Context(), principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, roles)

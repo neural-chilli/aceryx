@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/uuid"
@@ -287,6 +288,7 @@ func openDatabaseFromURL(ctx context.Context, databaseURL string) (*sql.DB, erro
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
 	}
+	configureDBPool(db)
 
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
@@ -294,6 +296,42 @@ func openDatabaseFromURL(ctx context.Context, databaseURL string) (*sql.DB, erro
 	}
 
 	return db, nil
+}
+
+func configureDBPool(db *sql.DB) {
+	maxOpen := envInt("ACERYX_DB_MAX_OPEN_CONNS", 50)
+	maxIdle := envInt("ACERYX_DB_MAX_IDLE_CONNS", 25)
+	if maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+	db.SetMaxOpenConns(maxOpen)
+	db.SetMaxIdleConns(maxIdle)
+	db.SetConnMaxLifetime(envDuration("ACERYX_DB_CONN_MAX_LIFETIME", time.Hour))
+	db.SetConnMaxIdleTime(envDuration("ACERYX_DB_CONN_MAX_IDLE_TIME", 15*time.Minute))
+}
+
+func envInt(name string, fallback int) int {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(value)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	return n
+}
+
+func envDuration(name string, fallback time.Duration) time.Duration {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+	d, err := time.ParseDuration(value)
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
 }
 
 func resolveDatabaseURL() string {

@@ -97,7 +97,7 @@ func (h *ReportsHandlers) Get(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

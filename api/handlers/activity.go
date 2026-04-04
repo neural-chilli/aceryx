@@ -61,7 +61,7 @@ func (h *ActivityHandlers) Feed(w http.ResponseWriter, r *http.Request) {
 	filter := r.URL.Query().Get("filter")
 	out, err := h.Activity.GetFeedByFilter(r.Context(), principal.TenantID, limit, beforeTime, beforeID, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)

@@ -110,7 +110,7 @@ func (h *VaultHandlers) List(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.Service.List(r.Context(), principal.TenantID, caseID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
@@ -132,7 +132,7 @@ func (h *VaultHandlers) Download(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", doc.MimeType)

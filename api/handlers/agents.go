@@ -28,7 +28,7 @@ func (h *PromptTemplateHandlers) List(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := h.Service.List(r.Context(), principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, items)
@@ -71,7 +71,7 @@ func (h *PromptTemplateHandlers) GetVersion(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, item)

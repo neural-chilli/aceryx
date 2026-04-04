@@ -60,7 +60,7 @@ func (h *CaseHandlers) ListCaseTypes(w http.ResponseWriter, r *http.Request) {
 	includeArchived := r.URL.Query().Get("include_archived") == "true"
 	out, err := h.CaseTypes.ListCaseTypes(r.Context(), principal.TenantID, includeArchived)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -79,11 +79,11 @@ func (h *CaseHandlers) GetCaseType(w http.ResponseWriter, r *http.Request) {
 	}
 	ct, err := h.CaseTypes.GetCaseTypeByID(r.Context(), principal.TenantID, id)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, ct)
@@ -125,11 +125,11 @@ func (h *CaseHandlers) GetCase(w http.ResponseWriter, r *http.Request) {
 	}
 	c, err := h.Cases.GetCase(r.Context(), principal.TenantID, id)
 	if err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
@@ -173,7 +173,7 @@ func (h *CaseHandlers) ListCases(w http.ResponseWriter, r *http.Request) {
 
 	out, err := h.Cases.ListCases(r.Context(), principal.TenantID, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -211,7 +211,7 @@ func (h *CaseHandlers) PatchCaseData(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, "version_mismatch")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	if len(validation) > 0 {
@@ -281,7 +281,7 @@ func (h *CaseHandlers) SearchCases(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := h.Cases.SearchCases(r.Context(), principal.TenantID, nil, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -332,7 +332,7 @@ func (h *CaseHandlers) Dashboard(w http.ResponseWriter, r *http.Request) {
 
 	out, err := h.Cases.Dashboard(r.Context(), principal.TenantID, filter)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -347,7 +347,7 @@ func (h *CaseHandlers) ReportCasesSummary(w http.ResponseWriter, r *http.Request
 	weeks, _ := strconv.Atoi(r.URL.Query().Get("weeks"))
 	out, err := h.Reports.CasesSummary(r.Context(), principal.TenantID, weeks)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"periods": out})
@@ -362,7 +362,7 @@ func (h *CaseHandlers) ReportAgeing(w http.ResponseWriter, r *http.Request) {
 	thresholds := parseThresholds(r.URL.Query().Get("thresholds"))
 	out, err := h.Reports.Ageing(r.Context(), principal.TenantID, thresholds)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"brackets": out})
@@ -377,7 +377,7 @@ func (h *CaseHandlers) ReportSLACompliance(w http.ResponseWriter, r *http.Reques
 	weeks, _ := strconv.Atoi(r.URL.Query().Get("weeks"))
 	out, err := h.Reports.SLACompliance(r.Context(), principal.TenantID, weeks)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"periods": out})
@@ -391,7 +391,7 @@ func (h *CaseHandlers) ReportCasesByStage(w http.ResponseWriter, r *http.Request
 	}
 	out, err := h.Reports.CasesByStage(r.Context(), principal.TenantID, r.URL.Query().Get("case_type"))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"stages": out})
@@ -405,7 +405,7 @@ func (h *CaseHandlers) ReportWorkload(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := h.Reports.Workload(r.Context(), principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"users": out})
@@ -420,7 +420,7 @@ func (h *CaseHandlers) ReportDecisions(w http.ResponseWriter, r *http.Request) {
 	weeks, _ := strconv.Atoi(r.URL.Query().Get("weeks"))
 	out, err := h.Reports.Decisions(r.Context(), principal.TenantID, weeks)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"periods": out})

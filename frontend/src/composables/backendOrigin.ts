@@ -26,13 +26,18 @@ export function backendHTTPURL(path: string): string {
 }
 
 export function backendWSURL(path: string, params: URLSearchParams): string {
-  const normalizedPath = normalizePath(path)
+  const [rawPath, existingQuery = ''] = normalizePath(path).split('?', 2)
+  const normalizedPath = rawPath || '/'
+  const mergedParams = new URLSearchParams(existingQuery)
+  params.forEach((value, key) => {
+    mergedParams.set(key, value)
+  })
+  const query = mergedParams.toString()
+
   if (import.meta.env.DEV) {
-    const query = params.toString()
     return `ws://localhost:8080${normalizedPath}${query ? `?${query}` : ''}`
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws'
-  const query = params.toString()
   return `${protocol}://${window.location.host}${normalizedPath}${query ? `?${query}` : ''}`
 }

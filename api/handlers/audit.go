@@ -33,7 +33,7 @@ func (h *AuditHandlers) ListCaseEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	allowed, err := h.Audit.CaseInTenant(r.Context(), caseID, principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	if !allowed {
@@ -54,7 +54,7 @@ func (h *AuditHandlers) ListCaseEvents(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "not_found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, out)
@@ -73,7 +73,7 @@ func (h *AuditHandlers) VerifyCaseEvents(w http.ResponseWriter, r *http.Request)
 	}
 	allowed, err := h.Audit.CaseInTenant(r.Context(), caseID, principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	if !allowed {
@@ -82,7 +82,7 @@ func (h *AuditHandlers) VerifyCaseEvents(w http.ResponseWriter, r *http.Request)
 	}
 	result, err := h.Audit.VerifyCaseChain(r.Context(), caseID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
@@ -101,7 +101,7 @@ func (h *AuditHandlers) ExportCaseEvents(w http.ResponseWriter, r *http.Request)
 	}
 	allowed, err := h.Audit.CaseInTenant(r.Context(), caseID, principal.TenantID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternalServerError(w, r, err)
 		return
 	}
 	if !allowed {
@@ -113,7 +113,7 @@ func (h *AuditHandlers) ExportCaseEvents(w http.ResponseWriter, r *http.Request)
 	case "", "json":
 		out, err := h.Audit.ExportCaseEventsJSON(r.Context(), caseID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalServerError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -122,7 +122,7 @@ func (h *AuditHandlers) ExportCaseEvents(w http.ResponseWriter, r *http.Request)
 	case "csv":
 		out, err := h.Audit.ExportCaseEventsCSV(r.Context(), caseID)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
+			writeInternalServerError(w, r, err)
 			return
 		}
 		w.Header().Set("Content-Type", "text/csv")
