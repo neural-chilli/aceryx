@@ -142,28 +142,6 @@ func (c LLMProviderConfig) PricingForModel(model string) ModelInfo {
 	return ModelInfo{ID: model}
 }
 
-func cloneModelMap(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return map[string]string{}
-	}
-	out := make(map[string]string, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
-func clonePricing(in map[string]ModelInfo) map[string]ModelInfo {
-	if len(in) == 0 {
-		return map[string]ModelInfo{}
-	}
-	out := make(map[string]ModelInfo, len(in))
-	for k, v := range in {
-		out[k] = v
-	}
-	return out
-}
-
 func normalizeJSONMap(raw json.RawMessage) map[string]string {
 	if len(raw) == 0 {
 		return map[string]string{}
