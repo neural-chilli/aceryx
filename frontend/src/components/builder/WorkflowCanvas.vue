@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, type Component } from 'vue'
 import { VueFlow, useVueFlow, type Connection, type Edge } from '@vue-flow/core'
 import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
@@ -58,7 +58,7 @@ const nodes = computed(() => astToNodes(props.ast).map((node) => ({
 })))
 const edges = computed(() => astToEdges(props.ast))
 
-const nodeTypes: any = {
+const nodeTypes: Record<string, Component> = {
   human_task: HumanTaskNode,
   agent: AgentNode,
   integration: IntegrationNode,
