@@ -150,6 +150,33 @@ describe('CaseView document panel', () => {
     expect(postCall).toBeTruthy()
   })
 
+  it('blocks unsupported uploads before POST', async () => {
+    const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.startsWith('/tasks/case-1/review') && (!init?.method || init.method === 'GET')) {
+        return new Response(JSON.stringify(defaultTaskPayload()), { status: 200 })
+      }
+      if (url === '/cases/case-1/documents' && (!init?.method || init.method === 'GET')) {
+        return new Response('[]', { status: 200 })
+      }
+      return new Response(JSON.stringify({ status: 'ok' }), { status: 201 })
+    })
+    vi.stubGlobal('fetch', fetchSpy)
+
+    const { wrapper } = await mountCaseView()
+    await flushPromises()
+
+    const file = new File(['#!/bin/bash'], 'script.sh', { type: 'application/x-sh' })
+    const input = wrapper.get('[data-testid="document-upload-input"]')
+    Object.defineProperty(input.element, 'files', { value: [file] })
+    await input.trigger('change')
+    await flushPromises()
+
+    const postCall = fetchSpy.mock.calls.find(([, init]) => init?.method === 'POST')
+    expect(postCall).toBeFalsy()
+    expect(wrapper.text()).toContain('Unsupported file type')
+  })
+
   it('renders inline PDF and image previews', async () => {
     installFetchMock([
       {

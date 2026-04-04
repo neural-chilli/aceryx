@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Button from 'primevue/button'
 import DataTable from 'primevue/datatable'
 import Column from 'primevue/column'
+import Message from 'primevue/message'
 import { useAuth } from '../../composables/useAuth'
 import { useBreakpoint } from '../../composables/useBreakpoint'
 import { useTerminology } from '../../composables/useTerminology'
@@ -28,6 +29,7 @@ const { isMobileOrTablet } = useBreakpoint()
 
 const documents = ref<VaultDocument[]>([])
 const docsLoading = ref(false)
+const uploadError = ref<string>('')
 const selectedDocument = ref<VaultDocument | null>(null)
 const selectedContent = ref<string>('')
 const selectedBlobURL = ref<string>('')
@@ -35,6 +37,16 @@ const csvRows = ref<Record<string, string>[]>([])
 const csvColumns = ref<string[]>([])
 
 const caseId = computed(() => props.caseId)
+const maxUploadBytes = 10 * 1024 * 1024
+const allowedUploadTypes = new Set<string>([
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'text/plain',
+  'text/markdown',
+  'text/csv',
+])
 
 function humanSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 1024) return `${bytes} B`
@@ -189,6 +201,17 @@ async function uploadDocument(event: Event) {
   if (!file) {
     return
   }
+  uploadError.value = ''
+  if (!allowedUploadTypes.has(file.type)) {
+    uploadError.value = 'Unsupported file type. Allowed: PDF, images, plain text, markdown, and CSV.'
+    input.value = ''
+    return
+  }
+  if (file.size > maxUploadBytes) {
+    uploadError.value = `File is too large. Maximum size is ${humanSize(maxUploadBytes)}.`
+    input.value = ''
+    return
+  }
   const form = new FormData()
   form.append('file', file)
   const res = await authFetch(`/cases/${caseId.value}/documents`, { method: 'POST', body: form })
@@ -218,10 +241,16 @@ watch(caseId, async () => {
     <div class="document-header">
       <h2>{{ t('Case') }} {{ t('documents') }}</h2>
       <label class="upload-label">
-        <input data-testid="document-upload-input" type="file" @change="uploadDocument" />
+        <input
+          data-testid="document-upload-input"
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.gif,.txt,.md,.csv"
+          @change="uploadDocument"
+        />
         <span>{{ t('Upload') }}</span>
       </label>
     </div>
+    <Message v-if="uploadError" severity="warn" size="small" variant="simple">{{ uploadError }}</Message>
 
     <div v-if="isMobileOrTablet" class="mobile-doc-list">
       <article v-for="doc in documents" :key="doc.id" class="mobile-doc-card">
