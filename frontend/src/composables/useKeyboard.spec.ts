@@ -11,6 +11,7 @@ describe('useKeyboard', () => {
   afterEach(() => {
     unregister('g i')
     unregister('j')
+    unregister('?')
     vi.useRealTimers()
   })
 
@@ -36,5 +37,35 @@ describe('useKeyboard', () => {
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'i' }))
 
     expect(handler).not.toHaveBeenCalled()
+  })
+
+  it('disables sequence shortcuts inside contenteditable regions', () => {
+    const handler = vi.fn()
+    register('g i', handler, 'Go inbox', 'global')
+
+    const editor = document.createElement('div')
+    editor.setAttribute('contenteditable', 'plaintext-only')
+    document.body.appendChild(editor)
+    editor.focus()
+
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'g', bubbles: true }))
+    editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'i', bubbles: true }))
+
+    expect(handler).not.toHaveBeenCalled()
+    editor.remove()
+  })
+
+  it('disables shift-character shortcuts inside editable targets', () => {
+    const handler = vi.fn()
+    register('?', handler, 'Help', 'global')
+
+    const textarea = document.createElement('textarea')
+    document.body.appendChild(textarea)
+    textarea.focus()
+
+    textarea.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true, bubbles: true }))
+
+    expect(handler).not.toHaveBeenCalled()
+    textarea.remove()
   })
 })

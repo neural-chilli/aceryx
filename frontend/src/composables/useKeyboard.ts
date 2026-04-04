@@ -92,16 +92,16 @@ function isEditableTarget(target: EventTarget | null): boolean {
   if (tag === 'input' || tag === 'textarea' || tag === 'select') {
     return true
   }
-  return Boolean(el.closest('[contenteditable="true"]'))
+  const editableParent = el.closest('[contenteditable]')
+  if (!editableParent) {
+    return false
+  }
+  const editableAttr = editableParent.getAttribute('contenteditable')
+  return editableAttr === null || editableAttr.toLowerCase() !== 'false'
 }
 
-function isCharacterKey(chord: string): boolean {
-  const key = chord.split('+').at(-1) ?? ''
-  return key.length === 1
-}
-
-function hasModifier(chord: string): boolean {
-  return chord.includes('mod+') || chord.includes('alt+') || chord.includes('shift+')
+function hasSystemModifier(chord: string): boolean {
+  return chord.includes('mod+') || chord.includes('alt+')
 }
 
 function clearSequence() {
@@ -131,7 +131,7 @@ function installListener() {
   window.addEventListener('keydown', (event: KeyboardEvent) => {
     const chord = eventToChord(event)
     const editable = isEditableTarget(event.target)
-    if (editable && !hasModifier(chord) && isCharacterKey(chord)) {
+    if (editable && !hasSystemModifier(chord) && chord !== 'escape') {
       return
     }
 
