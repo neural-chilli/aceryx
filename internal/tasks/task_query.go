@@ -119,10 +119,14 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 			d.AssignedTo = &id
 		}
 	}
-	_ = json.Unmarshal(caseDataRaw, &d.CaseData)
+	if err := json.Unmarshal(caseDataRaw, &d.CaseData); err != nil {
+		return TaskDetail{}, fmt.Errorf("decode case data for task detail: %w", err)
+	}
 	d.Result = resultRaw
 	d.DraftData = draftRaw
-	_ = json.Unmarshal(metaRaw, &d.Metadata)
+	if err := json.Unmarshal(metaRaw, &d.Metadata); err != nil {
+		return TaskDetail{}, fmt.Errorf("decode task metadata: %w", err)
+	}
 	if started.Valid {
 		t := started.Time
 		d.StartedAt = &t
@@ -142,7 +146,9 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 		sort.Strings(d.Outcomes)
 		d.AvailableActions = append([]string(nil), d.Outcomes...)
 		cfg := AssignmentConfig{}
-		_ = json.Unmarshal(step.Config, &cfg)
+		if err := json.Unmarshal(step.Config, &cfg); err != nil {
+			return TaskDetail{}, fmt.Errorf("decode workflow step config: %w", err)
+		}
 		d.Form = cfg.Form
 		d.FormSchema = cfg.FormSchema
 	}
@@ -168,18 +174,24 @@ WHERE cs.case_id = $1
   AND cs.state = 'completed'
   AND c.tenant_id = $2
 `, caseID, tenantID)
-	if qerr == nil {
-		defer func() { _ = rows.Close() }()
-		for rows.Next() {
-			var sid string
-			var raw []byte
-			if scanErr := rows.Scan(&sid, &raw); scanErr == nil {
-				var payload any
-				if unErr := json.Unmarshal(raw, &payload); unErr == nil {
-					d.StepResults[sid] = payload
-				}
-			}
+	if qerr != nil {
+		return TaskDetail{}, fmt.Errorf("query completed step results: %w", qerr)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var sid string
+		var raw []byte
+		if err := rows.Scan(&sid, &raw); err != nil {
+			return TaskDetail{}, fmt.Errorf("scan completed step result: %w", err)
 		}
+		var payload any
+		if err := json.Unmarshal(raw, &payload); err != nil {
+			return TaskDetail{}, fmt.Errorf("decode completed step result %s: %w", sid, err)
+		}
+		d.StepResults[sid] = payload
+	}
+	if err := rows.Err(); err != nil {
+		return TaskDetail{}, fmt.Errorf("iterate completed step results: %w", err)
 	}
 	d.SLAStatus = SLAStatus(s.now(), d.SLADeadline, d.StartedAt, extractSLAHours(metaRaw))
 	return d, nil

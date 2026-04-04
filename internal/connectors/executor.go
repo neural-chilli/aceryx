@@ -147,9 +147,13 @@ WHERE c.id = $1
 	}
 
 	caseData := map[string]any{}
-	_ = json.Unmarshal(caseDataRaw, &caseData)
+	if err := json.Unmarshal(caseDataRaw, &caseData); err != nil {
+		return nil, uuid.Nil, fmt.Errorf("decode case data for integration context: %w", err)
+	}
 	branding := map[string]any{}
-	_ = json.Unmarshal(brandingRaw, &branding)
+	if err := json.Unmarshal(brandingRaw, &branding); err != nil {
+		return nil, uuid.Nil, fmt.Errorf("decode tenant branding for integration context: %w", err)
+	}
 
 	steps := map[string]any{}
 	rows, err := e.db.QueryContext(ctx, `
@@ -170,7 +174,9 @@ WHERE cs.case_id = $1
 			return nil, uuid.Nil, fmt.Errorf("scan step context row: %w", err)
 		}
 		result := map[string]any{}
-		_ = json.Unmarshal(raw, &result)
+		if err := json.Unmarshal(raw, &result); err != nil {
+			return nil, uuid.Nil, fmt.Errorf("decode step context result for %s: %w", stepID, err)
+		}
 		steps[stepID] = map[string]any{"result": result}
 	}
 	if err := rows.Err(); err != nil {
