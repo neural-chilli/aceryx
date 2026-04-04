@@ -131,6 +131,18 @@ function scrollToTop() {
   hasUnreadTop.value = false
 }
 
+function isFeedEvent(value: unknown): value is FeedEvent {
+  if (!value || typeof value !== 'object') {
+    return false
+  }
+  const payload = value as Record<string, unknown>
+  return (
+    typeof payload.id === 'string' &&
+    typeof payload.case_id === 'string' &&
+    typeof payload.timestamp === 'string'
+  )
+}
+
 onMounted(() => {
   void loadMore(true)
   open()
@@ -142,10 +154,10 @@ watch(filter, async () => {
 
 watch(messages, (all) => {
   const last = all[all.length - 1]
-  if (!last || last.type !== 'activity' || !last.payload) {
+  if (!last || last.type !== 'activity' || !isFeedEvent(last.payload)) {
     return
   }
-  const payload = last.payload as FeedEvent
+  const payload = last.payload
   if (payload.case_id && payload.id) {
     feed.value = [payload, ...feed.value.filter((item) => item.id !== payload.id)]
   }

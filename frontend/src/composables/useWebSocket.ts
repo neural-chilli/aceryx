@@ -2,7 +2,13 @@ import { computed, ref } from 'vue'
 import { useAuth } from './useAuth'
 import { backendWSURL } from './backendOrigin'
 
-const messages = ref<any[]>([])
+export type WSMessage = {
+  type: string
+  payload?: unknown
+  [key: string]: unknown
+}
+
+const messages = ref<WSMessage[]>([])
 let socket: WebSocket | null = null
 let reconnectTimer: number | null = null
 let heartbeatTimer: number | null = null
@@ -57,7 +63,10 @@ function connect() {
   socket.onmessage = (ev) => {
     lastMessageAt = Date.now()
     try {
-      const payload = JSON.parse(ev.data)
+      const payload = JSON.parse(ev.data) as unknown
+      if (!isWSMessage(payload)) {
+        return
+      }
       messages.value = [...messages.value.slice(-99), payload]
     } catch {
       // ignore malformed ws message
@@ -79,6 +88,10 @@ function connect() {
       socket.close()
     }
   }
+}
+
+function isWSMessage(value: unknown): value is WSMessage {
+  return !!value && typeof value === 'object' && typeof (value as Record<string, unknown>).type === 'string'
 }
 
 function scheduleReconnect() {
@@ -112,7 +125,7 @@ export function useWebSocket() {
     socket = null
   }
 
-  const activityMessages = computed(() => messages.value.filter((msg) => msg?.type === 'activity'))
+  const activityMessages = computed(() => messages.value.filter((msg) => msg.type === 'activity'))
 
   return { messages, activityMessages, open, close }
 }
