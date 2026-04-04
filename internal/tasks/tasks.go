@@ -229,7 +229,7 @@ WHERE case_id = $1 AND step_id = $2
 	)
 
 	if s.notify != nil {
-		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
 		stepLabel := stepID
 		if v, ok := metadata["label"].(string); ok && strings.TrimSpace(v) != "" {
 			stepLabel = v

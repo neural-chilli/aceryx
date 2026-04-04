@@ -56,7 +56,7 @@ SELECT EXISTS(SELECT 1 FROM claim)
 	}
 
 	if s.notify != nil {
-		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
 		roleName, _ := s.lookupStepRole(ctx, caseID, stepID)
 		recipients := make([]notify.Recipient, 0)
 		if roleName != "" {
@@ -198,7 +198,7 @@ WHERE id = $1
 		_ = s.engine.EvaluateDAG(ctx, caseID)
 	}
 	if s.notify != nil {
-		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
 		caseAssignee, _ := s.lookupCaseAssignee(ctx, tenantID, caseID)
 		recipients := make([]notify.Recipient, 0)
 		if caseAssignee != nil && *caseAssignee != principalID {
@@ -261,7 +261,7 @@ FOR UPDATE
 		return fmt.Errorf("commit reassign task tx: %w", err)
 	}
 	if s.notify != nil {
-		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
 		email, _ := s.lookupPrincipalEmail(ctx, req.AssignTo)
 		_ = s.notify.Notify(ctx, notify.NotifyEvent{
 			Type:       "task_reassigned",

@@ -62,7 +62,7 @@ FOR UPDATE
 	}
 
 	if s.notify != nil {
-		caseNumber, _ := s.lookupCaseNumber(ctx, caseID)
+		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
 		recipients := make([]notify.Recipient, 0)
 		if cfg.ToRole != "" {
 			roleRecipients, _ := s.resolveRoleRecipients(ctx, tenantID, cfg.ToRole, []string{"email", "websocket"})
@@ -92,7 +92,7 @@ func (s *TaskService) HandleOverdue(ctx context.Context, task engine.OverdueTask
 		return err
 	}
 	if s.notify != nil {
-		caseNumber, _ := s.lookupCaseNumber(ctx, task.CaseID)
+		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, task.CaseID)
 		recipients := make([]notify.Recipient, 0)
 		if task.AssignedTo != nil {
 			email, _ := s.lookupPrincipalEmail(ctx, *task.AssignedTo)

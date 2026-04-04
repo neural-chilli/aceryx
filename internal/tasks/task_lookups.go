@@ -9,17 +9,24 @@ import (
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/notify"
+	"github.com/neural-chilli/aceryx/internal/observability"
 )
 
 func (s *TaskService) lookupTenantID(ctx context.Context, caseID uuid.UUID) (uuid.UUID, error) {
 	var tenantID uuid.UUID
-	err := s.db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id=$1`, caseID).Scan(&tenantID)
+	if expectedTenant := observability.TenantIDFromContext(ctx); expectedTenant != "" {
+		if parsedExpected, err := uuid.Parse(expectedTenant); err == nil {
+			err = s.db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id = $1 AND tenant_id = $2`, caseID, parsedExpected).Scan(&tenantID)
+			return tenantID, err
+		}
+	}
+	err := s.db.QueryRowContext(ctx, `SELECT tenant_id FROM cases WHERE id = $1`, caseID).Scan(&tenantID)
 	return tenantID, err
 }
 
-func (s *TaskService) lookupCaseNumber(ctx context.Context, caseID uuid.UUID) (string, error) {
+func (s *TaskService) lookupCaseNumber(ctx context.Context, tenantID, caseID uuid.UUID) (string, error) {
 	var caseNumber string
-	err := s.db.QueryRowContext(ctx, `SELECT case_number FROM cases WHERE id = $1`, caseID).Scan(&caseNumber)
+	err := s.db.QueryRowContext(ctx, `SELECT case_number FROM cases WHERE id = $1 AND tenant_id = $2`, caseID, tenantID).Scan(&caseNumber)
 	return caseNumber, err
 }
 
