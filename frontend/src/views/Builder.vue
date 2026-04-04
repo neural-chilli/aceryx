@@ -10,7 +10,7 @@ import FormDesigner from '../components/builder/FormDesigner.vue'
 import WorkflowToolbar from '../components/builder/WorkflowToolbar.vue'
 import ValidationPanel from '../components/builder/ValidationPanel.vue'
 import DesktopOnlyNotice from '../components/DesktopOnlyNotice.vue'
-import type { FormSchema } from '../components/forms/FormRenderer.vue'
+import type { FormSchema } from '../components/forms/formSchema'
 import {
   addStep,
   applyAutoLayout,

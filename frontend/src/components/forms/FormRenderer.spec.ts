@@ -10,7 +10,8 @@ import Select from 'primevue/select'
 import Checkbox from 'primevue/checkbox'
 import DatePicker from 'primevue/datepicker'
 import Chips from 'primevue/chips'
-import FormRenderer, { type Action, type FieldDef, type FormSchema } from './FormRenderer.vue'
+import FormRenderer from './FormRenderer.vue'
+import type { Action, FieldDef, FormSchema } from './formSchema'
 
 function baseSchema(fields: FieldDef[], actions: Action[] = [{ label: 'Approve', value: 'approved' }]): FormSchema {
   return {

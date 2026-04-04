@@ -3,7 +3,8 @@ import { computed, reactive } from 'vue'
 import InputText from 'primevue/inputtext'
 import Checkbox from 'primevue/checkbox'
 import Button from 'primevue/button'
-import FormRenderer, { type FormSchema } from '../forms/FormRenderer.vue'
+import FormRenderer from '../forms/FormRenderer.vue'
+import type { FormSchema } from '../forms/formSchema'
 
 const props = defineProps<{
   modelValue: FormSchema
