@@ -1,5 +1,7 @@
 import type { Action, FieldDef } from './formSchema'
 
+const blockedPathKeys = new Set(['__proto__', 'constructor', 'prototype'])
+
 export function normalizePath(path: string): string[] {
   return path
     .split('.')
@@ -7,14 +9,24 @@ export function normalizePath(path: string): string[] {
     .filter((part) => part.length > 0)
 }
 
+function hasBlockedPathKey(parts: string[]): boolean {
+  return parts.some((part) => blockedPathKeys.has(part))
+}
+
 export function getAtPath(obj: unknown, path: string): unknown {
   if (!path) {
     return undefined
   }
   const parts = normalizePath(path)
+  if (hasBlockedPathKey(parts)) {
+    return undefined
+  }
   let cursor: unknown = obj
   for (const part of parts) {
     if (!cursor || typeof cursor !== 'object') {
+      return undefined
+    }
+    if (!Object.prototype.hasOwnProperty.call(cursor, part)) {
       return undefined
     }
     cursor = (cursor as Record<string, unknown>)[part]
@@ -24,7 +36,7 @@ export function getAtPath(obj: unknown, path: string): unknown {
 
 export function setAtPath(obj: Record<string, unknown>, path: string, value: unknown) {
   const parts = normalizePath(path)
-  if (parts.length === 0) {
+  if (parts.length === 0 || hasBlockedPathKey(parts)) {
     return
   }
 
