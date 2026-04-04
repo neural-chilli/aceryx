@@ -324,12 +324,14 @@ func TestRBACIntegration_RolePermissionInvalidationAndSessionCleanup(t *testing.
 	cleanupCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	go authSvc.StartSessionCleanup(cleanupCtx)
-	time.Sleep(80 * time.Millisecond)
 
 	var remaining int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE expires_at < now()`).Scan(&remaining); err != nil {
-		t.Fatalf("count expired sessions after cleanup ticker: %v", err)
-	}
+	waitForCondition(t, 2*time.Second, 20*time.Millisecond, func() bool {
+		if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM sessions WHERE expires_at < now()`).Scan(&remaining); err != nil {
+			return false
+		}
+		return remaining == 0
+	}, "session cleanup ticker did not remove expired sessions")
 	if remaining != 0 {
 		t.Fatalf("expected session cleanup ticker to remove expired sessions, remaining=%d", remaining)
 	}

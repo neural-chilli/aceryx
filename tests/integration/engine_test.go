@@ -153,12 +153,14 @@ func TestEngineIntegration_CancellationStopsProgress(t *testing.T) {
 	if err := en.CompleteStep(ctx, caseID, "inflight", &engine.StepResult{Output: json.RawMessage(`{"done":true}`)}); err != nil {
 		t.Fatalf("complete inflight step after cancel: %v", err)
 	}
-	time.Sleep(300 * time.Millisecond)
 
 	var state string
-	if err := db.QueryRowContext(ctx, `SELECT state FROM case_steps WHERE case_id=$1 AND step_id='downstream'`, caseID).Scan(&state); err != nil {
-		t.Fatalf("load downstream state: %v", err)
-	}
+	waitForCondition(t, 2*time.Second, 20*time.Millisecond, func() bool {
+		if err := db.QueryRowContext(ctx, `SELECT state FROM case_steps WHERE case_id=$1 AND step_id='downstream'`, caseID).Scan(&state); err != nil {
+			return false
+		}
+		return state == engine.StateSkipped || state == engine.StatePending
+	}, "downstream step did not settle after cancellation")
 	if state != engine.StateSkipped && state != engine.StatePending {
 		t.Fatalf("expected downstream not to advance after cancellation, got %s", state)
 	}
