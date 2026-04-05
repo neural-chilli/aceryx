@@ -1,20 +1,23 @@
 package hostfns
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/neural-chilli/aceryx/internal/plugins"
 )
 
 type Registry struct {
-	HTTP      *HTTPHost
-	Connector *ConnectorCaller
-	Case      *CaseDataHost
-	Vault     *VaultHost
-	Secrets   *SecretGetter
-	Logger    LoggerHost
-	Events    *EventsHost
-	Auditor   *Auditor
+	HTTP        *HTTPHost
+	Connector   *ConnectorCaller
+	Case        *CaseDataHost
+	Vault       *VaultHost
+	Secrets     *SecretGetter
+	Queue       *QueueBridge
+	FileWatcher *FileWatchBridge
+	Logger      LoggerHost
+	Events      *EventsHost
+	Auditor     *Auditor
 }
 
 func (r *Registry) HTTPRequest(method, url string, headers map[string]string, body []byte, timeoutMS int) (plugins.HTTPResponse, error) {
@@ -104,7 +107,14 @@ func (r *Registry) EmitEvent(eventType string, payload []byte) error {
 
 func (r *Registry) QueueConsume(driverID string, config []byte, topic string) ([]byte, map[string]string, string, error) {
 	start := time.Now()
-	msg, meta, messageID, err := QueueConsume(driverID, config, topic)
+	if r.Queue == nil {
+		err := fmt.Errorf("queue host not configured")
+		if r.Auditor != nil {
+			r.Auditor.Record("QueueConsume", start, err, map[string]any{"driver_id": driverID, "topic": topic})
+		}
+		return nil, nil, "", err
+	}
+	msg, meta, messageID, err := r.Queue.Consume(driverID, config, topic)
 	if r.Auditor != nil {
 		r.Auditor.Record("QueueConsume", start, err, map[string]any{"driver_id": driverID, "topic": topic})
 	}
@@ -113,7 +123,14 @@ func (r *Registry) QueueConsume(driverID string, config []byte, topic string) ([
 
 func (r *Registry) QueueAck(driverID string, messageID string) error {
 	start := time.Now()
-	err := QueueAck(driverID, messageID)
+	if r.Queue == nil {
+		err := fmt.Errorf("queue host not configured")
+		if r.Auditor != nil {
+			r.Auditor.Record("QueueAck", start, err, map[string]any{"driver_id": driverID})
+		}
+		return err
+	}
+	err := r.Queue.Ack(driverID, messageID)
 	if r.Auditor != nil {
 		r.Auditor.Record("QueueAck", start, err, map[string]any{"driver_id": driverID})
 	}
@@ -122,7 +139,14 @@ func (r *Registry) QueueAck(driverID string, messageID string) error {
 
 func (r *Registry) FileWatch(driverID string, config []byte, path string) (plugins.FileEvent, error) {
 	start := time.Now()
-	out, err := FileWatch(driverID, config, path)
+	if r.FileWatcher == nil {
+		err := fmt.Errorf("file watch host not configured")
+		if r.Auditor != nil {
+			r.Auditor.Record("FileWatch", start, err, map[string]any{"driver_id": driverID, "path": path})
+		}
+		return plugins.FileEvent{}, err
+	}
+	out, err := r.FileWatcher.Watch(driverID, config, path)
 	if r.Auditor != nil {
 		r.Auditor.Record("FileWatch", start, err, map[string]any{"driver_id": driverID, "path": path})
 	}

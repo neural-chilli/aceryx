@@ -27,6 +27,17 @@ import (
 	"github.com/neural-chilli/aceryx/internal/connectors/teamsconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/webhookreceiver"
 	"github.com/neural-chilli/aceryx/internal/connectors/webhooksender"
+	"github.com/neural-chilli/aceryx/internal/drivers"
+	"github.com/neural-chilli/aceryx/internal/drivers/duckdb"
+	"github.com/neural-chilli/aceryx/internal/drivers/imap"
+	"github.com/neural-chilli/aceryx/internal/drivers/localfs"
+	"github.com/neural-chilli/aceryx/internal/drivers/mysql"
+	"github.com/neural-chilli/aceryx/internal/drivers/nats"
+	"github.com/neural-chilli/aceryx/internal/drivers/postgres"
+	"github.com/neural-chilli/aceryx/internal/drivers/redis"
+	"github.com/neural-chilli/aceryx/internal/drivers/sftp"
+	"github.com/neural-chilli/aceryx/internal/drivers/smtp"
+	"github.com/neural-chilli/aceryx/internal/drivers/sqlite"
 	"github.com/neural-chilli/aceryx/internal/engine"
 	"github.com/neural-chilli/aceryx/internal/llm"
 	"github.com/neural-chilli/aceryx/internal/llm/anthropic"
@@ -88,6 +99,19 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	connectorRegistry.Register(jiraconn.New())
 	connectorRegistry.Register(docgenconn.New(db, nil))
 	connectorHandlers := handlers.NewConnectorHandlers(connectorRegistry, secretStore)
+	driverRegistry := drivers.NewDriverRegistry()
+	driverRegistry.RegisterDB(postgres.New())
+	driverRegistry.RegisterDB(mysql.New())
+	driverRegistry.RegisterDB(sqlite.New())
+	driverRegistry.RegisterDB(duckdb.New())
+	driverRegistry.RegisterQueue(nats.New())
+	driverRegistry.RegisterQueue(redis.New())
+	driverRegistry.RegisterFile(localfs.New())
+	driverRegistry.RegisterFile(sftp.New())
+	driverRegistry.RegisterSMTP(smtp.New())
+	driverRegistry.RegisterIMAP(imap.New())
+	poolManager := drivers.NewPoolManager()
+	driverAdminHandlers := drivers.NewAdminHandlers(driverRegistry, poolManager)
 	llmStore := llm.NewStore(db)
 	llmManager := llm.NewAdapterManager(llmStore, secretStore, func(_ context.Context, config llm.LLMProviderConfig, apiKey string) (llm.LLMAdapter, error) {
 		switch strings.TrimSpace(strings.ToLower(config.Provider)) {
@@ -135,11 +159,13 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		},
 	}, nil, 60*time.Second)
 	hostRegistry := &hostfns.Registry{
-		HTTP:      httpHost,
-		Connector: &hostfns.ConnectorCaller{Registry: connectorRegistry},
-		Secrets:   &hostfns.SecretGetter{Store: secretStore},
-		Logger:    hostfns.LoggerHost{},
-		Auditor:   hostfns.NewAuditor("summary", 50, 10),
+		HTTP:        httpHost,
+		Connector:   &hostfns.ConnectorCaller{Registry: connectorRegistry},
+		Secrets:     &hostfns.SecretGetter{Store: secretStore},
+		Queue:       hostfns.NewQueueBridge(driverRegistry),
+		FileWatcher: hostfns.NewFileWatchBridge(driverRegistry),
+		Logger:      hostfns.LoggerHost{},
+		Auditor:     hostfns.NewAuditor("summary", 50, 10),
 	}
 	pluginRuntime := plugins.NewRuntime(bgCtx, plugins.RuntimeConfig{
 		Store:                pluginStore,
@@ -270,6 +296,21 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("PUT /reports/{id}", withPerm("reports:query", reportsHandlers.Update))
 	mux.Handle("DELETE /reports/{id}", withPerm("reports:query", reportsHandlers.Delete))
 	mux.Handle("POST /admin/erasure", withPerm("admin:audit", vaultHandlers.Erasure))
+	mux.Handle("GET /admin/drivers", withPerm("admin:tenant", driverAdminHandlers.ListDrivers))
+	mux.Handle("GET /v1/admin/drivers", withPerm("admin:tenant", driverAdminHandlers.ListDrivers))
+	mux.Handle("GET /api/v1/admin/drivers", withPerm("admin:tenant", driverAdminHandlers.ListDrivers))
+	mux.Handle("GET /admin/drivers/{category}", withPerm("admin:tenant", driverAdminHandlers.ListDriversByCategory))
+	mux.Handle("GET /v1/admin/drivers/{category}", withPerm("admin:tenant", driverAdminHandlers.ListDriversByCategory))
+	mux.Handle("GET /api/v1/admin/drivers/{category}", withPerm("admin:tenant", driverAdminHandlers.ListDriversByCategory))
+	mux.Handle("GET /admin/drivers/{category}/{id}", withPerm("admin:tenant", driverAdminHandlers.GetDriver))
+	mux.Handle("GET /v1/admin/drivers/{category}/{id}", withPerm("admin:tenant", driverAdminHandlers.GetDriver))
+	mux.Handle("GET /api/v1/admin/drivers/{category}/{id}", withPerm("admin:tenant", driverAdminHandlers.GetDriver))
+	mux.Handle("GET /admin/pools", withPerm("admin:tenant", driverAdminHandlers.ListPools))
+	mux.Handle("GET /v1/admin/pools", withPerm("admin:tenant", driverAdminHandlers.ListPools))
+	mux.Handle("GET /api/v1/admin/pools", withPerm("admin:tenant", driverAdminHandlers.ListPools))
+	mux.Handle("POST /admin/pools/{key}/close", withPerm("admin:tenant", driverAdminHandlers.ClosePool))
+	mux.Handle("POST /v1/admin/pools/{key}/close", withPerm("admin:tenant", driverAdminHandlers.ClosePool))
+	mux.Handle("POST /api/v1/admin/pools/{key}/close", withPerm("admin:tenant", driverAdminHandlers.ClosePool))
 	mux.Handle("GET /admin/plugins", withPerm("admin:tenant", pluginHandlers.List))
 	mux.Handle("GET /v1/admin/plugins", withPerm("admin:tenant", pluginHandlers.List))
 	mux.Handle("GET /admin/plugins/{id}", withPerm("admin:tenant", pluginHandlers.Get))
