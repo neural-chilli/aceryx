@@ -51,6 +51,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/reports"
 	"github.com/neural-chilli/aceryx/internal/tasks"
 	"github.com/neural-chilli/aceryx/internal/tenants"
+	"github.com/neural-chilli/aceryx/internal/triggers"
 	"github.com/neural-chilli/aceryx/internal/vault"
 )
 
@@ -173,6 +174,9 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		SystemMaxHTTPTimeout: 60 * time.Second,
 	})
 	pluginHandlers := handlers.NewPluginHandlers(pluginRuntime, pluginStore)
+	triggerStore := triggers.NewPostgresStore(db)
+	triggerManager := triggers.NewTriggerManager(pluginRuntime, nil, driverRegistry, triggers.NewStubChannelPipeline(nil), triggerStore, triggers.TriggerManagerConfig{})
+	triggerHandlers := triggers.NewAdminHandlers(triggerManager)
 	pluginsDir := firstNonEmpty(os.Getenv("ACERYX_PLUGINS_DIR"), "./testdata")
 	_ = pluginRuntime.LoadAll(pluginsDir, plugins.AllowAllLicence{})
 	webhookHandler := webhookreceiver.NewHandler(db, secretStore)
@@ -333,6 +337,12 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("POST /v1/admin/plugins/{id}/disable", withPerm("admin:tenant", pluginHandlers.Disable))
 	mux.Handle("POST /admin/plugins/{id}/enable", withPerm("admin:tenant", pluginHandlers.Enable))
 	mux.Handle("POST /v1/admin/plugins/{id}/enable", withPerm("admin:tenant", pluginHandlers.Enable))
+	mux.Handle("GET /api/v1/admin/triggers", withPerm("admin:tenant", triggerHandlers.List))
+	mux.Handle("GET /api/v1/admin/triggers/{id}", withPerm("admin:tenant", triggerHandlers.Get))
+	mux.Handle("POST /api/v1/admin/triggers/{id}/restart", withPerm("admin:tenant", triggerHandlers.Restart))
+	mux.Handle("POST /api/v1/admin/triggers/{id}/stop", withPerm("admin:tenant", triggerHandlers.Stop))
+	mux.Handle("GET /api/v1/admin/triggers/{id}/checkpoints", withPerm("admin:tenant", triggerHandlers.ListCheckpoints))
+	mux.Handle("DELETE /api/v1/admin/triggers/{id}/checkpoints", withPerm("admin:tenant", triggerHandlers.ResetCheckpoints))
 	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))

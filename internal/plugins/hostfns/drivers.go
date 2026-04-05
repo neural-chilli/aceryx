@@ -16,7 +16,9 @@ import (
 )
 
 type QueueBridge struct {
-	Registry *drivers.DriverRegistry
+	Registry      *drivers.DriverRegistry
+	AckGuard      func(driverID, messageID string) error
+	StateProvider func() string
 
 	mu        sync.Mutex
 	connected map[string]drivers.QueueDriver
@@ -37,6 +39,14 @@ func (b *QueueBridge) Consume(driverID string, rawConfig []byte, topic string) (
 }
 
 func (b *QueueBridge) Ack(driverID, messageID string) error {
+	if b != nil && b.StateProvider != nil && strings.TrimSpace(b.StateProvider()) == "host_managed" {
+		return fmt.Errorf("QueueAck not available: state is host_managed (host manages acknowledgement)")
+	}
+	if b != nil && b.AckGuard != nil {
+		if err := b.AckGuard(driverID, messageID); err != nil {
+			return err
+		}
+	}
 	drv, err := b.Registry.GetQueue(driverID)
 	if err != nil {
 		return err

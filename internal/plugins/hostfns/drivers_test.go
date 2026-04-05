@@ -65,6 +65,20 @@ func TestQueueHostBridgeDelegates(t *testing.T) {
 	}
 }
 
+func TestQueueHostBridgeHostManagedRejectsAck(t *testing.T) {
+	reg := drivers.NewDriverRegistry()
+	q := &mockQueueDriver{}
+	reg.RegisterQueue(q)
+	bridge := NewQueueBridge(reg)
+	bridge.StateProvider = func() string { return "host_managed" }
+	if err := bridge.Ack("mockq", "mid"); err == nil {
+		t.Fatal("expected host-managed ack to be rejected")
+	}
+	if q.ackCalled {
+		t.Fatal("expected ack not to be delegated")
+	}
+}
+
 func TestFileWatchBridgeDelegates(t *testing.T) {
 	reg := drivers.NewDriverRegistry()
 	reg.RegisterFile(&mockFileDriver{})
