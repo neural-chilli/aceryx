@@ -62,7 +62,7 @@ SELECT EXISTS(SELECT 1 FROM claim)
 		if roleName != "" {
 			recipients, _ = s.resolveRoleRecipients(ctx, tenantID, roleName, []string{"websocket"})
 		}
-		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+		if err := s.notify.Notify(ctx, notify.NotifyEvent{
 			Type:       "task_claimed",
 			TenantID:   tenantID,
 			CaseID:     caseID,
@@ -71,7 +71,9 @@ SELECT EXISTS(SELECT 1 FROM claim)
 			StepLabel:  stepID,
 			Recipients: recipients,
 			Data:       map[string]any{"claimed_by": principalID.String()},
-		})
+		}); err != nil {
+			slog.WarnContext(ctx, "task claim notification failed", "tenant_id", tenantID.String(), "case_id", caseID.String(), "step_id", stepID, "error", err)
+		}
 	}
 	observability.TasksClaimedTotal.WithLabelValues(tenantID.String()).Inc()
 	s.updateActiveTasksGauge(ctx, tenantID)
@@ -87,7 +89,10 @@ SELECT EXISTS(SELECT 1 FROM claim)
 }
 
 func (s *TaskService) SaveDraft(ctx context.Context, tenantID, principalID, caseID uuid.UUID, stepID string, req DraftRequest) error {
-	dataRaw, _ := json.Marshal(req.Data)
+	dataRaw, err := json.Marshal(req.Data)
+	if err != nil {
+		return fmt.Errorf("marshal draft data: %w", err)
+	}
 	res, err := s.db.ExecContext(ctx, `
 UPDATE case_steps cs
 SET draft_data = $5::jsonb
@@ -147,7 +152,10 @@ func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, c
 	}
 	defer func() { _ = s.auditSvc.RollbackTx(tx) }()
 
-	resultRaw, _ := json.Marshal(map[string]any{"outcome": req.Outcome, "data": payload})
+	resultRaw, err := json.Marshal(map[string]any{"outcome": req.Outcome, "data": payload})
+	if err != nil {
+		return fmt.Errorf("marshal task completion result: %w", err)
+	}
 	res, err := tx.ExecContext(ctx, `
 UPDATE case_steps cs
 SET state='completed', completed_at=now(), result=$5::jsonb, draft_data=NULL,
@@ -170,7 +178,10 @@ WHERE cs.case_id=$1 AND cs.step_id=$2 AND c.id=cs.case_id AND c.tenant_id=$3 AND
 
 	decisionPatch := buildDecisionPatch(taskDetail.FormSchema, payload)
 	if len(decisionPatch) > 0 {
-		patchRaw, _ := json.Marshal(decisionPatch)
+		patchRaw, err := json.Marshal(decisionPatch)
+		if err != nil {
+			return fmt.Errorf("marshal decision patch: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, `
 UPDATE cases
 SET data = COALESCE(data, '{}'::jsonb) || jsonb_build_object('decision', COALESCE(data->'decision', '{}'::jsonb) || $2::jsonb),
@@ -205,7 +216,7 @@ WHERE id = $1
 			email, _ := s.lookupPrincipalEmail(ctx, *caseAssignee)
 			recipients = append(recipients, notify.Recipient{PrincipalID: *caseAssignee, Email: email, Channels: []string{"websocket"}})
 		}
-		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+		if err := s.notify.Notify(ctx, notify.NotifyEvent{
 			Type:       "task_completed",
 			TenantID:   tenantID,
 			CaseID:     caseID,
@@ -214,7 +225,9 @@ WHERE id = $1
 			StepLabel:  stepID,
 			Recipients: recipients,
 			Data:       map[string]any{"outcome": req.Outcome, "completed_by": principalID.String()},
-		})
+		}); err != nil {
+			slog.WarnContext(ctx, "task completion notification failed", "tenant_id", tenantID.String(), "case_id", caseID.String(), "step_id", stepID, "error", err)
+		}
 	}
 	observability.TasksCompletedTotal.WithLabelValues(tenantID.String(), req.Outcome).Inc()
 	s.updateActiveTasksGauge(ctx, tenantID)
@@ -263,7 +276,7 @@ FOR UPDATE
 	if s.notify != nil {
 		caseNumber, _ := s.lookupCaseNumber(ctx, tenantID, caseID)
 		email, _ := s.lookupPrincipalEmail(ctx, req.AssignTo)
-		_ = s.notify.Notify(ctx, notify.NotifyEvent{
+		if err := s.notify.Notify(ctx, notify.NotifyEvent{
 			Type:       "task_reassigned",
 			TenantID:   tenantID,
 			CaseID:     caseID,
@@ -272,7 +285,9 @@ FOR UPDATE
 			StepLabel:  stepID,
 			Recipients: []notify.Recipient{{PrincipalID: req.AssignTo, Email: email, Channels: []string{"email", "websocket"}}},
 			Data:       map[string]any{"reason": req.Reason},
-		})
+		}); err != nil {
+			slog.WarnContext(ctx, "task reassign notification failed", "tenant_id", tenantID.String(), "case_id", caseID.String(), "step_id", stepID, "error", err)
+		}
 	}
 	return nil
 }

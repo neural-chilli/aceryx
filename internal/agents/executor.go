@@ -196,7 +196,10 @@ func (a *AgentExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepID st
 		"rendered_prompt":      renderedPrompt,
 		"rendered_prompt_hash": "sha256:" + hex.EncodeToString(promptHash[:]),
 	}
-	eventJSON, _ := json.Marshal(event)
+	eventJSON, err := json.Marshal(event)
+	if err != nil {
+		return nil, fmt.Errorf("marshal agent execution event: %w", err)
+	}
 
 	stepResult := &engine.StepResult{
 		Output:         resultPayload,
@@ -206,9 +209,12 @@ func (a *AgentExecutor) Execute(ctx context.Context, caseID uuid.UUID, stepID st
 	if cfg.WritesCaseData {
 		stepResult.WritesCaseData = true
 		if cfg.CaseDataField != "" {
-			stepResult.CaseDataPatch, _ = json.Marshal(map[string]any{cfg.CaseDataField: resultObj})
+			stepResult.CaseDataPatch, err = json.Marshal(map[string]any{cfg.CaseDataField: resultObj})
 		} else {
-			stepResult.CaseDataPatch, _ = json.Marshal(resultObj)
+			stepResult.CaseDataPatch, err = json.Marshal(resultObj)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("marshal case data patch: %w", err)
 		}
 	}
 	return stepResult, nil

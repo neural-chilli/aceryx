@@ -51,6 +51,17 @@ const bannerMessage = computed(() => {
 
 const previewLogoURL = computed(() => backendHTTPURL(previewBranding.value?.logo_url ?? '/logo.png'))
 
+function sanitizeRedirect(redirect: unknown): string {
+  if (typeof redirect !== 'string') {
+    return '/inbox'
+  }
+  const value = redirect.trim()
+  if (!value.startsWith('/') || value.startsWith('//')) {
+    return '/inbox'
+  }
+  return value
+}
+
 onMounted(async () => {
   if (!tenantSlug.value) {
     return
@@ -69,7 +80,7 @@ async function submit() {
   loading.value = true
   try {
     await login(email.value, password.value, tenantSlug.value)
-    const redirect = (route.query.redirect as string | undefined) ?? '/inbox'
+    const redirect = sanitizeRedirect(route.query.redirect)
     await router.push(redirect)
   } catch {
     error.value = 'Invalid credentials'

@@ -125,4 +125,35 @@ describe('Login view', () => {
     expect(fetchMock).toHaveBeenCalled()
     Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
   })
+
+  it('ignores unsafe redirect query values after login', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.startsWith('/api/tenant/branding')) {
+        return new Response('{}', { status: 404 })
+      }
+      if (url === '/api/auth/login' || url === '/auth/login') {
+        return new Response(JSON.stringify({
+          token: 't',
+          expires_at: '2099-01-01T00:00:00Z',
+          principal: { id: '1', tenant_id: '1', roles: [] },
+          tenant: {
+            branding: { company_name: 'Aceryx', logo_url: '', favicon_url: '', colors: {}, powered_by: true },
+            terminology: {},
+          },
+          themes: [],
+          preferences: {},
+        }), { status: 200 })
+      }
+      return new Response('{}', { status: 404 })
+    }))
+
+    const { wrapper, router } = await mountLogin('/login?redirect=//evil.com')
+    await wrapper.find('input#email').setValue('admin@example.com')
+    await wrapper.find('input[type="password"]').setValue('Passw0rd')
+    await wrapper.find('button').trigger('click')
+    await flushPromises()
+
+    expect(router.currentRoute.value.path).toBe('/inbox')
+  })
 })

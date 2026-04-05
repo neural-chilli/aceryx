@@ -169,7 +169,10 @@ func normalizeCandidatePaths(r *http.Request) []string {
 }
 
 func (h *Handler) recordWebhookDelivery(ctx context.Context, tenantID uuid.UUID, key string, payload map[string]any) (bool, error) {
-	raw, _ := json.Marshal(payload)
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return false, fmt.Errorf("marshal webhook delivery payload: %w", err)
+	}
 	res, err := h.db.ExecContext(ctx, `
 INSERT INTO webhook_deliveries (idempotency_key, tenant_id, payload, status)
 VALUES ($1, $2, $3::jsonb, 'processed')
@@ -191,8 +194,13 @@ func (h *Handler) createOrUpdateCase(ctx context.Context, cfg RouteConfig, paylo
 		if caseNumber != "" {
 			var caseID uuid.UUID
 			if err := h.db.QueryRowContext(ctx, `SELECT id FROM cases WHERE tenant_id = $1 AND case_number = $2`, cfg.TenantID, caseNumber).Scan(&caseID); err == nil {
-				raw, _ := json.Marshal(payload)
-				_, _ = h.db.ExecContext(ctx, `UPDATE cases SET data = COALESCE(data,'{}'::jsonb) || $3::jsonb, updated_at = now(), version = version + 1 WHERE id = $1 AND tenant_id = $2`, caseID, cfg.TenantID, string(raw))
+				raw, mErr := json.Marshal(payload)
+				if mErr != nil {
+					return uuid.Nil, fmt.Errorf("marshal webhook update payload: %w", mErr)
+				}
+				if _, uErr := h.db.ExecContext(ctx, `UPDATE cases SET data = COALESCE(data,'{}'::jsonb) || $3::jsonb, updated_at = now(), version = version + 1 WHERE id = $1 AND tenant_id = $2`, caseID, cfg.TenantID, string(raw)); uErr != nil {
+					return uuid.Nil, fmt.Errorf("update case from webhook: %w", uErr)
+				}
 				return caseID, nil
 			}
 		}
@@ -218,10 +226,13 @@ LIMIT 1
 		return uuid.Nil, fmt.Errorf("resolve workflow for webhook: %w", err)
 	}
 
-	rawData, _ := json.Marshal(payload)
+	rawData, err := json.Marshal(payload)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("marshal webhook create payload: %w", err)
+	}
 	caseNumber := "WEB-" + strings.ToUpper(uuid.NewString()[:8])
 	var caseID uuid.UUID
-	err := h.db.QueryRowContext(ctx, `
+	err = h.db.QueryRowContext(ctx, `
 INSERT INTO cases (tenant_id, case_type_id, case_number, status, data, created_by, workflow_id, workflow_version)
 VALUES ($1, $2, $3, 'open', $4::jsonb, $5, $6, $7)
 RETURNING id

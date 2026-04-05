@@ -235,7 +235,10 @@ func (h *CaseHandlers) CloseCase(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Reason string `json:"reason"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
 	if err := h.Cases.CloseCase(r.Context(), principal.TenantID, id, principal.ID, req.Reason); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
@@ -257,7 +260,10 @@ func (h *CaseHandlers) CancelCase(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Reason string `json:"reason"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_json")
+		return
+	}
 	if err := h.Cases.CancelCase(r.Context(), principal.TenantID, id, principal.ID, req.Reason); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

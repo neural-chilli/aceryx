@@ -262,12 +262,15 @@ func TestVaultIntegration_DedupAndOrphanCleanupAndConcurrentUpload(t *testing.T)
 	if err := svc.Delete(ctx, tenantA, caseA2, docA2.ID, principalA); err != nil {
 		t.Fatalf("delete docA2: %v", err)
 	}
-	filesDeleted, _, err = svc.OrphanCleanup(ctx, &tenantA)
+	filesDeleted, _, err = svc.OrphanCleanup(ctx, nil)
 	if err != nil {
-		t.Fatalf("orphan cleanup tenant A after full delete: %v", err)
+		t.Fatalf("orphan cleanup all tenants after tenant A full delete: %v", err)
 	}
 	if filesDeleted == 0 {
 		t.Fatal("expected orphan cleanup to delete physical file")
+	}
+	if _, _, err := svc.Download(ctx, tenantB, caseB1, docB1.ID, principalB); err != nil {
+		t.Fatalf("tenant B live document should remain accessible after global cleanup: %v", err)
 	}
 }
 
