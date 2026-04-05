@@ -1,5 +1,5 @@
 <p align="left">
-  <img src="logo.png" alt="Aceryx" height="64" />&nbsp;&nbsp;&nbsp;<H1>Aceryx</H1>
+  <img src="logo-small.png" alt="Aceryx" height="64" />&nbsp;&nbsp;&nbsp;<H1>Aceryx</H1>
 </p>
 
 
