@@ -17,6 +17,9 @@ import (
 	"github.com/neural-chilli/aceryx/internal/agents"
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/cases"
+	"github.com/neural-chilli/aceryx/internal/channels"
+	formchannel "github.com/neural-chilli/aceryx/internal/channels/form"
+	webhookchannel "github.com/neural-chilli/aceryx/internal/channels/webhook"
 	"github.com/neural-chilli/aceryx/internal/connectors"
 	"github.com/neural-chilli/aceryx/internal/connectors/docgenconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/emailconn"
@@ -174,9 +177,20 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		SystemMaxHTTPTimeout: 60 * time.Second,
 	})
 	pluginHandlers := handlers.NewPluginHandlers(pluginRuntime, pluginStore)
+	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
+	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
+	vaultSvc.SetAuditService(auditSvc)
+	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
 	triggerStore := triggers.NewPostgresStore(db)
-	triggerManager := triggers.NewTriggerManager(pluginRuntime, nil, driverRegistry, triggers.NewStubChannelPipeline(nil), triggerStore, triggers.TriggerManagerConfig{})
+	channelStore := channels.NewPostgresStore(db)
+	attachmentService := channels.NewVaultAttachmentService(db, vaultSvc)
+	channelPipeline := channels.NewPipeline(eng, channelStore, attachmentService)
+	triggerManager := triggers.NewTriggerManager(pluginRuntime, nil, driverRegistry, channels.NewTriggerPipelineAdapter(channelPipeline), triggerStore, triggers.TriggerManagerConfig{})
 	triggerHandlers := triggers.NewAdminHandlers(triggerManager)
+	channelManager := channels.NewChannelManager(channelPipeline, channelStore, triggerManager, driverRegistry, secretStore)
+	channelWebhook := &webhookchannel.WebhookHandler{ChannelStore: channelStore, Pipeline: channelPipeline, SecretStore: secretStore}
+	channelForm := formchannel.NewFormHandler(channelStore, channelPipeline, channels.NewCaseTypeSchemaStore(db))
+	channelAPI := channels.NewAPI(channelStore, channelManager)
 	pluginsDir := firstNonEmpty(os.Getenv("ACERYX_PLUGINS_DIR"), "./testdata")
 	_ = pluginRuntime.LoadAll(pluginsDir, plugins.AllowAllLicence{})
 	webhookHandler := webhookreceiver.NewHandler(db, secretStore)
@@ -214,10 +228,6 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	tenantSvc := tenants.NewTenantService(db)
 	themeSvc := tenants.NewThemeService(db)
 	tenantHandlers := handlers.NewTenantHandlers(tenantSvc, themeSvc)
-	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
-	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
-	vaultSvc.SetAuditService(auditSvc)
-	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
 	if bgCtx == nil {
 		bgCtx = context.Background()
 	}
@@ -225,6 +235,11 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		go vaultSvc.StartOrphanCleanupTicker(bgCtx)
 		go reportingSvc.StartViewRefreshTicker(bgCtx)
 		go reportingSvc.StartScheduleTicker(bgCtx)
+		go func() {
+			if err := channelManager.StartAll(bgCtx); err != nil {
+				_ = err
+			}
+		}()
 	}
 
 	authMW := middleware.AuthMiddleware(authSvc)
@@ -338,6 +353,17 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("POST /admin/plugins/{id}/enable", withPerm("admin:tenant", pluginHandlers.Enable))
 	mux.Handle("POST /v1/admin/plugins/{id}/enable", withPerm("admin:tenant", pluginHandlers.Enable))
 	mux.Handle("GET /api/v1/admin/triggers", withPerm("admin:tenant", triggerHandlers.List))
+	mux.Handle("GET /v1/channels", withPerm("channels:manage", channelAPI.List))
+	mux.Handle("POST /v1/channels", withPerm("channels:manage", channelAPI.Create))
+	mux.Handle("GET /v1/channels/{id}", withPerm("channels:manage", channelAPI.Get))
+	mux.Handle("PUT /v1/channels/{id}", withPerm("channels:manage", channelAPI.Update))
+	mux.Handle("DELETE /v1/channels/{id}", withPerm("channels:manage", channelAPI.Delete))
+	mux.Handle("POST /v1/channels/{id}/enable", withPerm("channels:manage", channelAPI.Enable))
+	mux.Handle("POST /v1/channels/{id}/disable", withPerm("channels:manage", channelAPI.Disable))
+	mux.Handle("GET /v1/channels/{id}/events", withPerm("channels:manage", channelAPI.Events))
+	mux.Handle("POST /v1/channels/webhook/{channel_id}/receive", http.HandlerFunc(channelWebhook.ServeHTTP))
+	mux.Handle("GET /intake/{channel_id}", http.HandlerFunc(channelForm.ServeForm))
+	mux.Handle("POST /intake/{channel_id}", http.HandlerFunc(channelForm.SubmitForm))
 	mux.Handle("GET /api/v1/admin/triggers/{id}", withPerm("admin:tenant", triggerHandlers.Get))
 	mux.Handle("POST /api/v1/admin/triggers/{id}/restart", withPerm("admin:tenant", triggerHandlers.Restart))
 	mux.Handle("POST /api/v1/admin/triggers/{id}/stop", withPerm("admin:tenant", triggerHandlers.Stop))
