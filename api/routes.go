@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,8 @@ import (
 	"github.com/neural-chilli/aceryx/internal/llm/ollama"
 	llmopenai "github.com/neural-chilli/aceryx/internal/llm/openai"
 	"github.com/neural-chilli/aceryx/internal/mcp"
+	"github.com/neural-chilli/aceryx/internal/mcpserver"
+	mcpservertools "github.com/neural-chilli/aceryx/internal/mcpserver/tools"
 	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/plugins"
 	"github.com/neural-chilli/aceryx/internal/plugins/hostfns"
@@ -271,6 +274,29 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mcpManager := mcp.NewManager(mcpCache, secretStore, splitAndTrim(os.Getenv("ACERYX_MCP_SELF_URLS")), &http.Client{Timeout: 60 * time.Second})
 	mcpAPI := mcp.NewAPI(mcpManager, mcpCache)
 	mcpHandlers := handlers.NewMCPHandlers(mcpAPI)
+	mcpServerEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("ACERYX_MCP_SERVER_ENABLED")), "true") || strings.TrimSpace(os.Getenv("ACERYX_MCP_SERVER_ENABLED")) == "1"
+	mcpServerConfig := mcpserver.ServerConfig{
+		Enabled:           mcpServerEnabled,
+		ListenAddr:        firstNonEmpty(os.Getenv("ACERYX_MCP_SERVER_ADDR"), mcpserver.DefaultListenAddr),
+		AuthType:          firstNonEmpty(os.Getenv("ACERYX_MCP_SERVER_AUTH_TYPE"), "api_key"),
+		AuthHeader:        firstNonEmpty(os.Getenv("ACERYX_MCP_SERVER_AUTH_HEADER"), mcpserver.DefaultAuthHeader),
+		RateLimit:         mcpserver.RateLimitConfig{RequestsPerMinute: intFromEnv("ACERYX_MCP_SERVER_RPM", mcpserver.DefaultRequestsPerMinute)},
+		MaxDepth:          intFromEnv("ACERYX_MCP_SERVER_MAX_DEPTH", mcpserver.DefaultMaxDepth),
+		MaxRequestTimeout: parseDurationOrDefault(os.Getenv("ACERYX_MCP_SERVER_MAX_TIMEOUT"), mcpserver.DefaultMaxToolTimeout),
+	}
+	mcpComposite := mcpserver.NewCompositeStore(db, eng)
+	mcpComposite.KBs = ragKBStore
+	mcpComposite.SearchSvc = ragSearch
+	mcpKeyStore := mcpserver.NewPostgresAPIKeyStore(db)
+	mcpInvocations := mcpserver.NewPostgresInvocationStore(db)
+	mcpToolset := mcpservertools.NewDefaultTools(mcpComposite, mcpComposite, mcpComposite, ragSearch, mcpComposite, mcpComposite)
+	mcpServer := mcpserver.NewServer(mcpServerConfig, mcpserver.ServerDependencies{
+		Tools:       mcpToolset,
+		AuditStore:  mcpInvocations,
+		APIKeyStore: mcpKeyStore,
+	})
+	mcpKeyAPI := mcpserver.NewKeyAPI(mcpKeyStore, mcpServer)
+	mcpServerAdminHandlers := handlers.NewMCPServerAdminHandlers(mcpKeyAPI)
 	promptTemplateSvc := agents.NewPromptTemplateService(db)
 	promptTemplateHandlers := handlers.NewPromptTemplateHandlers(promptTemplateSvc)
 	if eng != nil {
@@ -308,6 +334,11 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 				_ = err
 			}
 		}()
+		if mcpServerConfig.Enabled {
+			go func() {
+				_ = mcpServer.Start(bgCtx)
+			}()
+		}
 	}
 
 	authMW := middleware.AuthMiddleware(authSvc)
@@ -451,6 +482,12 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("DELETE /api/v1/mcp-servers", withPerm("admin:tenant", mcpHandlers.Delete))
 	mux.Handle("DELETE /api/v1/mcp-servers/{url}", withPerm("admin:tenant", mcpHandlers.Delete))
 	mux.Handle("POST /api/v1/mcp-servers/refresh", withPerm("admin:tenant", mcpHandlers.Refresh))
+	mux.Handle("GET /api/v1/admin/mcp-keys", withPerm("admin:tenant", mcpServerAdminHandlers.ListKeys))
+	mux.Handle("POST /api/v1/admin/mcp-keys", withPerm("admin:tenant", mcpServerAdminHandlers.CreateKey))
+	mux.Handle("PUT /api/v1/admin/mcp-keys/{id}", withPerm("admin:tenant", mcpServerAdminHandlers.UpdateKey))
+	mux.Handle("DELETE /api/v1/admin/mcp-keys/{id}", withPerm("admin:tenant", mcpServerAdminHandlers.DeleteKey))
+	mux.Handle("GET /api/v1/admin/mcp-server/config", withPerm("admin:tenant", mcpServerAdminHandlers.GetConfig))
+	mux.Handle("PUT /api/v1/admin/mcp-server/config", withPerm("admin:tenant", mcpServerAdminHandlers.UpdateConfig))
 	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
@@ -513,6 +550,18 @@ func parseDurationOrDefault(raw string, fallback time.Duration) time.Duration {
 		return fallback
 	}
 	return d
+}
+
+func intFromEnv(key string, fallback int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
 }
 
 func firstNonEmpty(values ...string) string {
