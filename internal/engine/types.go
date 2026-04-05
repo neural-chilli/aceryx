@@ -124,6 +124,16 @@ type OverdueTask struct {
 	AssignedTo  *uuid.UUID
 }
 
+type WorkflowStatus struct {
+	CaseID         uuid.UUID
+	WorkflowID     uuid.UUID
+	Status         string
+	CurrentStep    string
+	CompletedSteps int
+	PendingTasks   int
+	ProgressPct    float64
+}
+
 type Engine struct {
 	db            *sql.DB
 	evaluations   *WorkerPool
