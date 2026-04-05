@@ -1,0 +1,46 @@
+# Low-stakes keyword extraction component.
+id: keyword_extraction
+display_label: "Extract Keywords"
+category: "AI: Text Analysis"
+description: "Extract keywords and relevance scores from case text."
+icon: "tags"
+tier: commercial
+
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+  required: [text]
+
+output_schema:
+  type: object
+  properties:
+    keywords:
+      type: array
+      items:
+        type: object
+        properties:
+          keyword:
+            type: string
+          score:
+            type: number
+            minimum: 0
+            maximum: 1
+        required: [keyword, score]
+  required: [keywords]
+
+system_prompt: |
+  You extract meaningful keywords from text.
+  Return only JSON matching the schema.
+
+user_prompt_template: |
+  Extract keywords from:
+  {{.Input.text}}
+
+model_hints:
+  requires_vision: false
+  preferred_size: small
+  max_tokens: 300
+
+config_fields: []

@@ -1,0 +1,53 @@
+# Classifies a document into category/subcategory.
+id: document_classification
+display_label: "Classify Document"
+category: "AI: Classification"
+description: "Classify a document into business category and subcategory with confidence."
+icon: "classification"
+tier: commercial
+
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+    filename:
+      type: string
+  required: [text]
+
+output_schema:
+  type: object
+  properties:
+    category:
+      type: string
+    subcategory:
+      type: string
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    rationale:
+      type: string
+  required: [category, subcategory, confidence]
+
+system_prompt: |
+  You classify documents for case intake routing.
+  Return only JSON and always include category, subcategory, and confidence.
+
+user_prompt_template: |
+  Classify this document content.
+  Filename: {{.Input.filename}}
+  Content:
+  {{.Input.text}}
+
+model_hints:
+  requires_vision: false
+  preferred_size: medium
+  max_tokens: 700
+
+confidence:
+  field_path: "confidence"
+  auto_accept_above: 0.85
+  escalate_below: 0.5
+
+config_fields: []

@@ -1,0 +1,61 @@
+# Drafts a customer-facing response. Output is generally human reviewed.
+id: draft_response
+display_label: "Draft Response"
+category: "AI: Generation"
+description: "Create a customer response draft based on case context."
+icon: "draft"
+tier: commercial
+
+input_schema:
+  type: object
+  properties:
+    customer_message:
+      type: string
+    case_summary:
+      type: string
+  required: [customer_message]
+
+output_schema:
+  type: object
+  properties:
+    draft_text:
+      type: string
+    tone:
+      type: string
+      enum: [formal, friendly, empathetic]
+    suggested_subject:
+      type: string
+  required: [draft_text, tone, suggested_subject]
+
+system_prompt: |
+  You are a customer support drafting assistant.
+  Produce a clear, concise response draft and return only JSON.
+
+user_prompt_template: |
+  Draft a customer response.
+  Requested tone: {{.Config.tone}}
+  Maximum length (characters): {{.Config.max_length}}
+
+  Customer message:
+  {{.Input.customer_message}}
+
+  Case summary:
+  {{.Input.case_summary}}
+
+model_hints:
+  requires_vision: false
+  preferred_size: large
+  max_tokens: 900
+
+config_fields:
+  - name: tone
+    type: select
+    label: "Tone"
+    required: true
+    default: friendly
+    options: [formal, friendly, empathetic]
+  - name: max_length
+    type: number
+    label: "Max Length"
+    required: false
+    default: 1200

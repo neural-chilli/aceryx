@@ -1,0 +1,52 @@
+# Scores urgency for triage routing.
+id: urgency_scoring
+display_label: "Score Urgency"
+category: "AI: Classification"
+description: "Assign urgency tier P1-P4 with reasoning and confidence."
+icon: "priority"
+tier: commercial
+
+input_schema:
+  type: object
+  properties:
+    summary:
+      type: string
+    details:
+      type: string
+  required: [summary]
+
+output_schema:
+  type: object
+  properties:
+    priority:
+      type: string
+      enum: [P1, P2, P3, P4]
+    reasoning:
+      type: string
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+  required: [priority, reasoning, confidence]
+
+system_prompt: |
+  You are an urgency triage engine.
+  Return only JSON with priority, reasoning, confidence.
+  P1 is most urgent and P4 is least urgent.
+
+user_prompt_template: |
+  Determine urgency for this case.
+  Summary: {{.Input.summary}}
+  Details: {{.Input.details}}
+
+model_hints:
+  requires_vision: false
+  preferred_size: small
+  max_tokens: 450
+
+confidence:
+  field_path: "confidence"
+  auto_accept_above: 0.85
+  escalate_below: 0.6
+
+config_fields: []

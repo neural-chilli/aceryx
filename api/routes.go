@@ -15,6 +15,7 @@ import (
 	"github.com/neural-chilli/aceryx/api/middleware"
 	"github.com/neural-chilli/aceryx/internal/activity"
 	"github.com/neural-chilli/aceryx/internal/agents"
+	"github.com/neural-chilli/aceryx/internal/ai"
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/channels"
@@ -149,6 +150,10 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		}
 	})
 	llmHandlers := handlers.NewLLMAdminHandlers(llmStore, llmManager)
+	aiComponentStore := ai.NewStore(db)
+	aiComponentRegistry := ai.NewComponentRegistry(aiComponentStore)
+	_ = aiComponentRegistry.LoadFromDirectory(firstNonEmpty(os.Getenv("ACERYX_AI_COMPONENTS_DIR"), "./ai-components"))
+	aiComponentHandlers := handlers.NewAIComponentHandlers(aiComponentRegistry)
 	pluginStore := plugins.NewStore(db)
 	httpHost := hostfns.NewHTTPHost(&http.Client{
 		Timeout: 60 * time.Second,
@@ -222,6 +227,12 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 			LLMClient:    agents.NewLLMClientFromEnv(120 * time.Second),
 			AuditService: auditSvc,
 		}))
+		eng.RegisterExecutor("ai_component", ai.NewStepExecutor(db, ai.NewComponentExecutor(
+			llmManager,
+			ai.NewPostgresCaseStore(db),
+			ai.NewTaskServiceAdapter(taskSvc),
+			aiComponentRegistry,
+		)))
 		eng.RegisterExecutor("plugin", plugins.NewStepExecutor(db, pluginRuntime))
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
@@ -401,6 +412,12 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("POST /prompt-templates", withPerm("workflows:edit", promptTemplateHandlers.Create))
 	mux.Handle("GET /prompt-templates/{name}/versions/{version}", withPerm("workflows:view", promptTemplateHandlers.GetVersion))
 	mux.Handle("PUT /prompt-templates/{name}", withPerm("workflows:edit", promptTemplateHandlers.Update))
+	mux.Handle("GET /api/v1/ai-components", withPerm("workflows:view", aiComponentHandlers.List))
+	mux.Handle("GET /api/v1/ai-components/{id}", withPerm("workflows:view", aiComponentHandlers.Get))
+	mux.Handle("POST /api/v1/ai-components", withPerm("workflows:edit", aiComponentHandlers.Create))
+	mux.Handle("PUT /api/v1/ai-components/{id}", withPerm("workflows:edit", aiComponentHandlers.Update))
+	mux.Handle("DELETE /api/v1/ai-components/{id}", withPerm("workflows:edit", aiComponentHandlers.Delete))
+	mux.Handle("POST /api/v1/ai-components/reload", withPerm("admin:tenant", aiComponentHandlers.Reload))
 	mux.Handle("POST /webhooks/{path...}", http.HandlerFunc(webhookHandler.ServeHTTP))
 	mux.Handle("GET /tasks", withAuth(taskHandlers.Inbox))
 	mux.Handle("GET /tasks/{case_id}/{step_id}", withAuth(taskHandlers.GetTask))
