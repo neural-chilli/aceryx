@@ -1,6 +1,6 @@
 <img src="logo-full.png" alt="Aceryx" height="96" align="left" hspace="16" />
 
-<h1>Aceryx</h1>
+<h3>Aceryx</h3>
 
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org)
