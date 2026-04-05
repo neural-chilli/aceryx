@@ -1,4 +1,4 @@
-<img src="logo-full.png" alt="Aceryx" height="96" align="left" hspace="16" />
+<img src="logo-small.png" alt="Aceryx" height="96" align="left" hspace="16" />
 
 <h3>Aceryx</h3>
 
