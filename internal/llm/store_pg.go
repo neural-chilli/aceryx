@@ -123,7 +123,7 @@ LIMIT $3 OFFSET $4
 	}
 	defer func() { _ = rows.Close() }()
 
-	out := make([]Invocation, 0, limit)
+	out := make([]Invocation, 0)
 	for rows.Next() {
 		var inv Invocation
 		if err := rows.Scan(&inv.ID, &inv.TenantID, &inv.ProviderID, &inv.Provider, &inv.Model, &inv.Purpose,

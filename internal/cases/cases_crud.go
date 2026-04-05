@@ -213,7 +213,26 @@ WHERE c.tenant_id = $1
 		idx++
 	}
 
-	query += " ORDER BY " + safeCaseSort(filter.SortBy, filter.SortDir)
+	sortBy := normalizeCaseSortBy(filter.SortBy)
+	sortAsc := strings.EqualFold(filter.SortDir, "ASC")
+	args = append(args, sortBy, sortAsc)
+	query += fmt.Sprintf(`
+ ORDER BY
+    CASE WHEN $%d = 'created_at' AND $%d THEN c.created_at END ASC,
+    CASE WHEN $%d = 'created_at' AND NOT $%d THEN c.created_at END DESC,
+    CASE WHEN $%d = 'updated_at' AND $%d THEN c.updated_at END ASC,
+    CASE WHEN $%d = 'updated_at' AND NOT $%d THEN c.updated_at END DESC,
+    CASE WHEN $%d = 'priority' AND $%d THEN c.priority END ASC,
+    CASE WHEN $%d = 'priority' AND NOT $%d THEN c.priority END DESC,
+    CASE WHEN $%d = 'due_at' AND $%d THEN c.due_at END ASC,
+    CASE WHEN $%d = 'due_at' AND NOT $%d THEN c.due_at END DESC,
+    CASE WHEN $%d = 'case_number' AND $%d THEN c.case_number END ASC,
+    CASE WHEN $%d = 'case_number' AND NOT $%d THEN c.case_number END DESC,
+    CASE WHEN $%d = 'status' AND $%d THEN c.status END ASC,
+    CASE WHEN $%d = 'status' AND NOT $%d THEN c.status END DESC,
+    c.updated_at DESC
+`, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1)
+	idx += 2
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", idx, idx+1)
 	args = append(args, perPage, (page-1)*perPage)
 

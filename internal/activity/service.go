@@ -143,7 +143,7 @@ WHERE c.tenant_id = $1
 		return nil, err
 	}
 
-	out := make([]FeedEvent, 0, limit)
+	out := make([]FeedEvent, 0)
 	for rows.Next() {
 		var (
 			eventType  string

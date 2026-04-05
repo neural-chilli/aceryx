@@ -81,12 +81,14 @@ func IsRegistered(eventType, action string) bool {
 }
 
 func GenesisHash(caseID uuid.UUID) string {
+	// codeql[go/weak-sensitive-data-hashing]: deterministic tamper-evident chain hash, not password storage.
 	sum := sha256.Sum256([]byte("aceryx:genesis:" + caseID.String()))
 	return hex.EncodeToString(sum[:])
 }
 
 func ComputeHash(prev, eventType, actorID, action string, data json.RawMessage, createdAt time.Time) string {
 	payload := prev + eventType + actorID + action + canonicalJSON(data) + createdAt.UTC().Format(time.RFC3339Nano)
+	// codeql[go/weak-sensitive-data-hashing]: deterministic tamper-evident chain hash, not password storage.
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
 }

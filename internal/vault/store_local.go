@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,11 @@ import (
 const (
 	defaultVaultRoot       = "./data/vault"
 	defaultSignedURLExpiry = 300
+)
+
+var (
+	safePathSegmentPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+	sha256HexPattern       = regexp.MustCompile(`^[a-f0-9]{64}$`)
 )
 
 type LocalVaultStore struct {
@@ -35,10 +41,21 @@ func NewLocalVaultStore(root string, signingSecret string) *LocalVaultStore {
 }
 
 func (s *LocalVaultStore) Put(tenantID, hash, ext string, data []byte) (string, error) {
+	tenantID = strings.TrimSpace(tenantID)
+	if !safePathSegmentPattern.MatchString(tenantID) {
+		return "", fmt.Errorf("invalid tenant id")
+	}
+	hash = strings.ToLower(strings.TrimSpace(hash))
+	if !sha256HexPattern.MatchString(hash) {
+		return "", fmt.Errorf("invalid content hash")
+	}
 	ext = normalizeExt(ext)
 	now := s.now()
 	uri := fmt.Sprintf("%s/%04d/%02d/%s/%s/%s.%s", tenantID, now.Year(), int(now.Month()), hashPrefix(hash, 0), hashPrefix(hash, 2), hash, ext)
-	fullPath := filepath.Join(s.root, filepath.FromSlash(uri))
+	fullPath, err := s.resolvePath(uri)
+	if err != nil {
+		return "", fmt.Errorf("resolve vault path: %w", err)
+	}
 	if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 		return "", fmt.Errorf("create vault directory: %w", err)
 	}
@@ -111,7 +128,16 @@ func (s *LocalVaultStore) resolvePath(uri string) (string, error) {
 	if clean == "." || clean == "" || strings.HasPrefix(clean, "..") {
 		return "", fmt.Errorf("invalid vault uri")
 	}
-	return filepath.Join(s.root, clean), nil
+	root := filepath.Clean(s.root)
+	fullPath := filepath.Join(root, clean)
+	rel, err := filepath.Rel(root, fullPath)
+	if err != nil {
+		return "", fmt.Errorf("compute relative path: %w", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("invalid vault uri")
+	}
+	return fullPath, nil
 }
 
 func signURI(secret []byte, uri string, expiresAt int64) string {
@@ -124,7 +150,7 @@ func signURI(secret []byte, uri string, expiresAt int64) string {
 
 func normalizeExt(ext string) string {
 	ext = strings.TrimSpace(strings.TrimPrefix(ext, "."))
-	if ext == "" {
+	if ext == "" || !safePathSegmentPattern.MatchString(ext) {
 		return "bin"
 	}
 	return ext

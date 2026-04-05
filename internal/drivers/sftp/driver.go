@@ -6,12 +6,14 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/neural-chilli/aceryx/internal/drivers"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 type Driver struct {
@@ -39,10 +41,14 @@ func (d *Driver) Connect(ctx context.Context, config drivers.FileConfig) error {
 	if err != nil {
 		return err
 	}
+	hostKeyCallback, err := sftpHostKeyCallback()
+	if err != nil {
+		return err
+	}
 	sshCfg := &ssh.ClientConfig{
 		User:            config.Username,
 		Auth:            auth,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback: hostKeyCallback,
 		Timeout:         15 * time.Second,
 	}
 	conn, err := ssh.Dial("tcp", fmt.Sprintf("%s:%d", host, port), sshCfg)
@@ -158,6 +164,32 @@ func authMethods(config drivers.FileConfig) ([]ssh.AuthMethod, error) {
 		return []ssh.AuthMethod{ssh.Password(config.Password)}, nil
 	}
 	return nil, fmt.Errorf("sftp auth requires key_path or password")
+}
+
+func sftpHostKeyCallback() (ssh.HostKeyCallback, error) {
+	paths := make([]string, 0, 2)
+	if configured := strings.TrimSpace(os.Getenv("ACERYX_SFTP_KNOWN_HOSTS")); configured != "" {
+		paths = append(paths, configured)
+	}
+	if homeDir, err := os.UserHomeDir(); err == nil && strings.TrimSpace(homeDir) != "" {
+		paths = append(paths, filepath.Join(homeDir, ".ssh", "known_hosts"))
+	}
+	paths = append(paths, "/etc/ssh/ssh_known_hosts")
+
+	existing := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if _, err := os.Stat(p); err == nil {
+			existing = append(existing, p)
+		}
+	}
+	if len(existing) == 0 {
+		return nil, fmt.Errorf("no known_hosts file found; set ACERYX_SFTP_KNOWN_HOSTS or create ~/.ssh/known_hosts")
+	}
+	callback, err := knownhosts.New(existing...)
+	if err != nil {
+		return nil, fmt.Errorf("load known_hosts: %w", err)
+	}
+	return callback, nil
 }
 
 func (d *Driver) resolve(p string) (string, error) {

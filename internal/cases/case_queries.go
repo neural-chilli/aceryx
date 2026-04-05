@@ -134,7 +134,24 @@ WHERE c.tenant_id = $1
 		idx++
 	}
 
-	query += " ORDER BY " + safeDashboardSort(filter.SortBy, filter.SortDir)
+	sortBy := normalizeDashboardSortBy(filter.SortBy)
+	sortAsc := strings.EqualFold(filter.SortDir, "ASC")
+	args = append(args, sortBy, sortAsc)
+	query += fmt.Sprintf(`
+ ORDER BY
+    CASE WHEN $%d = 'case_number' AND $%d THEN c.case_number END ASC,
+    CASE WHEN $%d = 'case_number' AND NOT $%d THEN c.case_number END DESC,
+    CASE WHEN $%d = 'created_at' AND $%d THEN c.created_at END ASC,
+    CASE WHEN $%d = 'created_at' AND NOT $%d THEN c.created_at END DESC,
+    CASE WHEN $%d = 'updated_at' AND $%d THEN c.updated_at END ASC,
+    CASE WHEN $%d = 'updated_at' AND NOT $%d THEN c.updated_at END DESC,
+    CASE WHEN $%d = 'priority' AND $%d THEN c.priority END ASC,
+    CASE WHEN $%d = 'priority' AND NOT $%d THEN c.priority END DESC,
+    CASE WHEN $%d = 'status' AND $%d THEN c.status END ASC,
+    CASE WHEN $%d = 'status' AND NOT $%d THEN c.status END DESC,
+    c.updated_at DESC
+`, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1, idx, idx+1)
+	idx += 2
 	query += fmt.Sprintf(" LIMIT $%d OFFSET $%d", idx, idx+1)
 	args = append(args, perPage, (page-1)*perPage)
 
@@ -155,43 +172,35 @@ WHERE c.tenant_id = $1
 	return out, rows.Err()
 }
 
-func safeCaseSort(sortBy, sortDir string) string {
+func normalizeCaseSortBy(sortBy string) string {
 	allowed := map[string]string{
-		"created_at":  "c.created_at",
-		"updated_at":  "c.updated_at",
-		"priority":    "c.priority",
-		"due_at":      "c.due_at",
-		"case_number": "c.case_number",
-		"status":      "c.status",
+		"created_at":  "created_at",
+		"updated_at":  "updated_at",
+		"priority":    "priority",
+		"due_at":      "due_at",
+		"case_number": "case_number",
+		"status":      "status",
 	}
-	col, ok := allowed[sortBy]
+	col, ok := allowed[strings.TrimSpace(sortBy)]
 	if !ok {
-		col = "c.updated_at"
+		col = "updated_at"
 	}
-	dir := strings.ToUpper(sortDir)
-	if dir != "ASC" {
-		dir = "DESC"
-	}
-	return col + " " + dir
+	return col
 }
 
-func safeDashboardSort(sortBy, sortDir string) string {
+func normalizeDashboardSortBy(sortBy string) string {
 	allowed := map[string]string{
-		"case_number": "c.case_number",
-		"created_at":  "c.created_at",
-		"updated_at":  "c.updated_at",
-		"priority":    "c.priority",
-		"status":      "c.status",
+		"case_number": "case_number",
+		"created_at":  "created_at",
+		"updated_at":  "updated_at",
+		"priority":    "priority",
+		"status":      "status",
 	}
-	col, ok := allowed[sortBy]
+	col, ok := allowed[strings.TrimSpace(sortBy)]
 	if !ok {
-		col = "c.updated_at"
+		col = "updated_at"
 	}
-	dir := strings.ToUpper(sortDir)
-	if dir != "ASC" {
-		dir = "DESC"
-	}
-	return col + " " + dir
+	return col
 }
 
 func normalizePage(page, perPage int) (int, int) {
