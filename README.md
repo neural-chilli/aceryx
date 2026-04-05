@@ -86,16 +86,16 @@ make dev              # run backend + frontend
 
 ```
 ┌─────────────────────────────────────────────────┐
-│                   Vue Frontend                   │
+│                   Vue Frontend                  │
 │  Inbox · Case View · Builder · Forms · Reports  │
 ├─────────────────────────────────────────────────┤
-│                  Go HTTP API                     │
+│                  Go HTTP API                    │
 │  Cases · Tasks · Workflows · Auth · Vault · MI  │
 ├─────────────────────────────────────────────────┤
-│               Execution Engine                   │
+│               Execution Engine                  │
 │  DAG Scheduler · Step Dispatch · SLA · Recovery │
 ├─────────────────────────────────────────────────┤
-│                   Postgres                       │
+│                   Postgres                      │
 │  Cases · Steps · Events · RBAC · PGVector       │
 └─────────────────────────────────────────────────┘
 ```
