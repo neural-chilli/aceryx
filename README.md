@@ -1,13 +1,15 @@
-<p align="left">
-  <img src="logo.png" alt="Aceryx" height="64" />&nbsp;&nbsp;&nbsp;<H1>Aceryx</H1>
-</p>
+<img src="logo-full.png" alt="Aceryx" height="96" align="left" hspace="16" />
 
+## Aceryx
 
 [![Go](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](https://go.dev)
 [![Vue](https://img.shields.io/badge/Vue-3-4FC08D?logo=vuedotjs&logoColor=white)](https://vuejs.org)
 [![Postgres](https://img.shields.io/badge/Postgres-17-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/neural-chilli/aceryx/ci.yml?label=CI&logo=github)](https://github.com/neural-chilli/aceryx/actions)
+[![Docs](https://img.shields.io/badge/Docs-Aceryx-blue?logo=gitbook&logoColor=white)](https://neural-chilli.github.io/aceryx/)
+
+<br clear="left"/>
 
 A developer-first case orchestration engine for business workflows with human tasks, AI agent steps, and compliance-grade audit trails.
 
