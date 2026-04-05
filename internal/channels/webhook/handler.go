@@ -39,15 +39,13 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid_channel_id")
 		return
 	}
-	tenantID, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("tenant_id")))
-	if err != nil {
-		writeError(w, http.StatusBadRequest, "tenant_id_required")
-		return
-	}
-
-	channel, err := h.ChannelStore.Get(r.Context(), tenantID, channelID)
+	channel, err := h.ChannelStore.GetByID(r.Context(), channelID)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "channel_not_found")
+		return
+	}
+	if channel.Type != channels.ChannelWebhook {
+		writeError(w, http.StatusBadRequest, "invalid_channel_type")
 		return
 	}
 	if !channel.Enabled {
@@ -81,7 +79,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if err == channels.ErrDeduped {
-			writeJSON(w, http.StatusConflict, map[string]any{"status": "deduped"})
+			writeJSON(w, http.StatusOK, map[string]any{"status": "deduped"})
 			return
 		}
 		if err == channels.ErrChannelDisabled {

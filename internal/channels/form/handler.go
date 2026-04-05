@@ -9,12 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/neural-chilli/aceryx/internal/channels"
-	"golang.org/x/time/rate"
 )
 
 type CaseTypeStore interface {
@@ -27,12 +25,17 @@ type FormHandler struct {
 	CaseTypeStore CaseTypeStore
 	HTTPClient    *http.Client
 
-	mu       sync.Mutex
-	limiters map[string]*rate.Limiter
+	rateLimiter *IPRateLimiter
 }
 
 func NewFormHandler(store channels.ChannelStore, pipeline *channels.Pipeline, caseTypes CaseTypeStore) *FormHandler {
-	return &FormHandler{ChannelStore: store, Pipeline: pipeline, CaseTypeStore: caseTypes, HTTPClient: &http.Client{Timeout: 10 * time.Second}, limiters: map[string]*rate.Limiter{}}
+	return &FormHandler{
+		ChannelStore:  store,
+		Pipeline:      pipeline,
+		CaseTypeStore: caseTypes,
+		HTTPClient:    &http.Client{Timeout: 10 * time.Second},
+		rateLimiter:   NewIPRateLimiter(time.Minute),
+	}
 }
 
 func (h *FormHandler) ServeForm(w http.ResponseWriter, r *http.Request) {
@@ -149,36 +152,28 @@ func (h *FormHandler) loadChannel(r *http.Request) (*channels.Channel, uuid.UUID
 	if err != nil {
 		return nil, uuid.Nil, err
 	}
-	tenantID, err := uuid.Parse(strings.TrimSpace(r.URL.Query().Get("tenant_id")))
+	channel, err := h.ChannelStore.GetByID(r.Context(), channelID)
 	if err != nil {
 		return nil, uuid.Nil, err
 	}
-	channel, err := h.ChannelStore.Get(r.Context(), tenantID, channelID)
-	if err != nil {
-		return nil, uuid.Nil, err
+	if channel.Type != channels.ChannelForm {
+		return nil, uuid.Nil, fmt.Errorf("channel %s is not form type", channel.ID)
 	}
-	return channel, tenantID, nil
+	return channel, channel.TenantID, nil
 }
 
 func (h *FormHandler) allowIP(r *http.Request, perMinute int) bool {
 	if perMinute <= 0 {
 		perMinute = 10
 	}
-	ip := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	ip := clientIP(r)
 	if ip == "" {
 		ip = r.RemoteAddr
 	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if h.limiters == nil {
-		h.limiters = map[string]*rate.Limiter{}
+	if h.rateLimiter == nil {
+		h.rateLimiter = NewIPRateLimiter(time.Minute)
 	}
-	lim := h.limiters[ip]
-	if lim == nil {
-		lim = rate.NewLimiter(rate.Every(time.Minute/time.Duration(perMinute)), perMinute)
-		h.limiters[ip] = lim
-	}
-	return lim.Allow()
+	return h.rateLimiter.Allow(ip, perMinute, time.Now().UTC())
 }
 
 func parseFormPayload(r *http.Request) ([]byte, []channels.AttachmentInput, error) {
@@ -241,6 +236,17 @@ func parseFormPayload(r *http.Request) ([]byte, []channels.AttachmentInput, erro
 		return nil, nil, err
 	}
 	return buf.Bytes(), nil, nil
+}
+
+func clientIP(r *http.Request) string {
+	forwarded := strings.TrimSpace(r.Header.Get("X-Forwarded-For"))
+	if forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		if len(parts) > 0 {
+			return strings.TrimSpace(parts[0])
+		}
+	}
+	return strings.TrimSpace(r.RemoteAddr)
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

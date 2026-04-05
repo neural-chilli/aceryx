@@ -82,7 +82,7 @@ func (p *Pipeline) Process(ctx context.Context, req PipelineRequest) (PipelineRe
 			}
 			result.Deduped = true
 			result.EventID = eventID
-			return ErrDeduped
+			return nil
 		}
 
 		adaptedRaw, err := p.adapterEngine.Apply(ch.AdapterConfig, req.Data)
@@ -156,10 +156,10 @@ func (p *Pipeline) Process(ctx context.Context, req PipelineRequest) (PipelineRe
 	})
 
 	if processingErr == nil {
+		if result.Deduped {
+			return result, ErrDeduped
+		}
 		return result, nil
-	}
-	if errors.Is(processingErr, ErrDeduped) {
-		return result, ErrDeduped
 	}
 
 	_, _ = p.channelStore.RecordFailedEvent(ctx, &ChannelEvent{

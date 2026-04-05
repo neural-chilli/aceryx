@@ -87,6 +87,9 @@ func (ec *EmailChannelRunner) pollOnce(ctx context.Context, cfg EmailConfig) {
 		slog.Error("email channel IMAP connect failed", "channel_id", ec.ChannelID, "error", err)
 		return
 	}
+	defer func() {
+		_ = ec.IMAP.Close()
+	}()
 	messages, err := ec.IMAP.Fetch(ctx, cfg.Mailbox, 50)
 	if err != nil {
 		slog.Error("email channel IMAP fetch failed", "channel_id", ec.ChannelID, "error", err)
@@ -136,6 +139,15 @@ func (fd *FileDropChannelRunner) Start(ctx context.Context) error {
 		return nil
 	}
 	cfg := fd.Config.WithDefaults()
+	if !isSafeSubpath(cfg.WatchPath, cfg.WatchPath) {
+		return fmt.Errorf("invalid watch path")
+	}
+	if !isSafeSubpath(cfg.ProcessedPath, cfg.ProcessedPath) {
+		return fmt.Errorf("invalid processed path")
+	}
+	if !isSafeSubpath(cfg.WatchPath, cfg.ProcessedPath) {
+		return fmt.Errorf("processed path must resolve under watch path")
+	}
 	if err := os.MkdirAll(cfg.ProcessedPath, 0o755); err != nil {
 		return err
 	}
@@ -189,6 +201,9 @@ func (fd *FileDropChannelRunner) pollOnce(ctx context.Context, cfg FileDropConfi
 		}
 		src := filepath.Join(cfg.WatchPath, name)
 		dst := filepath.Join(cfg.ProcessedPath, name)
+		if !isSafeSubpath(cfg.WatchPath, src) || !isSafeSubpath(cfg.ProcessedPath, dst) {
+			continue
+		}
 		if _, err := os.Stat(dst); err == nil {
 			continue
 		}
@@ -233,6 +248,9 @@ func matchesPatterns(name string, patterns []string) bool {
 
 func moveToError(watchPath, src string, cause error) error {
 	errorDir := filepath.Join(watchPath, "errors")
+	if !isSafeSubpath(watchPath, errorDir) || !isSafeSubpath(watchPath, src) {
+		return fmt.Errorf("unsafe error move path")
+	}
 	if err := os.MkdirAll(errorDir, 0o755); err != nil {
 		return err
 	}
@@ -243,4 +261,20 @@ func moveToError(watchPath, src string, cause error) error {
 	}
 	logPath := filepath.Join(errorDir, base+".error.log")
 	return os.WriteFile(logPath, []byte(fmt.Sprintf("%s\n", cause.Error())), fs.FileMode(0o644))
+}
+
+func isSafeSubpath(root, target string) bool {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	absTarget, err := filepath.Abs(target)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absRoot, absTarget)
+	if err != nil {
+		return false
+	}
+	return rel == "." || (!strings.HasPrefix(rel, "..") && rel != "")
 }
