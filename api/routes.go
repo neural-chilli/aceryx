@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
 	"github.com/neural-chilli/aceryx/internal/activity"
@@ -51,6 +52,8 @@ import (
 	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/plugins"
 	"github.com/neural-chilli/aceryx/internal/plugins/hostfns"
+	"github.com/neural-chilli/aceryx/internal/rag"
+	ragstore "github.com/neural-chilli/aceryx/internal/rag/store"
 	"github.com/neural-chilli/aceryx/internal/rbac"
 	"github.com/neural-chilli/aceryx/internal/reports"
 	"github.com/neural-chilli/aceryx/internal/tasks"
@@ -186,6 +189,21 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
 	vaultSvc.SetAuditService(auditSvc)
 	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
+	ragKBStore := ragstore.NewKnowledgeBaseStore(db)
+	ragDocStore := ragstore.NewDocumentStore(db)
+	var ragVectorStore rag.VectorStore = rag.NewNoopVectorStore()
+	databaseURL := strings.TrimSpace(firstNonEmpty(os.Getenv("DATABASE_URL"), os.Getenv("POSTGRES_DSN")))
+	if databaseURL != "" {
+		if pool, err := pgxpool.New(bgCtx, databaseURL); err == nil {
+			ragVectorStore = ragstore.NewPgVectorStore(pool)
+		}
+	}
+	ragEmbedder := rag.NewHashEmbedder(64)
+	ragPipeline := rag.NewIngestionPipeline(rag.NewLangchainLoader(), rag.NewLangchainSplitter(), ragEmbedder, ragVectorStore, ragKBStore, ragDocStore, vaultStore)
+	ragSearch := rag.NewSearchService(ragVectorStore, ragEmbedder, ragKBStore)
+	ragAPI := rag.NewAPI(ragKBStore, ragDocStore, ragSearch, ragPipeline, ragVectorStore, rag.ModelPricing{InputPer1MTokensUSD: 0.1})
+	ragHandlers := handlers.NewRAGHandlers(ragAPI, db, vaultStore)
+	ragWorker := rag.NewWorker(ragPipeline, ragDocStore, time.Second)
 	triggerStore := triggers.NewPostgresStore(db)
 	channelStore := channels.NewPostgresStore(db)
 	attachmentService := channels.NewVaultAttachmentService(db, vaultSvc)
@@ -246,6 +264,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		go vaultSvc.StartOrphanCleanupTicker(bgCtx)
 		go reportingSvc.StartViewRefreshTicker(bgCtx)
 		go reportingSvc.StartScheduleTicker(bgCtx)
+		go ragWorker.Start(bgCtx)
 		go func() {
 			if err := channelManager.StartAll(bgCtx); err != nil {
 				_ = err
@@ -418,6 +437,17 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("PUT /api/v1/ai-components/{id}", withPerm("workflows:edit", aiComponentHandlers.Update))
 	mux.Handle("DELETE /api/v1/ai-components/{id}", withPerm("workflows:edit", aiComponentHandlers.Delete))
 	mux.Handle("POST /api/v1/ai-components/reload", withPerm("admin:tenant", aiComponentHandlers.Reload))
+	mux.Handle("GET /api/v1/knowledge-bases", withPerm("workflows:view", ragHandlers.ListKnowledgeBases))
+	mux.Handle("POST /api/v1/knowledge-bases", withPerm("workflows:edit", ragHandlers.CreateKnowledgeBase))
+	mux.Handle("GET /api/v1/knowledge-bases/{id}", withPerm("workflows:view", ragHandlers.GetKnowledgeBase))
+	mux.Handle("PUT /api/v1/knowledge-bases/{id}", withPerm("workflows:edit", ragHandlers.UpdateKnowledgeBase))
+	mux.Handle("DELETE /api/v1/knowledge-bases/{id}", withPerm("workflows:edit", ragHandlers.DeleteKnowledgeBase))
+	mux.Handle("GET /api/v1/knowledge-bases/{id}/documents", withPerm("workflows:view", ragHandlers.ListDocuments))
+	mux.Handle("POST /api/v1/knowledge-bases/{id}/documents", withPerm("workflows:edit", ragHandlers.UploadDocument))
+	mux.Handle("DELETE /api/v1/knowledge-bases/{id}/documents/{doc_id}", withPerm("workflows:edit", ragHandlers.DeleteDocument))
+	mux.Handle("POST /api/v1/knowledge-bases/{id}/reindex", withPerm("workflows:edit", ragHandlers.ReIndex))
+	mux.Handle("GET /api/v1/knowledge-bases/{id}/stats", withPerm("workflows:view", ragHandlers.Stats))
+	mux.Handle("POST /api/v1/knowledge-bases/{id}/search", withPerm("workflows:view", ragHandlers.Search))
 	mux.Handle("POST /webhooks/{path...}", http.HandlerFunc(webhookHandler.ServeHTTP))
 	mux.Handle("GET /tasks", withAuth(taskHandlers.Inbox))
 	mux.Handle("GET /tasks/{case_id}/{step_id}", withAuth(taskHandlers.GetTask))
