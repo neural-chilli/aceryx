@@ -16,6 +16,7 @@ import (
 	"github.com/neural-chilli/aceryx/api/handlers"
 	"github.com/neural-chilli/aceryx/api/middleware"
 	"github.com/neural-chilli/aceryx/internal/activity"
+	"github.com/neural-chilli/aceryx/internal/agentic"
 	"github.com/neural-chilli/aceryx/internal/agents"
 	"github.com/neural-chilli/aceryx/internal/ai"
 	"github.com/neural-chilli/aceryx/internal/audit"
@@ -287,6 +288,9 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mcpManager := mcp.NewManager(mcpCache, secretStore, splitAndTrim(os.Getenv("ACERYX_MCP_SELF_URLS")), &http.Client{Timeout: 60 * time.Second})
 	mcpAPI := mcp.NewAPI(mcpManager, mcpCache)
 	mcpHandlers := handlers.NewMCPHandlers(mcpAPI)
+	agenticTraceStore := agentic.NewPostgresTraceStore(db)
+	agenticAPI := agentic.NewAPI(db, agenticTraceStore)
+	agenticHandlers := handlers.NewAgenticHandlers(agenticAPI)
 	mcpServerEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("ACERYX_MCP_SERVER_ENABLED")), "true") || strings.TrimSpace(os.Getenv("ACERYX_MCP_SERVER_ENABLED")) == "1"
 	mcpServerConfig := mcpserver.ServerConfig{
 		Enabled:           mcpServerEnabled,
@@ -322,6 +326,16 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 			LLMClient:    agents.NewLLMClientFromEnv(120 * time.Second),
 			AuditService: auditSvc,
 		}))
+		eng.RegisterExecutor("agentic", agentic.NewStepExecutor(
+			db,
+			agentic.NewRunner(),
+			agenticTraceStore,
+			llmManager,
+			taskSvc,
+			pluginRuntime,
+			mcpManager,
+			ragSearch,
+		))
 		eng.RegisterExecutor("ai_component", ai.NewStepExecutor(db, ai.NewComponentExecutor(
 			llmManager,
 			ai.NewPostgresCaseStore(db),
@@ -497,6 +511,9 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("DELETE /api/v1/mcp-servers", withPerm("admin:tenant", mcpHandlers.Delete))
 	mux.Handle("DELETE /api/v1/mcp-servers/{url}", withPerm("admin:tenant", mcpHandlers.Delete))
 	mux.Handle("POST /api/v1/mcp-servers/refresh", withPerm("admin:tenant", mcpHandlers.Refresh))
+	mux.Handle("GET /api/v1/agentic-traces", withPerm("cases:read", agenticHandlers.ListTraces))
+	mux.Handle("GET /api/v1/agentic-traces/{id}", withPerm("cases:read", agenticHandlers.GetTrace))
+	mux.Handle("GET /api/v1/agentic-traces/{id}/events", withPerm("cases:read", agenticHandlers.ListEvents))
 	mux.Handle("GET /api/v1/admin/mcp-keys", withPerm("admin:tenant", mcpServerAdminHandlers.ListKeys))
 	mux.Handle("POST /api/v1/admin/mcp-keys", withPerm("admin:tenant", mcpServerAdminHandlers.CreateKey))
 	mux.Handle("PUT /api/v1/admin/mcp-keys/{id}", withPerm("admin:tenant", mcpServerAdminHandlers.UpdateKey))
