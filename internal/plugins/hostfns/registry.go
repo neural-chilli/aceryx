@@ -24,7 +24,17 @@ func (r *Registry) HTTPRequest(method, url string, headers map[string]string, bo
 	start := time.Now()
 	resp, err := r.HTTP.HTTPRequest(method, url, headers, body, timeoutMS)
 	if r.Auditor != nil {
-		r.Auditor.Record("HTTPRequest", start, err, map[string]any{"method": method, "url": url, "timeout_ms": timeoutMS})
+		args := map[string]any{
+			"method":      method,
+			"url":         url,
+			"timeout_ms":  timeoutMS,
+			"status_code": resp.StatusCode,
+			"duration_ms": time.Since(start).Milliseconds(),
+		}
+		if err != nil {
+			args["error"] = err.Error()
+		}
+		r.Auditor.Record("HTTPRequest", start, err, args)
 	}
 	return resp, err
 }

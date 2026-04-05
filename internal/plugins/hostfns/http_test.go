@@ -4,11 +4,11 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"net/http/httptest"
-	"net/netip"
 	"strings"
 	"testing"
 	"time"
+
+	httpfw "github.com/neural-chilli/aceryx/internal/http"
 )
 
 func TestHTTPRequestBlocksPrivateIP(t *testing.T) {
@@ -20,32 +20,31 @@ func TestHTTPRequestBlocksPrivateIP(t *testing.T) {
 }
 
 func TestHTTPRequestAllowlist(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusTeapot)
-		_, _ = w.Write([]byte(`x`))
-	}))
-	defer srv.Close()
-
 	h := NewHTTPHost(http.DefaultClient, []string{"example.com"}, 60*time.Second)
-	_, err := h.HTTPRequest(http.MethodGet, srv.URL, nil, nil, 1000)
+	_, err := h.HTTPRequest(http.MethodGet, "http://not-example.com", nil, nil, 1000)
 	if err == nil {
 		t.Fatal("expected domain not allowed error")
 	}
 }
 
 func TestHTTPRequestReturnsNon2xxWithoutError(t *testing.T) {
-	fake := HTTPClientFunc(func(_ *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusBadRequest,
-			Header:     http.Header{"X-Test": []string{"1"}},
-			Body:       io.NopCloser(strings.NewReader("bad")),
-		}, nil
+	manager := httpfw.NewClientManager(httpfw.ClientConfig{SystemMaxTimeout: 2 * time.Second})
+	manager.SetHTTPClient(&http.Client{
+		Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+			return &http.Response{
+				StatusCode: http.StatusBadRequest,
+				Status:     "400 Bad Request",
+				Header:     http.Header{"X-Test": []string{"1"}},
+				Body:       io.NopCloser(strings.NewReader("bad")),
+			}, nil
+		}),
 	})
-	h := NewHTTPHost(fake, nil, 60*time.Second)
-	h.DialLookupFunc = func(_ context.Context, _ string) ([]netip.Addr, error) {
-		return []netip.Addr{netip.MustParseAddr("93.184.216.34")}, nil
-	}
-	resp, err := h.HTTPRequest(http.MethodGet, "https://example.com/test", nil, nil, 1000)
+	validator := httpfw.NewURLValidator(true)
+	validator.SetAllowlist("t1", []string{"93.184.216.34"})
+	manager.SetValidator(validator)
+	h := &HTTPHost{ClientManager: manager, TenantID: "t1", Ctx: context.Background()}
+
+	resp, err := h.HTTPRequest(http.MethodGet, "https://93.184.216.34/test", nil, nil, 1000)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,6 +53,6 @@ func TestHTTPRequestReturnsNon2xxWithoutError(t *testing.T) {
 	}
 }
 
-type HTTPClientFunc func(req *http.Request) (*http.Response, error)
+type roundTripFunc func(req *http.Request) (*http.Response, error)
 
-func (f HTTPClientFunc) Do(req *http.Request) (*http.Response, error) { return f(req) }
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
