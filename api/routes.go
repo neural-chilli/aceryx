@@ -49,6 +49,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/llm/custom"
 	"github.com/neural-chilli/aceryx/internal/llm/ollama"
 	llmopenai "github.com/neural-chilli/aceryx/internal/llm/openai"
+	"github.com/neural-chilli/aceryx/internal/mcp"
 	"github.com/neural-chilli/aceryx/internal/notify"
 	"github.com/neural-chilli/aceryx/internal/plugins"
 	"github.com/neural-chilli/aceryx/internal/plugins/hostfns"
@@ -216,6 +217,38 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	channelAPI := channels.NewAPI(channelStore, channelManager)
 	pluginsDir := firstNonEmpty(os.Getenv("ACERYX_PLUGINS_DIR"), "./testdata")
 	_ = pluginRuntime.LoadAll(pluginsDir, plugins.AllowAllLicence{})
+	_ = pluginRuntime.RegisterVirtual(&plugins.Plugin{
+		ID:           "mcp-client",
+		Name:         "MCP Server Connection",
+		Version:      "1.0.0",
+		Type:         plugins.StepPlugin,
+		Category:     "Integration",
+		LicenceTier:  "open_source",
+		MaturityTier: "core",
+		ToolCapable:  false,
+		Status:       plugins.PluginActive,
+		Manifest: plugins.PluginManifest{
+			ID:          "mcp-client",
+			Name:        "MCP Server Connection",
+			Version:     "1.0.0",
+			Type:        string(plugins.StepPlugin),
+			Category:    "Integration",
+			Tier:        "open_source",
+			Maturity:    "core",
+			ToolCapable: false,
+			UI: plugins.ManifestUI{
+				Description: "Connect to an MCP server and invoke its tools in workflows or agentic steps.",
+				Properties: []plugins.PropertyDef{
+					{Key: "server_url", Label: "MCP Server URL", Type: "text", Required: true, HelpText: "MCP endpoint URL"},
+					{Key: "auth_type", Label: "Authentication", Type: "select", Required: true, Default: "none", Options: []string{"none", "bearer", "api_key", "oauth2"}},
+					{Key: "auth_secret", Label: "Auth Secret", Type: "secret", Required: false, HelpText: "Secret reference for auth"},
+					{Key: "tool", Label: "Tool", Type: "text", Required: true, HelpText: "MCP tool name"},
+					{Key: "arguments", Label: "Arguments", Type: "json", Required: false, HelpText: "JSON object for tool arguments"},
+					{Key: "output_path", Label: "Output Path", Type: "text", Required: false, HelpText: "Target case.data path"},
+				},
+			},
+		},
+	})
 	webhookHandler := webhookreceiver.NewHandler(db, secretStore)
 	wsHub := notify.NewHub(db, notify.DefaultTokenValidator(func(ctx context.Context, token string) (uuid.UUID, uuid.UUID, error) {
 		ap, err := authSvc.AuthenticateBearer(ctx, token)
@@ -234,11 +267,16 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	caseSvc.SetNotifier(notifySvc)
 	caseSvc.SetAuditService(auditSvc)
 	taskHandlers := handlers.NewTaskHandlers(taskSvc)
+	mcpCache := mcp.NewToolCache(db, 24*time.Hour)
+	mcpManager := mcp.NewManager(mcpCache, secretStore, splitAndTrim(os.Getenv("ACERYX_MCP_SELF_URLS")), &http.Client{Timeout: 60 * time.Second})
+	mcpAPI := mcp.NewAPI(mcpManager, mcpCache)
+	mcpHandlers := handlers.NewMCPHandlers(mcpAPI)
 	promptTemplateSvc := agents.NewPromptTemplateService(db)
 	promptTemplateHandlers := handlers.NewPromptTemplateHandlers(promptTemplateSvc)
 	if eng != nil {
 		eng.RegisterExecutor("human_task", tasks.NewHumanTaskExecutor(taskSvc))
 		eng.RegisterExecutor("integration", connectors.NewExecutor(db, connectorRegistry, secretStore))
+		eng.RegisterExecutor("mcp-client", mcp.NewStepExecutor(db, mcpManager))
 		eng.RegisterExecutor("agent", agents.NewAgentExecutor(agents.ExecutorConfig{
 			DB:           db,
 			TaskCreator:  taskSvc,
@@ -408,6 +446,11 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("POST /api/v1/admin/triggers/{id}/stop", withPerm("admin:tenant", triggerHandlers.Stop))
 	mux.Handle("GET /api/v1/admin/triggers/{id}/checkpoints", withPerm("admin:tenant", triggerHandlers.ListCheckpoints))
 	mux.Handle("DELETE /api/v1/admin/triggers/{id}/checkpoints", withPerm("admin:tenant", triggerHandlers.ResetCheckpoints))
+	mux.Handle("POST /api/v1/mcp-servers/discover", withPerm("admin:tenant", mcpHandlers.Discover))
+	mux.Handle("GET /api/v1/mcp-servers", withPerm("admin:tenant", mcpHandlers.List))
+	mux.Handle("DELETE /api/v1/mcp-servers", withPerm("admin:tenant", mcpHandlers.Delete))
+	mux.Handle("DELETE /api/v1/mcp-servers/{url}", withPerm("admin:tenant", mcpHandlers.Delete))
+	mux.Handle("POST /api/v1/mcp-servers/refresh", withPerm("admin:tenant", mcpHandlers.Refresh))
 	mux.HandleFunc("GET /vault/signed/{doc_id}", vaultHandlers.SignedDownload)
 	mux.Handle("GET /connectors", withAuth(connectorHandlers.List))
 	mux.Handle("POST /connectors/{key}/actions/{action}/test", withPerm("workflows:edit", connectorHandlers.TestAction))
@@ -479,6 +522,23 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func splitAndTrim(in string) []string {
+	raw := strings.TrimSpace(in)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	return out
 }
 
 func shouldStartBackgroundTickers() bool {

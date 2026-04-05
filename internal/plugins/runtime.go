@@ -557,6 +557,40 @@ func (r *Runtime) SetStatus(pluginID string, status PluginStatus) error {
 	return nil
 }
 
+// RegisterVirtual registers a non-WASM plugin in the runtime registry so it
+// appears in plugin APIs/palettes and can be managed like loaded plugins.
+func (r *Runtime) RegisterVirtual(p *Plugin) error {
+	if r == nil || p == nil {
+		return fmt.Errorf("plugin is nil")
+	}
+	p.Module = nil
+	p.WASMHash = ""
+	p.ManifestHash = ""
+	p.Status = PluginActive
+	if p.Manifest.ID == "" {
+		p.Manifest.ID = p.ID
+	}
+	if p.Manifest.Name == "" {
+		p.Manifest.Name = p.Name
+	}
+	if p.Manifest.Version == "" {
+		p.Manifest.Version = p.Version
+	}
+	if p.Manifest.Type == "" {
+		p.Manifest.Type = string(p.Type)
+	}
+	if p.Manifest.Category == "" {
+		p.Manifest.Category = p.Category
+	}
+	if p.Manifest.Tier == "" {
+		p.Manifest.Tier = p.LicenceTier
+	}
+	if p.Manifest.Maturity == "" {
+		p.Manifest.Maturity = p.MaturityTier
+	}
+	return r.putLoadedPlugin(p, "")
+}
+
 func clonePlugin(p *Plugin) *Plugin {
 	if p == nil {
 		return nil
