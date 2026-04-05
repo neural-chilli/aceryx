@@ -232,10 +232,10 @@ tasks:
   loc:
     desc: Count lines of code
     cmd: |
-      go_lines=$(find . -name '*.go' -not -path './vendor/*' | xargs wc -l | tail -1 | awk '{print $1}')
-      vue_lines=$(find frontend/src \( -name '*.vue' -o -name '*.ts' \) | xargs wc -l | tail -1 | awk '{print $1}')
-      sql_lines=$(find migrations -name '*.sql' | xargs wc -l | tail -1 | awk '{print $1}')
-
+      go_lines=$(find . -name '*.go' -not -path './vendor/*' -not -path './manual/*' -not -path './.claude/*' -exec grep -cvE '^\s*$' {} + | awk -F: '{s+=$NF} END{print s+0}')
+      vue_lines=$(find frontend/src \( -name '*.vue' -o -name '*.ts' \) -exec grep -cvE '^\s*$' {} + | awk -F: '{s+=$NF} END{print s+0}')
+      sql_lines=$(find migrations -name '*.sql' -exec grep -cvE '^\s*$' {} + | awk -F: '{s+=$NF} END{print s+0}')
+  
       max_width=$(printf "%s\n" "$go_lines" "$vue_lines" "$sql_lines" $((go_lines + vue_lines + sql_lines)) | awk '{print length}' | sort -nr | head -1)
       printf "%-7s %*d\n" "Go:"     "$max_width" "$go_lines"
       printf "%-7s %*d\n" "Vue/TS:" "$max_width" "$vue_lines"
