@@ -16,6 +16,7 @@ type Service struct {
 	cleanupInterval time.Duration
 	now             func() time.Time
 	systemActorID   uuid.UUID
+	backendStatus   BackendStatus
 }
 
 type UploadInput struct {
@@ -63,6 +64,7 @@ func NewService(db *sql.DB, store VaultStore, cleanupInterval time.Duration) *Se
 		cleanupInterval: cleanupInterval,
 		now:             func() time.Time { return time.Now().UTC() },
 		systemActorID:   uuid.Nil,
+		backendStatus:   BackendStatus{BackendType: "local", Healthy: true},
 	}
 }
 
@@ -75,4 +77,8 @@ func (s *Service) SetAuditService(auditSvc *audit.Service) {
 		return
 	}
 	s.auditSvc = auditSvc
+}
+
+func (s *Service) SetBackendStatus(status BackendStatus) {
+	s.backendStatus = status
 }

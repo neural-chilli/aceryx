@@ -107,6 +107,36 @@ func TestVaultIntegration_APIUploadListDownloadDeleteSignedURL(t *testing.T) {
 		t.Fatalf("signed download status=%d body=%s", signedDownloadW.Code, signedDownloadW.Body.String())
 	}
 
+	downloadURLReq := httptest.NewRequest(http.MethodPost, "/api/v1/vault/"+uploaded.ID.String()+"/download-url", nil)
+	downloadURLReq.Header.Set("Authorization", "Bearer "+login.Token)
+	downloadURLW := httptest.NewRecorder()
+	router.ServeHTTP(downloadURLW, downloadURLReq)
+	if downloadURLW.Code != http.StatusOK {
+		t.Fatalf("document download-url status=%d body=%s", downloadURLW.Code, downloadURLW.Body.String())
+	}
+	var directSigned vault.SignedDocumentURL
+	if err := json.Unmarshal(downloadURLW.Body.Bytes(), &directSigned); err != nil {
+		t.Fatalf("decode document download-url response: %v", err)
+	}
+	if strings.TrimSpace(directSigned.URL) == "" {
+		t.Fatal("expected non-empty document download-url")
+	}
+
+	statusReq := httptest.NewRequest(http.MethodGet, "/api/v1/admin/vault/status", nil)
+	statusReq.Header.Set("Authorization", "Bearer "+login.Token)
+	statusW := httptest.NewRecorder()
+	router.ServeHTTP(statusW, statusReq)
+	if statusW.Code != http.StatusOK {
+		t.Fatalf("vault status status=%d body=%s", statusW.Code, statusW.Body.String())
+	}
+	var status vault.Status
+	if err := json.Unmarshal(statusW.Body.Bytes(), &status); err != nil {
+		t.Fatalf("decode vault status response: %v", err)
+	}
+	if status.BackendType == "" {
+		t.Fatal("expected backend_type in vault status")
+	}
+
 	wrongCaseReq := httptest.NewRequest(http.MethodGet, "/cases/"+uuid.NewString()+"/documents/"+uploaded.ID.String(), nil)
 	wrongCaseReq.Header.Set("Authorization", "Bearer "+login.Token)
 	wrongCaseW := httptest.NewRecorder()

@@ -35,6 +35,10 @@ import (
 	"github.com/neural-chilli/aceryx/internal/connectors/webhooksender"
 	"github.com/neural-chilli/aceryx/internal/drivers"
 	"github.com/neural-chilli/aceryx/internal/drivers/duckdb"
+	"github.com/neural-chilli/aceryx/internal/drivers/fileazure"
+	"github.com/neural-chilli/aceryx/internal/drivers/filegcs"
+	"github.com/neural-chilli/aceryx/internal/drivers/fileminio"
+	"github.com/neural-chilli/aceryx/internal/drivers/files3"
 	"github.com/neural-chilli/aceryx/internal/drivers/imap"
 	"github.com/neural-chilli/aceryx/internal/drivers/localfs"
 	"github.com/neural-chilli/aceryx/internal/drivers/mysql"
@@ -120,6 +124,10 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	driverRegistry.RegisterQueue(redis.New())
 	driverRegistry.RegisterFile(localfs.New())
 	driverRegistry.RegisterFile(sftp.New())
+	driverRegistry.RegisterFile(files3.New())
+	driverRegistry.RegisterFile(filegcs.New())
+	driverRegistry.RegisterFile(fileazure.New())
+	driverRegistry.RegisterFile(fileminio.New())
 	driverRegistry.RegisterSMTP(smtp.New())
 	driverRegistry.RegisterIMAP(imap.New())
 	poolManager := drivers.NewPoolManager()
@@ -189,9 +197,14 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		SystemMaxHTTPTimeout: 60 * time.Second,
 	})
 	pluginHandlers := handlers.NewPluginHandlers(pluginRuntime, pluginStore)
-	vaultStore := vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
+	vaultStore, vaultBackendStatus, err := vault.BuildVaultStoreFromEnv(bgCtx, firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
+	if err != nil {
+		vaultStore = vault.NewLocalVaultStore(os.Getenv("ACERYX_VAULT_ROOT"), firstNonEmpty(os.Getenv("ACERYX_VAULT_SIGNING_KEY"), os.Getenv("ACERYX_JWT_SECRET")))
+		vaultBackendStatus = vault.BackendStatus{BackendType: "local", Healthy: true}
+	}
 	vaultSvc := vault.NewService(db, vaultStore, parseDurationOrDefault(os.Getenv("ACERYX_VAULT_CLEANUP_INTERVAL"), 24*time.Hour))
 	vaultSvc.SetAuditService(auditSvc)
+	vaultSvc.SetBackendStatus(vaultBackendStatus)
 	vaultHandlers := handlers.NewVaultHandlers(vaultSvc)
 	ragKBStore := ragstore.NewKnowledgeBaseStore(db)
 	ragDocStore := ragstore.NewDocumentStore(db)
@@ -397,6 +410,8 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("GET /cases/{case_id}/documents/{doc_id}", withPerm("vault:download", vaultHandlers.Download))
 	mux.Handle("GET /cases/{case_id}/documents/{doc_id}/signed-url", withPerm("vault:download", vaultHandlers.SignedURL))
 	mux.Handle("DELETE /cases/{case_id}/documents/{doc_id}", withPerm("vault:delete", vaultHandlers.Delete))
+	mux.Handle("GET /api/v1/admin/vault/status", withPerm("admin:tenant", vaultHandlers.AdminStatus))
+	mux.Handle("POST /api/v1/vault/{document_id}/download-url", withPerm("vault:download", vaultHandlers.DownloadURLByDocumentID))
 	mux.Handle("GET /cases/search", withPerm("cases:read", caseHandlers.SearchCases))
 	mux.Handle("GET /cases/dashboard", withPerm("cases:read", caseHandlers.Dashboard))
 

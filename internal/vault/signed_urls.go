@@ -22,6 +22,13 @@ func (s *Service) SignedURL(ctx context.Context, tenantID, caseID, docID uuid.UU
 	if err != nil {
 		return SignedDocumentURL{}, err
 	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(signedPath)), "http://") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(signedPath)), "https://") {
+		expiresAt := s.now().Add(15 * time.Minute).UTC()
+		if expirySeconds > 0 {
+			expiresAt = s.now().Add(time.Duration(expirySeconds) * time.Second).UTC()
+		}
+		return SignedDocumentURL{URL: signedPath, ExpiresAt: expiresAt}, nil
+	}
 	parts := strings.SplitN(signedPath, "?", 2)
 	if len(parts) != 2 {
 		return SignedDocumentURL{}, fmt.Errorf("invalid signed url output")

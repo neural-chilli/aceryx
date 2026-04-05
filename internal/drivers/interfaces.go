@@ -62,13 +62,34 @@ type FileDriver interface {
 }
 
 type FileConfig struct {
-	Host     string `yaml:"host"`
-	Port     int    `yaml:"port"`
-	Username string `yaml:"username"`
-	Password string `yaml:"password" secret:"true"`
-	KeyPath  string `yaml:"key_path" secret:"true"`
-	BasePath string `yaml:"base_path"`
-	TLS      bool   `yaml:"tls"`
+	Host                  string `yaml:"host"`
+	Port                  int    `yaml:"port"`
+	Username              string `yaml:"username"`
+	Password              string `yaml:"password" secret:"true"`
+	KeyPath               string `yaml:"key_path" secret:"true"`
+	BasePath              string `yaml:"base_path"`
+	TLS                   bool   `yaml:"tls"`
+	Bucket                string `yaml:"bucket"`
+	Region                string `yaml:"region"`
+	Prefix                string `yaml:"prefix"`
+	Endpoint              string `yaml:"endpoint"`
+	Path                  string `yaml:"path"`
+	Container             string `yaml:"container"`
+	AccountName           string `yaml:"account_name"`
+	AccountKey            string `yaml:"account_key" secret:"true"`
+	AccessKeyID           string `yaml:"access_key_id" secret:"true"`
+	SecretAccessKey       string `yaml:"secret_access_key" secret:"true"`
+	CredentialsJSON       string `yaml:"credentials_json" secret:"true"`
+	UseIAMRole            bool   `yaml:"use_iam_role"`
+	UseWorkloadIdentity   bool   `yaml:"use_workload_identity"`
+	UseManagedIdentity    bool   `yaml:"use_managed_identity"`
+	UseSSL                bool   `yaml:"use_ssl"`
+	SSE                   string `yaml:"sse"`
+	SSEKMSKeyID           string `yaml:"sse_kms_key_id"`
+	CredentialsSecret     string `yaml:"credentials_secret" secret:"true"`
+	AccessKeyIDSecret     string `yaml:"access_key_id_secret" secret:"true"`
+	SecretAccessKeySecret string `yaml:"secret_access_key_secret" secret:"true"`
+	AccountKeySecret      string `yaml:"account_key_secret" secret:"true"`
 }
 
 type FileEntry struct {

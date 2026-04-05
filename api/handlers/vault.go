@@ -240,6 +240,39 @@ func (h *VaultHandlers) SignedDownload(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(data)
 }
 
+func (h *VaultHandlers) DownloadURLByDocumentID(w http.ResponseWriter, r *http.Request) {
+	principal := middleware.PrincipalFromContext(r.Context())
+	if principal == nil {
+		writeError(w, http.StatusUnauthorized, "unauthenticated")
+		return
+	}
+	docID, err := uuid.Parse(r.PathValue("document_id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_document_id")
+		return
+	}
+	expirySeconds, _ := strconv.Atoi(strings.TrimSpace(r.URL.Query().Get("expiry")))
+	result, err := h.Service.DownloadURL(r.Context(), principal.TenantID, docID, expirySeconds)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "not_found")
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *VaultHandlers) AdminStatus(w http.ResponseWriter, r *http.Request) {
+	status, err := h.Service.Status(r.Context())
+	if err != nil {
+		writeInternalServerError(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
 func parseDocPath(w http.ResponseWriter, r *http.Request) (uuid.UUID, uuid.UUID, bool) {
 	caseID, err := uuid.Parse(r.PathValue("case_id"))
 	if err != nil {
