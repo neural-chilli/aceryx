@@ -117,6 +117,36 @@ type PublishValidationIssue = {
   suggestion?: string
 }
 
+async function readAPIErrorMessage(res: Response): Promise<string> {
+  const fallback = res.clone()
+  const payload = (await res.json().catch(() => null)) as
+    | { error?: unknown; errors?: Array<{ code?: unknown; message?: unknown; suggestion?: unknown; stepId?: unknown }> }
+    | null
+  if (payload && Array.isArray(payload.errors) && payload.errors.length > 0) {
+    const lines = payload.errors
+      .map((item) => {
+        const code = String(item.code ?? '').trim()
+        const message = String(item.message ?? '').trim()
+        const suggestion = String(item.suggestion ?? '').trim()
+        const stepId = String(item.stepId ?? '').trim()
+        if (!message) return ''
+        const codePrefix = code ? `[${code}] ` : ''
+        const stepPrefix = stepId ? `${stepId}: ` : ''
+        return suggestion ? `${codePrefix}${stepPrefix}${message} (${suggestion})` : `${codePrefix}${stepPrefix}${message}`
+      })
+      .filter((line) => line !== '')
+    if (lines.length > 0) {
+      return lines.join('\n')
+    }
+  }
+  const error = String(payload?.error ?? '').trim()
+  if (error) {
+    return error
+  }
+  const rawText = (await fallback.text().catch(() => '')).trim()
+  return rawText
+}
+
 function formatPublishValidationErrors(errors: PublishValidationIssue[]): string {
   const lines = errors
     .filter((item) => String(item.message ?? '').trim() !== '')
@@ -453,9 +483,12 @@ async function runAssistant() {
       }),
     })
     if (!res.ok) {
-      assistantError.value = res.status === 404
-        ? 'AI Assist is not available in this environment yet.'
-        : 'Unable to run AI Assist right now.'
+      if (res.status === 404) {
+        assistantError.value = 'AI Assist is not available in this environment yet.'
+        return
+      }
+      const details = await readAPIErrorMessage(res)
+      assistantError.value = details || 'Unable to run AI Assist right now.'
       return
     }
     const payload = (await res.json()) as Record<string, unknown>
@@ -542,7 +575,8 @@ async function applyAssistantToWorkflow(auto = false) {
       body,
     })
     if (!res.ok) {
-      assistantError.value = 'Unable to apply AI output to workflow draft.'
+      const details = await readAPIErrorMessage(res)
+      assistantError.value = details || 'Unable to apply AI output to workflow draft.'
       return
     }
     await openWorkflow(selectedWorkflowID.value)
