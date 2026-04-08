@@ -186,6 +186,8 @@ func TestNormalizeToBuilderASTYAML_ExtractionStepAlias(t *testing.T) {
       document_path: case.data.attachments[0].vault_id
       schema: loan_application_pdf
       output_path: case.data.extracted
+      on_review: extraction_review
+      on_reject: manual_data_entry
 `
 
 	normalized, err := normalizeToBuilderASTYAML(input)
@@ -201,6 +203,21 @@ func TestNormalizeToBuilderASTYAML_ExtractionStepAlias(t *testing.T) {
 	step := steps[0].(map[string]any)
 	if got := step["type"]; got != "extraction" {
 		t.Fatalf("expected normalized step type extraction, got: %#v", got)
+	}
+	cfg := step["config"].(map[string]any)
+	onReview, ok := cfg["on_review"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected on_review object alias normalization")
+	}
+	if got := onReview["task_type"]; got != "extraction_review" {
+		t.Fatalf("expected on_review.task_type alias normalization, got: %#v", got)
+	}
+	onReject, ok := cfg["on_reject"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected on_reject object alias normalization")
+	}
+	if got := onReject["goto"]; got != "manual_data_entry" {
+		t.Fatalf("expected on_reject.goto alias normalization, got: %#v", got)
 	}
 }
 

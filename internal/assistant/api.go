@@ -737,6 +737,30 @@ func normalizeExtractionConfig(cfg map[string]any) {
 			cfg["schema_name"] = schemaName
 		}
 	}
+	if rawOnReview, ok := cfg["on_review"]; ok {
+		if _, isObject := rawOnReview.(map[string]any); !isObject {
+			stepID := asTrimmedString(rawOnReview)
+			if stepID == "" {
+				delete(cfg, "on_review")
+			} else {
+				cfg["on_review"] = map[string]any{
+					"task_type": stepID,
+				}
+			}
+		}
+	}
+	if rawOnReject, ok := cfg["on_reject"]; ok {
+		if _, isObject := rawOnReject.(map[string]any); !isObject {
+			gotoStep := asTrimmedString(rawOnReject)
+			if gotoStep == "" {
+				delete(cfg, "on_reject")
+			} else {
+				cfg["on_reject"] = map[string]any{
+					"goto": gotoStep,
+				}
+			}
+		}
+	}
 	delete(cfg, "document_path")
 	delete(cfg, "schema")
 }

@@ -16,7 +16,10 @@ import (
 
 type stepConfig struct {
 	DocumentPath        string  `json:"document_path"`
+	DocumentRef         string  `json:"document_ref"`
 	Schema              string  `json:"schema"`
+	SchemaName          string  `json:"schema_name"`
+	SchemaID            string  `json:"schema_id"`
 	Model               string  `json:"model"`
 	AutoAcceptThreshold float64 `json:"auto_accept_threshold"`
 	ReviewThreshold     float64 `json:"review_threshold"`
@@ -156,10 +159,20 @@ func decodeStepConfig(raw json.RawMessage) (stepConfig, error) {
 		}
 	}
 	if strings.TrimSpace(cfg.DocumentPath) == "" {
-		return stepConfig{}, fmt.Errorf("extraction step config missing document_path")
+		cfg.DocumentPath = strings.TrimSpace(cfg.DocumentRef)
 	}
 	if strings.TrimSpace(cfg.Schema) == "" {
-		return stepConfig{}, fmt.Errorf("extraction step config missing schema")
+		if strings.TrimSpace(cfg.SchemaName) != "" {
+			cfg.Schema = strings.TrimSpace(cfg.SchemaName)
+		} else {
+			cfg.Schema = strings.TrimSpace(cfg.SchemaID)
+		}
+	}
+	if strings.TrimSpace(cfg.DocumentPath) == "" {
+		return stepConfig{}, fmt.Errorf("extraction step config missing document_path/document_ref")
+	}
+	if strings.TrimSpace(cfg.Schema) == "" {
+		return stepConfig{}, fmt.Errorf("extraction step config missing schema/schema_name/schema_id")
 	}
 	if strings.TrimSpace(cfg.OutputPath) == "" {
 		return stepConfig{}, fmt.Errorf("extraction step config missing output_path")
