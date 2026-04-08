@@ -40,7 +40,7 @@ func (s *CaseService) CreateCase(ctx context.Context, tenantID, createdBy uuid.U
 		return Case{}, validation, nil
 	}
 
-	workflowID, workflowVersion, astRaw, err := resolveLatestPublishedWorkflowTx(ctx, tx, tenantID, ct.Name)
+	workflowID, workflowVersion, astRaw, err := resolveLatestPublishedWorkflowTx(ctx, tx, tenantID, ct.Name, ct.ID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return Case{}, nil, fmt.Errorf("no published workflow for case type %s", ct.Name)

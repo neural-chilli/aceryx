@@ -146,6 +146,13 @@ async function loadCaseTypes() {
     }
     const payload = (await caseTypesRes.json()) as Array<{ id: string; name: string; status?: string }>
     const activeTypes = payload.filter((item) => String(item.status ?? 'active') === 'active')
+    const activeNameByID = new Map<string, string>()
+    for (const item of activeTypes) {
+      const id = String(item.id ?? '').trim()
+      const name = String(item.name ?? '').trim()
+      if (!id || !name) continue
+      activeNameByID.set(id, name)
+    }
     const publishedCaseTypes = new Set<string>()
     if (workflowsRes.ok) {
       const workflows = (await workflowsRes.json()) as Array<{
@@ -153,11 +160,11 @@ async function loadCaseTypes() {
         published_versions?: Array<{ version: number }>
       }>
       for (const workflow of workflows) {
-        const caseTypeID = String(workflow.case_type_id ?? '').trim()
-        if (!caseTypeID || !Array.isArray(workflow.published_versions) || workflow.published_versions.length === 0) {
+        const caseTypeRef = String(workflow.case_type_id ?? '').trim()
+        if (!caseTypeRef || !Array.isArray(workflow.published_versions) || workflow.published_versions.length === 0) {
           continue
         }
-        publishedCaseTypes.add(caseTypeID)
+        publishedCaseTypes.add(activeNameByID.get(caseTypeRef) ?? caseTypeRef)
       }
     }
     publishableCaseTypeNames.value = publishedCaseTypes
