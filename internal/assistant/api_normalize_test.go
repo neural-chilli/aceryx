@@ -221,6 +221,47 @@ func TestNormalizeToBuilderASTYAML_ExtractionStepAlias(t *testing.T) {
 	}
 }
 
+func TestNormalizeToBuilderASTYAML_RuleOutcomesFromConfig(t *testing.T) {
+	input := `steps:
+  - id: review_decision
+    type: rule
+    depends_on: []
+    config:
+      expression: case.data.score
+      outcomes:
+        - name: approve
+          condition: case.data.score >= 0.8
+          target: approved_notification
+        - name: reject
+          condition: case.data.score < 0.8
+          targets: [manual_review]
+`
+
+	normalized, err := normalizeToBuilderASTYAML(input)
+	if err != nil {
+		t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+	}
+
+	var ast map[string]any
+	if err := yaml.Unmarshal([]byte(normalized), &ast); err != nil {
+		t.Fatalf("unmarshal normalized yaml: %v", err)
+	}
+	steps := ast["steps"].([]any)
+	step := steps[0].(map[string]any)
+	outcomes, ok := step["outcomes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected synthesized rule outcomes on step")
+	}
+	approve := outcomes["approve"].([]any)
+	if len(approve) != 1 || approve[0] != "approved_notification" {
+		t.Fatalf("expected approve route to approved_notification, got %#v", outcomes["approve"])
+	}
+	reject := outcomes["reject"].([]any)
+	if len(reject) != 1 || reject[0] != "manual_review" {
+		t.Fatalf("expected reject route to manual_review, got %#v", outcomes["reject"])
+	}
+}
+
 func TestNormalizeToBuilderASTYAML_GoldenPromptFixtures(t *testing.T) {
 	t.Parallel()
 
