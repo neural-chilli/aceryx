@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -80,6 +81,47 @@ func TestWorkflowsHTTPIntegration_RejectInvalidASTOnDraftSaveAndPublish(t *testi
 		router.ServeHTTP(w, req)
 		if w.Code != http.StatusOK {
 			t.Fatalf("expected 200 for canonical extraction draft save, got status=%d body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("yaml import accepts rule condition-map outcomes for iterative authoring", func(t *testing.T) {
+		yamlBody := `steps:
+  - id: review_decision
+    type: rule
+    depends_on: []
+    config:
+      outcomes:
+        approved:
+          condition: "case.data.review.decision == 'approve'"
+        rejected:
+          condition: "case.data.review.decision == 'reject'"
+  - id: insert_customer_onboarding
+    type: integration
+    depends_on: [review_decision]
+    config:
+      connector: postgres
+      action: insert
+`
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		part, err := writer.CreateFormFile("file", "draft.yaml")
+		if err != nil {
+			t.Fatalf("create form file: %v", err)
+		}
+		if _, err := part.Write([]byte(yamlBody)); err != nil {
+			t.Fatalf("write yaml body: %v", err)
+		}
+		if err := writer.Close(); err != nil {
+			t.Fatalf("close multipart writer: %v", err)
+		}
+
+		req := httptest.NewRequest(http.MethodPut, "/workflows/"+workflowID.String()+"/yaml/draft", &body)
+		req.Header.Set("Authorization", "Bearer "+login.Token)
+		req.Header.Set("Content-Type", writer.FormDataContentType())
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for yaml import with rule condition-map outcomes, got status=%d body=%s", w.Code, w.Body.String())
 		}
 	})
 

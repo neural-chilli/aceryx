@@ -169,6 +169,28 @@ func TestValidateWorkflowAST_AgentConfigContract(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts unresolved path references in boolean expressions during draft validation", func(t *testing.T) {
+		raw := mustJSON(t, map[string]any{
+			"steps": []map[string]any{
+				{
+					"id":         "review",
+					"type":       "human_task",
+					"depends_on": []string{},
+					"condition":  "case.data.review.decision == 'approve'",
+					"config": map[string]any{
+						"assign_to_role": "case_worker",
+						"form_schema": map[string]any{
+							"fields": []any{},
+						},
+					},
+				},
+			},
+		})
+		if err := validateWorkflowAST(raw); err != nil {
+			t.Fatalf("expected unresolved-path expression to be allowed in draft validation, got %v", err)
+		}
+	})
+
 	t.Run("rejects non-boolean rule outcome expression", func(t *testing.T) {
 		raw := mustJSON(t, map[string]any{
 			"steps": []map[string]any{
@@ -194,6 +216,40 @@ func TestValidateWorkflowAST_AgentConfigContract(t *testing.T) {
 		err := validateWorkflowAST(raw)
 		if err == nil || !strings.Contains(err.Error(), "must evaluate to boolean") {
 			t.Fatalf("expected non-boolean rule condition error, got %v", err)
+		}
+	})
+
+	t.Run("accepts rule with legacy config outcomes map for draft authoring", func(t *testing.T) {
+		raw := mustJSON(t, map[string]any{
+			"steps": []map[string]any{
+				{
+					"id":         "review_decision",
+					"type":       "rule",
+					"depends_on": []string{},
+					"config": map[string]any{
+						"outcomes": map[string]any{
+							"approved": map[string]any{
+								"condition": "case.data.review.decision == 'approve'",
+							},
+							"rejected": map[string]any{
+								"condition": "case.data.review.decision == 'reject'",
+							},
+						},
+					},
+				},
+				{
+					"id":         "insert_customer_onboarding",
+					"type":       "integration",
+					"depends_on": []string{"review_decision"},
+					"config": map[string]any{
+						"connector": "postgres",
+						"action":    "insert",
+					},
+				},
+			},
+		})
+		if err := validateWorkflowAST(raw); err != nil {
+			t.Fatalf("expected draft-authoring rule outcomes map to pass validation, got %v", err)
 		}
 	})
 

@@ -88,7 +88,16 @@ func validateStepRequiredConfig(step engine.WorkflowStep) error {
 			return fmt.Errorf("step %q integration requires connector and action", step.ID)
 		}
 	case "rule":
-		if len(step.Outcomes) == 0 {
+		hasLegacyRuleOutcomes := false
+		if rawOutcomes, ok := cfg["outcomes"]; ok {
+			switch typed := rawOutcomes.(type) {
+			case []any:
+				hasLegacyRuleOutcomes = len(typed) > 0
+			case map[string]any:
+				hasLegacyRuleOutcomes = len(typed) > 0
+			}
+		}
+		if len(step.Outcomes) == 0 && !hasLegacyRuleOutcomes {
 			return fmt.Errorf("step %q rule requires at least one outcome route", step.ID)
 		}
 	case "timer":
@@ -144,6 +153,30 @@ func validateStepExpressions(evaluator *expressions.Evaluator, step engine.Workf
 			return err
 		}
 	}
+	if mappedOutcomes, ok := cfg["outcomes"].(map[string]any); ok {
+		for name, raw := range mappedOutcomes {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				condition := strings.TrimSpace(fmt.Sprint(raw))
+				if condition == "" {
+					continue
+				}
+				location := fmt.Sprintf("step %q rule outcome %q condition", step.ID, strings.TrimSpace(name))
+				if err := validateBooleanExpression(evaluator, condition, location); err != nil {
+					return err
+				}
+				continue
+			}
+			condition := strings.TrimSpace(fmt.Sprint(item["condition"]))
+			if condition == "" {
+				continue
+			}
+			location := fmt.Sprintf("step %q rule outcome %q condition", step.ID, strings.TrimSpace(name))
+			if err := validateBooleanExpression(evaluator, condition, location); err != nil {
+				return err
+			}
+		}
+	}
 	return nil
 }
 
@@ -154,12 +187,25 @@ func validateBooleanExpression(evaluator *expressions.Evaluator, expr string, lo
 	}
 	result, err := evaluator.Evaluate(expr, expressionValidationContext())
 	if err != nil {
+		if shouldIgnoreExpressionEvaluationError(err) {
+			return nil
+		}
 		return fmt.Errorf("%s is invalid: %w", location, err)
 	}
 	if _, ok := result.(bool); !ok {
 		return fmt.Errorf("%s must evaluate to boolean", location)
 	}
 	return nil
+}
+
+func shouldIgnoreExpressionEvaluationError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "cannot read property") ||
+		strings.Contains(msg, "is undefined") ||
+		strings.Contains(msg, "undefined at")
 }
 
 func expressionValidationContext() map[string]interface{} {
