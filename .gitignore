@@ -41,3 +41,10 @@ manual/.hugo_cache/
 /docs/specs/
 /aceryx
 /.env.example
+
+# Local working artifacts
+.work/
+.claude/
+.DS_Store
+test_outputs/
+docs/.DS_Store
