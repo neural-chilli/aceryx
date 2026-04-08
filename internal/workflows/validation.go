@@ -104,11 +104,11 @@ func validateStepRequiredConfig(step engine.WorkflowStep) error {
 			return fmt.Errorf("step %q ai_component requires component", step.ID)
 		}
 	case "extraction":
-		if !hasStringValue(cfg, "document_path") {
-			return fmt.Errorf("step %q extraction requires document_path", step.ID)
+		if !hasStringValue(cfg, "document_path") && !hasStringValue(cfg, "document_ref") {
+			return fmt.Errorf("step %q extraction requires document_path or document_ref", step.ID)
 		}
-		if !hasStringValue(cfg, "schema") {
-			return fmt.Errorf("step %q extraction requires schema", step.ID)
+		if !hasStringValue(cfg, "schema") && !hasStringValue(cfg, "schema_name") && !hasStringValue(cfg, "schema_id") {
+			return fmt.Errorf("step %q extraction requires schema, schema_name, or schema_id", step.ID)
 		}
 		if !hasStringValue(cfg, "output_path") {
 			return fmt.Errorf("step %q extraction requires output_path", step.ID)

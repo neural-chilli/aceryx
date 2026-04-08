@@ -58,6 +58,31 @@ func TestWorkflowsHTTPIntegration_RejectInvalidASTOnDraftSaveAndPublish(t *testi
 		}
 	})
 
+	t.Run("draft save accepts canonical extraction keys", func(t *testing.T) {
+		validAST := map[string]any{
+			"steps": []map[string]any{
+				{
+					"id":   "extract_customer_details",
+					"type": "extraction",
+					"config": map[string]any{
+						"document_ref": "case.data.documents.customer_pdf",
+						"schema_name":  "customer_onboarding",
+						"output_path":  "case.data.extracted.customer",
+					},
+				},
+			},
+		}
+		raw, _ := json.Marshal(validAST)
+		req := httptest.NewRequest(http.MethodPut, "/workflows/"+workflowID.String()+"/versions/draft", bytes.NewReader(raw))
+		req.Header.Set("Authorization", "Bearer "+login.Token)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("expected 200 for canonical extraction draft save, got status=%d body=%s", w.Code, w.Body.String())
+		}
+	})
+
 	t.Run("publish rejects invalid draft ast persisted in db", func(t *testing.T) {
 		if _, err := db.ExecContext(ctx, `
 UPDATE workflow_versions

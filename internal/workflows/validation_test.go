@@ -271,6 +271,25 @@ func TestValidateWorkflowAST_AgentConfigContract(t *testing.T) {
 		}
 	})
 
+	t.Run("accepts extraction step with canonical document_ref and schema_name", func(t *testing.T) {
+		raw := mustJSON(t, map[string]any{
+			"steps": []map[string]any{
+				{
+					"id":   "extract",
+					"type": "extraction",
+					"config": map[string]any{
+						"document_ref": "case.data.attachments[0].vault_id",
+						"schema_name":  "loan_application_pdf",
+						"output_path":  "case.data.extracted",
+					},
+				},
+			},
+		})
+		if err := validateWorkflowAST(raw); err != nil {
+			t.Fatalf("expected valid canonical extraction workflow ast, got %v", err)
+		}
+	})
+
 	t.Run("rejects extraction threshold ranges", func(t *testing.T) {
 		raw := mustJSON(t, map[string]any{
 			"steps": []map[string]any{
