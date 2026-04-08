@@ -1,6 +1,11 @@
 package assistant
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
+
+const BuilderContractVersion = "2026-04-08-a1"
 
 func assistantSystemPrompt() string {
 	return strings.TrimSpace(`
@@ -113,6 +118,11 @@ func composeAssistantUserPrompt(mode, userPrompt, yamlBefore, pageContext string
 		b.WriteString("backend_prompt_pack:\n")
 		b.WriteString(backendBuilderPromptPack())
 		b.WriteString("\n\n")
+		if promptPack != nil && strings.TrimSpace(promptPack.ContractVersion) != "" {
+			b.WriteString("assistant_contract_version: ")
+			b.WriteString(strings.TrimSpace(promptPack.ContractVersion))
+			b.WriteString("\n\n")
+		}
 		if promptPack != nil && strings.TrimSpace(promptPack.FrontendContext) != "" {
 			b.WriteString("frontend_prompt_pack:\n")
 			b.WriteString(strings.TrimSpace(promptPack.FrontendContext))
@@ -120,4 +130,25 @@ func composeAssistantUserPrompt(mode, userPrompt, yamlBefore, pageContext string
 	}
 
 	return strings.TrimSpace(b.String())
+}
+
+func assertBuilderContractVersion(mode, pageContext string, promptPack *PromptPackInput) error {
+	mode = normalizeMode(mode)
+	if mode != ModeDescribe && mode != ModeRefactor {
+		return nil
+	}
+	if strings.TrimSpace(pageContext) != "builder" {
+		return nil
+	}
+	if promptPack == nil {
+		return fmt.Errorf("prompt_pack.contract_version is required")
+	}
+	version := strings.TrimSpace(promptPack.ContractVersion)
+	if version == "" {
+		return fmt.Errorf("prompt_pack.contract_version is required")
+	}
+	if version != BuilderContractVersion {
+		return fmt.Errorf("prompt_pack.contract_version %q is not supported", version)
+	}
+	return nil
 }

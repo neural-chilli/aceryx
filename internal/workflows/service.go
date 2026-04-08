@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,11 +14,16 @@ import (
 )
 
 type Service struct {
-	db *sql.DB
+	db      *sql.DB
+	catalog aiComponentCatalog
 }
 
 func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
+}
+
+func (s *Service) SetAIComponentCatalog(catalog aiComponentCatalog) {
+	s.catalog = catalog
 }
 
 func (s *Service) List(ctx context.Context, tenantID uuid.UUID) ([]Workflow, error) {
@@ -191,9 +197,31 @@ ORDER BY wv.version DESC
 LIMIT 1
 `, workflowID, tenantID).Scan(&draftID, &astRaw)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			var publishedExists bool
+			publishedErr := tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1
+  FROM workflows w
+  JOIN workflow_versions wv ON wv.workflow_id = w.id
+  WHERE w.id = $1
+    AND w.tenant_id = $2
+    AND wv.status = 'published'
+)
+`, workflowID, tenantID).Scan(&publishedExists)
+			if publishedErr != nil {
+				return publishedErr
+			}
+			if publishedExists {
+				if err := tx.Commit(); err != nil {
+					return fmt.Errorf("commit idempotent publish tx: %w", err)
+				}
+				return nil
+			}
+		}
 		return err
 	}
-	if err := validateWorkflowAST(astRaw); err != nil {
+	if err := validatePublishWorkflow(ctx, tenantID, astRaw, s.catalog); err != nil {
 		return err
 	}
 

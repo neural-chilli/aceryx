@@ -1,0 +1,97 @@
+{
+  "steps": [
+    {
+      "id": "extract_loan_application",
+      "type": "extraction",
+      "depends_on": [],
+      "config": {
+        "document_ref": "case.data.documents.application_pdf",
+        "schema_name": "loan_application_pdf",
+        "output_path": "case.data.extraction.loan_application"
+      }
+    },
+    {
+      "id": "classify_risk",
+      "type": "ai_component",
+      "depends_on": [
+        "extract_loan_application"
+      ],
+      "config": {
+        "component": "document_classification",
+        "input_paths": {
+          "document_text": "case.data.extraction.loan_application.text"
+        },
+        "output_path": "case.data.ai.risk"
+      }
+    },
+    {
+      "id": "route_confidence",
+      "type": "rule",
+      "depends_on": [
+        "classify_risk"
+      ],
+      "outcomes": {
+        "high_confidence": [
+          "approval_notification"
+        ],
+        "low_confidence": [
+          "human_review"
+        ]
+      },
+      "config": {
+        "expression": "case.data.ai.risk.confidence",
+        "outcomes": [
+          {
+            "condition": "case.data.ai.risk.confidence < 0.80",
+            "name": "low_confidence",
+            "target": "human_review"
+          },
+          {
+            "condition": "case.data.ai.risk.confidence >= 0.80",
+            "name": "high_confidence",
+            "target": "approval_notification"
+          }
+        ]
+      }
+    },
+    {
+      "id": "human_review",
+      "type": "human_task",
+      "depends_on": [
+        "route_confidence"
+      ],
+      "config": {
+        "assignee": "underwriter",
+        "form_schema": {
+          "actions": [
+            {
+              "label": "Submit",
+              "style": "primary",
+              "value": "submit"
+            }
+          ],
+          "fields": [
+            {
+              "bind": "review_notes",
+              "label": "Review notes",
+              "required": true,
+              "type": "textarea"
+            }
+          ],
+          "title": "human_review"
+        }
+      }
+    },
+    {
+      "id": "approval_notification",
+      "type": "notification",
+      "depends_on": [
+        "route_confidence"
+      ],
+      "config": {
+        "channel": "email",
+        "message": "Loan intake auto-approved"
+      }
+    }
+  ]
+}

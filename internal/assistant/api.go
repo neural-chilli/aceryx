@@ -126,6 +126,9 @@ func (a *API) Message(ctx context.Context, tenantID, userID uuid.UUID, req Messa
 	}
 
 	mode := normalizeMode(req.Mode)
+	if err := assertBuilderContractVersion(mode, req.PageContext, req.PromptPack); err != nil {
+		return nil, err
+	}
 	sessionID, err := a.resolveSession(ctx, tenantID, userID, req)
 	if err != nil {
 		return nil, err
@@ -484,7 +487,9 @@ func normalizeToBuilderASTYAML(raw string) (string, error) {
 
 	if steps, ok := decoded["steps"].([]any); ok {
 		decoded["steps"] = steps
-		normalizeBuilderAST(decoded)
+		if err := normalizeBuilderAST(decoded); err != nil {
+			return "", err
+		}
 		out, err := yaml.Marshal(decoded)
 		if err != nil {
 			return "", fmt.Errorf("marshal yaml: %w", err)
@@ -503,7 +508,9 @@ func normalizeToBuilderASTYAML(raw string) (string, error) {
 			if caseTypeID, ok := wf["case_type_id"]; ok {
 				ast["case_type_id"] = caseTypeID
 			}
-			normalizeBuilderAST(ast)
+			if err := normalizeBuilderAST(ast); err != nil {
+				return "", err
+			}
 			out, err := yaml.Marshal(ast)
 			if err != nil {
 				return "", fmt.Errorf("marshal yaml: %w", err)
@@ -515,29 +522,35 @@ func normalizeToBuilderASTYAML(raw string) (string, error) {
 	return "", fmt.Errorf("builder AST yaml must include top-level steps array")
 }
 
-func normalizeBuilderAST(ast map[string]any) {
+func normalizeBuilderAST(ast map[string]any) error {
 	steps, ok := ast["steps"].([]any)
 	if !ok {
-		return
+		return nil
 	}
 	for _, raw := range steps {
 		step, ok := raw.(map[string]any)
 		if !ok {
 			continue
 		}
-		normalizeBuilderStep(step)
+		if err := normalizeBuilderStep(step); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
-func normalizeBuilderStep(step map[string]any) {
-	stepType := normalizeBuilderStepType(asTrimmedString(step["type"]))
+func normalizeBuilderStep(step map[string]any) error {
+	stepType, err := normalizeBuilderStepType(asTrimmedString(step["type"]))
+	if err != nil {
+		return err
+	}
 	if stepType != "" {
 		step["type"] = stepType
 	}
 
 	cfg, _ := step["config"].(map[string]any)
 	if cfg == nil {
-		return
+		return nil
 	}
 
 	switch stepType {
@@ -552,7 +565,10 @@ func normalizeBuilderStep(step map[string]any) {
 		normalizeAIComponentConfig(cfg)
 	case "human_task":
 		normalizeHumanTaskForm(cfg, step)
+	case "extraction":
+		normalizeExtractionConfig(cfg)
 	}
+	return nil
 }
 
 func normalizeAgentToAIComponentStep(cfg map[string]any, step map[string]any) bool {
@@ -582,11 +598,13 @@ func normalizeAIComponentConfig(cfg map[string]any) {
 			cfg["input_paths"] = normalizeStringMap(mapped)
 		}
 	}
+	delete(cfg, "input_mapping")
 	if _, ok := cfg["config_values"]; !ok {
 		if mapped, ok := cfg["config"].(map[string]any); ok && len(mapped) > 0 {
 			cfg["config_values"] = normalizeStringMap(mapped)
 		}
 	}
+	delete(cfg, "config")
 }
 
 func normalizeStringMap(raw map[string]any) map[string]string {
@@ -669,6 +687,13 @@ func normalizeIntegrationConfig(cfg map[string]any) {
 }
 
 func normalizeHumanTaskForm(cfg map[string]any, step map[string]any) {
+	if asTrimmedString(cfg["assignee"]) == "" {
+		if role := asTrimmedString(cfg["assign_to_role"]); role != "" {
+			cfg["assignee"] = role
+		} else if user := asTrimmedString(cfg["assign_to_user"]); user != "" {
+			cfg["assignee"] = user
+		}
+	}
 	if formRaw, ok := cfg["form_schema"]; ok {
 		if formSchema, ok := formRaw.(map[string]any); ok {
 			normalizeFormSchemaFields(formSchema)
@@ -698,6 +723,22 @@ func normalizeHumanTaskForm(cfg map[string]any, step map[string]any) {
 		}
 	}
 	cfg["form_schema"] = formSchema
+	delete(cfg, "form")
+}
+
+func normalizeExtractionConfig(cfg map[string]any) {
+	if asTrimmedString(cfg["document_ref"]) == "" {
+		if documentPath := asTrimmedString(cfg["document_path"]); documentPath != "" {
+			cfg["document_ref"] = documentPath
+		}
+	}
+	if asTrimmedString(cfg["schema_name"]) == "" {
+		if schemaName := asTrimmedString(cfg["schema"]); schemaName != "" {
+			cfg["schema_name"] = schemaName
+		}
+	}
+	delete(cfg, "document_path")
+	delete(cfg, "schema")
 }
 
 func normalizeFormSchemaFields(formSchema map[string]any) {
@@ -752,26 +793,29 @@ func defaultFormTitle(cfg map[string]any, step map[string]any) string {
 	return "Form"
 }
 
-func normalizeBuilderStepType(stepType string) string {
-	switch strings.ToLower(strings.TrimSpace(stepType)) {
-	case "human", "human_task":
-		return "human_task"
+func normalizeBuilderStepType(stepType string) (string, error) {
+	raw := strings.ToLower(strings.TrimSpace(stepType))
+	switch raw {
+	case "human", "human_task", "human-task", "human review":
+		return "human_task", nil
 	case "ai_agent", "llm_agent", "agent":
-		return "agent"
+		return "agent", nil
 	case "ai_component", "ai-component":
-		return "ai_component"
+		return "ai_component", nil
 	case "extraction", "document_extraction", "doc_extraction", "extract":
-		return "extraction"
+		return "extraction", nil
 	case "connector", "integration_step", "integration":
-		return "integration"
+		return "integration", nil
 	case "decision_rule", "rule":
-		return "rule"
+		return "rule", nil
 	case "delay", "timer":
-		return "timer"
+		return "timer", nil
 	case "notify", "notification":
-		return "notification"
+		return "notification", nil
+	case "":
+		return "", nil
 	default:
-		return stepType
+		return "", fmt.Errorf("unknown step type %q", stepType)
 	}
 }
 

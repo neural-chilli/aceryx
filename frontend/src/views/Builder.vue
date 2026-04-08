@@ -13,7 +13,7 @@ import FormDesigner from '../components/builder/FormDesigner.vue'
 import WorkflowToolbar from '../components/builder/WorkflowToolbar.vue'
 import ValidationPanel from '../components/builder/ValidationPanel.vue'
 import DesktopOnlyNotice from '../components/DesktopOnlyNotice.vue'
-import { buildBuilderAssistantPromptPack, extractAssistantYAML, extractCaseTypeIDFromYAML } from '../components/builder/assistantPayload'
+import { BUILDER_ASSISTANT_CONTRACT_VERSION, buildBuilderAssistantPromptPack, extractAssistantYAML, extractCaseTypeIDFromYAML } from '../components/builder/assistantPayload'
 import type { FormSchema } from '../components/forms/formSchema'
 import {
   addStep,
@@ -108,6 +108,32 @@ const assistantCanShowApply = computed(() => {
   }
   return assistantYAML.value.trim().length > 0
 })
+
+type PublishValidationIssue = {
+  stepId?: string
+  field?: string
+  code?: string
+  message?: string
+  suggestion?: string
+}
+
+function formatPublishValidationErrors(errors: PublishValidationIssue[]): string {
+  const lines = errors
+    .filter((item) => String(item.message ?? '').trim() !== '')
+    .map((item) => {
+      const code = String(item.code ?? '').trim()
+      const step = String(item.stepId ?? '').trim()
+      const message = String(item.message ?? '').trim()
+      const suggestion = String(item.suggestion ?? '').trim()
+      const prefix = code ? `[${code}] ` : ''
+      const stepPrefix = step ? `${step}: ` : ''
+      if (!suggestion) {
+        return `${prefix}${stepPrefix}${message}`
+      }
+      return `${prefix}${stepPrefix}${message} (${suggestion})`
+    })
+  return lines.join('\n')
+}
 
 function openAssistantDialog() {
   assistantPrompt.value = ''
@@ -348,6 +374,12 @@ async function publish() {
   }
   const res = await authFetch(`/workflows/${selectedWorkflowID.value}/publish`, { method: 'POST' })
   if (!res.ok) {
+    if (res.status === 400) {
+      const payload = (await res.json().catch(() => null)) as { errors?: PublishValidationIssue[] } | null
+      const details = formatPublishValidationErrors(payload?.errors ?? [])
+      operationError.value = details || 'Unable to publish workflow right now.'
+      return
+    }
     operationError.value = 'Unable to publish workflow right now.'
   }
 }
@@ -407,6 +439,7 @@ async function runAssistant() {
       body: JSON.stringify({
         content: assistantPrompt.value.trim(),
         prompt_pack: {
+          contract_version: BUILDER_ASSISTANT_CONTRACT_VERSION,
           frontend_context: buildBuilderAssistantPromptPack({
             connectors: connectors.value,
             aiComponents: aiComponents.value,

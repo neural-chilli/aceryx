@@ -1,6 +1,11 @@
 package assistant
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -197,4 +202,123 @@ func TestNormalizeToBuilderASTYAML_ExtractionStepAlias(t *testing.T) {
 	if got := step["type"]; got != "extraction" {
 		t.Fatalf("expected normalized step type extraction, got: %#v", got)
 	}
+}
+
+func TestNormalizeToBuilderASTYAML_GoldenPromptFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtureDir := filepath.Join("..", "..", "tests", "fixtures", "ai_builder_golden")
+	assertFixtureExists(t, fixtureDir, "prompt-a-assistant-raw.json")
+	assertFixtureExists(t, fixtureDir, "prompt-b-assistant-raw.json")
+	assertFixtureExists(t, fixtureDir, "prompt-a-normalized.json")
+	assertFixtureExists(t, fixtureDir, "prompt-b-normalized.json")
+
+	for _, tc := range []struct {
+		name           string
+		rawFixture     string
+		oracleFixture  string
+		thresholdToken string
+	}{
+		{
+			name:           "prompt_a",
+			rawFixture:     "prompt-a-assistant-raw.json",
+			oracleFixture:  "prompt-a-normalized.json",
+			thresholdToken: "0.80",
+		},
+		{
+			name:           "prompt_b",
+			rawFixture:     "prompt-b-assistant-raw.json",
+			oracleFixture:  "prompt-b-normalized.json",
+			thresholdToken: "0.70",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rawYAML := loadRawFixtureYAML(t, filepath.Join(fixtureDir, tc.rawFixture))
+			if !strings.Contains(rawYAML, tc.thresholdToken) {
+				t.Fatalf("raw fixture must pin routing threshold %s", tc.thresholdToken)
+			}
+
+			firstNormalized, err := normalizeToBuilderASTYAML(rawYAML)
+			if err != nil {
+				t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+			}
+			secondNormalized, err := normalizeToBuilderASTYAML(firstNormalized)
+			if err != nil {
+				t.Fatalf("normalize(normalized) returned error: %v", err)
+			}
+
+			firstObj := mustYAMLObject(t, firstNormalized)
+			secondObj := mustYAMLObject(t, secondNormalized)
+			if !reflect.DeepEqual(firstObj, secondObj) {
+				t.Fatalf("expected normalization idempotency for fixture %s", tc.rawFixture)
+			}
+
+			wantObj := loadNormalizedOracle(t, filepath.Join(fixtureDir, tc.oracleFixture))
+			if !reflect.DeepEqual(firstObj, wantObj) {
+				t.Fatalf("normalized output mismatch for fixture %s", tc.rawFixture)
+			}
+		})
+	}
+}
+
+func TestNormalizeToBuilderASTYAML_RejectsUnknownStepTypeAlias(t *testing.T) {
+	input := `steps:
+  - id: bad
+    type: magical_step
+    config: {}`
+	_, err := normalizeToBuilderASTYAML(input)
+	if err == nil {
+		t.Fatal("expected unknown step type alias to be rejected")
+	}
+	if !strings.Contains(err.Error(), "unknown step type") {
+		t.Fatalf("expected unknown step type error, got %v", err)
+	}
+}
+
+func assertFixtureExists(t *testing.T, fixtureDir, filename string) {
+	t.Helper()
+	path := filepath.Join(fixtureDir, filename)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected fixture at %s: %v", path, err)
+	}
+}
+
+func loadRawFixtureYAML(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read raw fixture %s: %v", path, err)
+	}
+	var payload struct {
+		YAML string `json:"yaml"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("decode raw fixture %s: %v", path, err)
+	}
+	if strings.TrimSpace(payload.YAML) == "" {
+		t.Fatalf("raw fixture %s missing yaml payload", path)
+	}
+	return payload.YAML
+}
+
+func loadNormalizedOracle(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read oracle fixture %s: %v", path, err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("decode oracle fixture %s: %v", path, err)
+	}
+	return out
+}
+
+func mustYAMLObject(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := yaml.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("decode yaml object: %v", err)
+	}
+	return out
 }

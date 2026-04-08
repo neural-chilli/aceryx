@@ -3,6 +3,7 @@ package handlers
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -124,6 +125,11 @@ func (h *WorkflowHandlers) Publish(w http.ResponseWriter, r *http.Request) {
 	if err := h.Service.PublishDraft(r.Context(), principal.TenantID, workflowID); err != nil {
 		if err == sql.ErrNoRows {
 			writeError(w, http.StatusNotFound, "not_found")
+			return
+		}
+		var validationErrs *workflows.PublishValidationErrors
+		if errors.As(err, &validationErrs) {
+			writeJSON(w, http.StatusBadRequest, validationErrs)
 			return
 		}
 		if strings.HasPrefix(err.Error(), "invalid workflow ast:") {
