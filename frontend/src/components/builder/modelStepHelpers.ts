@@ -52,11 +52,15 @@ export function missingConfigMessages(step: WorkflowStep): string[] {
     case 'ai_component':
       return [...(cfg.component ? [] : ['choose an AI component'])]
     case 'extraction':
-      return [
-        ...(cfg.document_path ? [] : ['set document path']),
-        ...(cfg.schema ? [] : ['set extraction schema']),
-        ...(cfg.output_path ? [] : ['set output path']),
-      ]
+      {
+        const hasDocumentRef = Boolean(cfg.document_path || cfg.document_ref)
+        const hasSchemaRef = Boolean(cfg.schema || cfg.schema_name || cfg.schema_id)
+        return [
+          ...(hasDocumentRef ? [] : ['set document path']),
+          ...(hasSchemaRef ? [] : ['set extraction schema']),
+          ...(cfg.output_path ? [] : ['set output path']),
+        ]
+      }
     case 'rule':
       return [...(typeof step.outcomes === 'object' && Object.keys(step.outcomes ?? {}).length > 0 ? [] : ['define at least one outcome'])]
     case 'timer':
@@ -151,7 +155,7 @@ export function summarizeStep(step: WorkflowStep): string[] {
       ]
     case 'extraction':
       return [
-        `schema: ${String(cfg.schema ?? '-')}`,
+        `schema: ${String(cfg.schema ?? cfg.schema_name ?? cfg.schema_id ?? '-')}`,
         `output: ${String(cfg.output_path ?? '-')}`,
       ]
     case 'rule':

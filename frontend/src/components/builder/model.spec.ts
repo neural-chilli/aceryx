@@ -174,4 +174,24 @@ describe('builder model', () => {
     }
     expect(() => validateAST(ast)).not.toThrow()
   })
+
+  it('treats extraction canonical aliases as complete config', () => {
+    const ast: WorkflowAST = {
+      steps: [
+        {
+          id: 'extract_customer_details',
+          type: 'extraction',
+          depends_on: [],
+          config: {
+            document_ref: 'case.data.capture.customer_pdf',
+            schema_name: 'customer_onboarding_schema',
+            output_path: 'case.data.extracted.customer',
+          },
+        },
+      ],
+    }
+    const issues = validateAST(ast)
+    expect(issues.some((issue) => issue.code === 'missing_config' && issue.stepId === 'extract_customer_details')).toBe(false)
+    expect(issues.some((issue) => issue.code === 'missing_config_field' && issue.stepId === 'extract_customer_details')).toBe(false)
+  })
 })
