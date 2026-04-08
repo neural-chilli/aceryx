@@ -326,7 +326,10 @@ func (tm *TriggerManager) restartWithBackoff(ctx context.Context, instanceID uui
 	next := inst.lastBackoff
 	if next <= 0 {
 		next = time.Second
-	} else {
+	}
+	if next > tm.config.MaxRestartBackoff {
+		next = tm.config.MaxRestartBackoff
+	} else if inst.lastBackoff > 0 {
 		next *= 2
 		if next > tm.config.MaxRestartBackoff {
 			next = tm.config.MaxRestartBackoff
