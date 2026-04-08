@@ -6,6 +6,8 @@ import Drawer from 'primevue/drawer'
 import ExpressionEditor from './ExpressionEditor.vue'
 import HumanTaskConfig from './config/HumanTaskConfig.vue'
 import AgentConfig from './config/AgentConfig.vue'
+import AIComponentConfig from './config/AIComponentConfig.vue'
+import ExtractionConfig from './config/ExtractionConfig.vue'
 import IntegrationConfig from './config/IntegrationConfig.vue'
 import RuleConfig from './config/RuleConfig.vue'
 import TimerConfig from './config/TimerConfig.vue'
@@ -15,7 +17,34 @@ import type { WorkflowStep } from './model'
 type ConnectorMeta = {
   key: string
   name: string
-  actions?: Array<{ key: string; name?: string }>
+  actions?: Array<{
+    key: string
+    name?: string
+    input_schema?: Record<string, unknown>
+    output_schema?: Record<string, unknown>
+  }>
+}
+
+type AIComponentMeta = {
+  id: string
+  display_label: string
+  category?: string
+  icon?: string
+  config_fields?: Array<{
+    name: string
+    type: string
+    label?: string
+    required?: boolean
+    default?: unknown
+    options?: string[]
+  }>
+}
+
+type ExtractionSchemaMeta = {
+  id: string
+  name: string
+  status?: string
+  version?: number
 }
 
 const props = defineProps<{
@@ -24,6 +53,8 @@ const props = defineProps<{
   availableFields: string[]
   connectors: ConnectorMeta[]
   promptTemplates: string[]
+  aiComponents: AIComponentMeta[]
+  extractionSchemas: ExtractionSchemaMeta[]
 }>()
 
 const emit = defineEmits<{
@@ -45,6 +76,13 @@ function patchStep(patch: Partial<WorkflowStep>) {
 
 function patchConfig(next: Record<string, unknown>) {
   patchStep({ config: next })
+}
+function patchRuleConfig(next: Record<string, unknown>) {
+  patchStep({ config: next })
+}
+
+function patchRuleOutcomes(next: Record<string, string | string[]>) {
+  patchStep({ outcomes: next })
 }
 
 function doRename() {
@@ -139,6 +177,20 @@ function doRename() {
       <RuleConfig
         v-else-if="step.type === 'rule'"
         :config="(step.config ?? {}) as Record<string, unknown>"
+        :outcomes="step.outcomes ?? {}"
+        @update-config="patchRuleConfig"
+        @update-outcomes="patchRuleOutcomes"
+      />
+      <AIComponentConfig
+        v-else-if="step.type === 'ai_component'"
+        :config="(step.config ?? {}) as Record<string, unknown>"
+        :ai-components="aiComponents"
+        @update="patchConfig"
+      />
+      <ExtractionConfig
+        v-else-if="step.type === 'extraction' || step.type === 'document_extraction' || step.type === 'doc_extraction'"
+        :config="(step.config ?? {}) as Record<string, unknown>"
+        :schemas="extractionSchemas"
         @update="patchConfig"
       />
       <TimerConfig

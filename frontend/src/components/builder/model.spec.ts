@@ -28,6 +28,8 @@ describe('builder model', () => {
       steps: [
         { id: 'h', type: 'human_task', depends_on: [], config: { form: 'f', assign_to_role: 'r' } },
         { id: 'a', type: 'agent', depends_on: [], config: { prompt_template: 'p' } },
+        { id: 'ac', type: 'ai_component', depends_on: [], config: { component: 'doc_extract' } },
+        { id: 'ex', type: 'extraction', depends_on: [], config: { document_path: 'case.data.doc', schema: 'loan', output_path: 'case.data.extracted' } },
         { id: 'i', type: 'integration', depends_on: [], config: { connector: 'http', action: 'request' } },
         { id: 'r', type: 'rule', depends_on: [], outcomes: { ok: 'h' }, config: {} },
         { id: 't', type: 'timer', depends_on: [], config: { duration: '1h' } },
@@ -36,7 +38,7 @@ describe('builder model', () => {
       ],
     }
     const nodes = astToNodes(ast)
-    expect(nodes.map((node) => node.type)).toEqual(['human_task', 'agent', 'integration', 'rule', 'timer', 'notification', 'unknown'])
+    expect(nodes.map((node) => node.type)).toEqual(['human_task', 'agent', 'ai_component', 'extraction', 'integration', 'rule', 'timer', 'notification', 'unknown'])
   })
 
   it('maps depends_on and outcomes to edges', () => {
@@ -77,6 +79,59 @@ describe('builder model', () => {
     expect(issues.some((issue) => issue.code === 'cycle_detected')).toBe(true)
     expect(issues.some((issue) => issue.code === 'dangling_dependency')).toBe(true)
     expect(issues.some((issue) => issue.code === 'missing_config')).toBe(true)
+  })
+
+  it('validates strict config shape for agent/integration/extraction', () => {
+    const ast: WorkflowAST = {
+      steps: [
+        {
+          id: 'agent_bad',
+          type: 'agent',
+          depends_on: [],
+          config: {
+            prompt_template: 'risk_prompt',
+            context: { source: 'case' },
+            output_schema: [],
+            on_low_confidence: 'human_review',
+          },
+        },
+        {
+          id: 'integration_bad',
+          type: 'integration',
+          depends_on: [],
+          config: {
+            connector: 'postgres',
+            action: 'insert',
+            input: [],
+            output_mapping: 'case.data.saved',
+          },
+        },
+        {
+          id: 'extraction_bad',
+          type: 'extraction',
+          depends_on: [],
+          config: {
+            document_path: 'case.data.doc',
+            schema: 'loan_application_pdf',
+            output_path: 'case.data.extracted',
+            on_review: [],
+            on_reject: 'manual',
+            auto_accept_threshold: 1.2,
+            review_threshold: -0.1,
+          },
+        },
+      ],
+    }
+    const issues = validateAST(ast)
+    expect(issues.some((issue) => issue.code === 'agent_context_type_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'agent_output_schema_type_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'agent_low_confidence_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'integration_input_type_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'integration_output_mapping_type_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'extraction_on_review_type_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'extraction_on_reject_type_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'extraction_auto_accept_threshold_invalid' && issue.severity === 'error')).toBe(true)
+    expect(issues.some((issue) => issue.code === 'extraction_review_threshold_invalid' && issue.severity === 'error')).toBe(true)
   })
 
   it('auto-layout is deterministic', () => {

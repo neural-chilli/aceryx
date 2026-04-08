@@ -4,6 +4,8 @@ export function stepTypeKey(stepType: string): string {
   const normalized = String(stepType).toLowerCase().replace(/[\s-]+/g, '_')
   if (normalized === 'human') return 'human_task'
   if (['ai_agent', 'llm_agent'].includes(normalized)) return 'agent'
+  if (['ai_component', 'ai-component'].includes(normalized)) return 'ai_component'
+  if (['document_extraction', 'doc_extraction', 'extract', 'extraction_step'].includes(normalized)) return 'extraction'
   if (['connector', 'integration_step'].includes(normalized)) return 'integration'
   if (normalized === 'decision_rule') return 'rule'
   if (normalized === 'delay') return 'timer'
@@ -12,14 +14,17 @@ export function stepTypeKey(stepType: string): string {
 }
 
 export function knownNodeType(stepType: string): string {
-  switch (stepTypeKey(stepType)) {
+  const key = stepTypeKey(stepType)
+  switch (key) {
     case 'human_task':
     case 'agent':
     case 'integration':
+    case 'extraction':
+    case 'ai_component':
     case 'rule':
     case 'timer':
     case 'notification':
-      return stepType
+      return key
     default:
       return 'unknown'
   }
@@ -44,6 +49,14 @@ export function missingConfigMessages(step: WorkflowStep): string[] {
         ...(cfg.connector ? [] : ['choose a connector']),
         ...(cfg.action ? [] : ['choose an action']),
       ]
+    case 'ai_component':
+      return [...(cfg.component ? [] : ['choose an AI component'])]
+    case 'extraction':
+      return [
+        ...(cfg.document_path ? [] : ['set document path']),
+        ...(cfg.schema ? [] : ['set extraction schema']),
+        ...(cfg.output_path ? [] : ['set output path']),
+      ]
     case 'rule':
       return [...(typeof step.outcomes === 'object' && Object.keys(step.outcomes ?? {}).length > 0 ? [] : ['define at least one outcome'])]
     case 'timer':
@@ -60,12 +73,21 @@ export function expressionFields(step: WorkflowStep): Array<{ label: string; val
   if (step.condition) {
     out.push({ label: 'guard', value: step.condition })
   }
-  if (step.type === 'rule') {
+  if (stepTypeKey(step.type) === 'rule') {
     const cfg = (step.config ?? {}) as Record<string, unknown>
-    const outcomes = cfg.outcomes as Array<{ condition?: string; name?: string }> | undefined
-    for (const outcome of outcomes ?? []) {
-      if (outcome.condition) {
-        out.push({ label: `outcome:${outcome.name ?? 'unnamed'}`, value: outcome.condition })
+    const outcomeConditions = cfg.outcome_conditions as Record<string, unknown> | undefined
+    if (outcomeConditions && typeof outcomeConditions === 'object') {
+      for (const [name, condition] of Object.entries(outcomeConditions)) {
+        if (typeof condition === 'string' && condition.trim().length > 0) {
+          out.push({ label: `outcome:${name}`, value: condition })
+        }
+      }
+    } else {
+      const outcomes = cfg.outcomes as Array<{ condition?: string; name?: string }> | undefined
+      for (const outcome of outcomes ?? []) {
+        if (outcome.condition) {
+          out.push({ label: `outcome:${outcome.name ?? 'unnamed'}`, value: outcome.condition })
+        }
       }
     }
   }
@@ -107,6 +129,16 @@ export function summarizeStep(step: WorkflowStep): string[] {
       return [
         `connector: ${String(cfg.connector ?? '-')}`,
         `action: ${String(cfg.action ?? '-')}`,
+      ]
+    case 'ai_component':
+      return [
+        `component: ${String(cfg.component ?? '-')}`,
+        `output: ${String(cfg.output_path ?? 'result')}`,
+      ]
+    case 'extraction':
+      return [
+        `schema: ${String(cfg.schema ?? '-')}`,
+        `output: ${String(cfg.output_path ?? '-')}`,
       ]
     case 'rule':
       return [`outcomes: ${Object.keys(step.outcomes ?? {}).length}`, `default: ${String(cfg.default_outcome ?? '-')}`]

@@ -326,6 +326,54 @@ func TestVaultIntegration_GDPR_ErasureAndTenantIsolation(t *testing.T) {
 	}
 }
 
+func TestVaultIntegration_ErasureByCaseIDRejectsCrossTenantCase(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	svc := vault.NewService(db, vault.NewLocalVaultStore(t.TempDir(), "secret"), time.Hour)
+	tenantA, principalA := seedTenantAndPrincipal(t, ctx, db, "vault-erasure-cross-a")
+	tenantB, principalB := seedTenantAndPrincipal(t, ctx, db, "vault-erasure-cross-b")
+	caseB := seedVaultCase(t, ctx, db, tenantB, principalB, "vault_erasure_cross_case_b")
+
+	docB, err := svc.Upload(ctx, tenantB, vault.UploadInput{
+		CaseID:     caseB,
+		Filename:   "tenant-b.txt",
+		MimeType:   "text/plain",
+		Data:       []byte("tenant-b-doc"),
+		UploadedBy: principalB,
+	})
+	if err != nil {
+		t.Fatalf("upload tenant B doc: %v", err)
+	}
+
+	if err := svc.Erase(ctx, tenantA, vault.ErasureRequest{CaseID: &caseB}, principalA); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("expected cross-tenant erasure to be rejected with sql.ErrNoRows, got %v", err)
+	}
+
+	var deletedAt sql.NullTime
+	if err := db.QueryRowContext(ctx, `SELECT deleted_at FROM vault_documents WHERE id = $1`, docB.ID).Scan(&deletedAt); err != nil {
+		t.Fatalf("load tenant B document deleted_at: %v", err)
+	}
+	if deletedAt.Valid {
+		t.Fatalf("expected tenant B document to remain live, got deleted_at=%v", deletedAt.Time)
+	}
+
+	var eventCount int
+	if err := db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM case_events
+WHERE case_id = $1
+  AND event_type = 'system'
+  AND action = 'erasure_completed'
+`, caseB).Scan(&eventCount); err != nil {
+		t.Fatalf("count cross-tenant erasure audit events: %v", err)
+	}
+	if eventCount != 0 {
+		t.Fatalf("expected no erasure audit event for cross-tenant case, got %d", eventCount)
+	}
+}
+
 func TestVaultIntegration_PathTraversalFilenameIsSafe(t *testing.T) {
 	ctx := context.Background()
 	db, cleanup := setupPostgresWithMigrations(t)

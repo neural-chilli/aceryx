@@ -46,6 +46,13 @@ func (s *Service) Erase(ctx context.Context, tenantID uuid.UUID, req ErasureRequ
 
 func (s *Service) resolveErasureCases(ctx context.Context, tenantID uuid.UUID, req ErasureRequest) ([]uuid.UUID, error) {
 	if req.CaseID != nil && *req.CaseID != uuid.Nil {
+		var exists bool
+		if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM cases WHERE id = $1 AND tenant_id = $2)`, *req.CaseID, tenantID).Scan(&exists); err != nil {
+			return nil, fmt.Errorf("resolve erasure case by id: %w", err)
+		}
+		if !exists {
+			return nil, sql.ErrNoRows
+		}
 		return []uuid.UUID{*req.CaseID}, nil
 	}
 	if strings.TrimSpace(req.DataSubjectEmail) == "" {

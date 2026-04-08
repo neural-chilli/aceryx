@@ -14,6 +14,8 @@ async function mountPanel(step: WorkflowStep) {
       availableFields: ['case.data.amount'],
       connectors: [{ key: 'http', name: 'HTTP', actions: [{ key: 'request' }] }],
       promptTemplates: ['risk_prompt'],
+      aiComponents: [{ id: 'doc_extract', display_label: 'Doc Extract', category: 'Extraction' }],
+      extractionSchemas: [{ id: 'loan_application_pdf', name: 'Loan Application PDF' }],
     },
     global: {
       plugins: [createPinia(), [PrimeVue, { theme: { preset: Aura } }]],
@@ -44,6 +46,23 @@ describe('StepConfigPanel', () => {
   it('renders integration config panel', async () => {
     const wrapper = await mountPanel({ id: 'i1', type: 'integration', depends_on: [], config: { connector: 'http', action: 'request' } })
     expect(bodyText()).toContain('Connector')
+    wrapper.unmount()
+  })
+
+  it('renders ai component config panel', async () => {
+    const wrapper = await mountPanel({ id: 'c1', type: 'ai_component', depends_on: [], config: { component: 'doc_extract' } })
+    expect(bodyText()).toContain('AI Component Settings')
+    wrapper.unmount()
+  })
+
+  it('renders extraction config panel', async () => {
+    const wrapper = await mountPanel({
+      id: 'x1',
+      type: 'extraction',
+      depends_on: [],
+      config: { document_path: 'case.data.attachments[0].vault_id', schema: 'loan_application_pdf', output_path: 'case.data.extracted' },
+    })
+    expect(bodyText()).toContain('Extraction Settings')
     wrapper.unmount()
   })
 

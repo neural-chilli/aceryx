@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -267,6 +268,96 @@ WHERE tenant_id = $1 AND principal_id = $2 AND event_type = 'auth.denied' AND pe
 		t.Fatalf("expected no pre-existing tenant A cases before explicit create, got %d", conflictCaseCount)
 	}
 	_ = workflowA
+}
+
+func TestRBACIntegration_TaskMutationRoutesRequireTaskPermissions(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	tenantID := seedTenantWithBranding(t, ctx, db, "rbac-task-perms")
+	authz := rbac.NewService(db)
+	principalSvc := rbac.NewPrincipalService(db, authz)
+	authSvc := rbac.NewAuthService(db, "test-secret", time.Hour)
+
+	viewer, _, err := principalSvc.CreatePrincipal(ctx, tenantID, rbac.CreatePrincipalRequest{
+		Type:     "human",
+		Name:     "Viewer",
+		Email:    "viewer-task@example.com",
+		Password: "Passw0rd",
+		Roles:    []string{"viewer"},
+	})
+	if err != nil {
+		t.Fatalf("create viewer principal: %v", err)
+	}
+
+	loginViewer, err := authSvc.Login(ctx, rbac.LoginRequest{TenantID: &tenantID, Email: viewer.Email, Password: "Passw0rd"})
+	if err != nil {
+		t.Fatalf("login viewer: %v", err)
+	}
+
+	router := api.NewRouterWithServices(db, nil)
+	caseID := uuid.NewString()
+	stepID := "review"
+
+	tests := []struct {
+		name       string
+		method     string
+		path       string
+		body       string
+		permission string
+	}{
+		{
+			name:       "claim requires tasks:claim",
+			method:     http.MethodPost,
+			path:       "/tasks/" + caseID + "/" + stepID + "/claim",
+			body:       "",
+			permission: "tasks:claim",
+		},
+		{
+			name:       "complete requires tasks:complete",
+			method:     http.MethodPost,
+			path:       "/tasks/" + caseID + "/" + stepID + "/complete",
+			body:       `{"outcome":"approve","data":{}}`,
+			permission: "tasks:complete",
+		},
+		{
+			name:       "draft requires tasks:complete",
+			method:     http.MethodPut,
+			path:       "/tasks/" + caseID + "/" + stepID + "/draft",
+			body:       `{"data":{"notes":"draft"}}`,
+			permission: "tasks:complete",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			req.Header.Set("Authorization", "Bearer "+loginViewer.Token)
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+			router.ServeHTTP(rr, req)
+			if rr.Code != http.StatusForbidden {
+				t.Fatalf("expected 403 for %s %s, got %d body=%s", tt.method, tt.path, rr.Code, rr.Body.String())
+			}
+
+			var deniedCount int
+			if err := db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM auth_events
+WHERE tenant_id = $1
+  AND principal_id = $2
+  AND event_type = 'auth.denied'
+  AND permission = $3
+  AND resource_path = $4
+`, tenantID, viewer.ID, tt.permission, tt.path).Scan(&deniedCount); err != nil {
+				t.Fatalf("query denied auth events: %v", err)
+			}
+			if deniedCount == 0 {
+				t.Fatalf("expected denied auth event for permission %s on path %s", tt.permission, tt.path)
+			}
+		})
+	}
 }
 
 func TestRBACIntegration_RolePermissionInvalidationAndSessionCleanup(t *testing.T) {

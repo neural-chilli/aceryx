@@ -49,10 +49,19 @@ type RouteConfig struct {
 type Handler struct {
 	db      *sql.DB
 	secrets connectors.SecretStore
+	eval    DAGEvaluator
 }
 
 func NewHandler(db *sql.DB, secrets connectors.SecretStore) *Handler {
 	return &Handler{db: db, secrets: secrets}
+}
+
+type DAGEvaluator interface {
+	EvaluateDAG(ctx context.Context, caseID uuid.UUID) error
+}
+
+func (h *Handler) SetEvaluator(evaluator DAGEvaluator) {
+	h.eval = evaluator
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -201,6 +210,9 @@ func (h *Handler) createOrUpdateCase(ctx context.Context, cfg RouteConfig, paylo
 				if _, uErr := h.db.ExecContext(ctx, `UPDATE cases SET data = COALESCE(data,'{}'::jsonb) || $3::jsonb, updated_at = now(), version = version + 1 WHERE id = $1 AND tenant_id = $2`, caseID, cfg.TenantID, string(raw)); uErr != nil {
 					return uuid.Nil, fmt.Errorf("update case from webhook: %w", uErr)
 				}
+				if h.eval != nil {
+					_ = h.eval.EvaluateDAG(ctx, caseID)
+				}
 				return caseID, nil
 			}
 		}
@@ -215,15 +227,20 @@ SELECT id FROM case_types WHERE tenant_id = $1 AND name = $2 AND status = 'activ
 
 	var workflowID uuid.UUID
 	var workflowVersion int
+	var workflowAST []byte
 	if err := h.db.QueryRowContext(ctx, `
-SELECT w.id, wv.version
+SELECT w.id, wv.version, wv.ast
 FROM workflows w
 JOIN workflow_versions wv ON wv.workflow_id = w.id
 WHERE w.tenant_id = $1 AND w.case_type = $2 AND wv.status = 'published'
 ORDER BY wv.version DESC
 LIMIT 1
-`, cfg.TenantID, cfg.CaseType).Scan(&workflowID, &workflowVersion); err != nil {
+`, cfg.TenantID, cfg.CaseType).Scan(&workflowID, &workflowVersion, &workflowAST); err != nil {
 		return uuid.Nil, fmt.Errorf("resolve workflow for webhook: %w", err)
+	}
+	stepIDs, err := parseWorkflowStepIDs(workflowAST)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("parse workflow steps for webhook case init: %w", err)
 	}
 
 	rawData, err := json.Marshal(payload)
@@ -231,8 +248,14 @@ LIMIT 1
 		return uuid.Nil, fmt.Errorf("marshal webhook create payload: %w", err)
 	}
 	caseNumber := "WEB-" + strings.ToUpper(uuid.NewString()[:8])
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("begin webhook case create tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
 	var caseID uuid.UUID
-	err = h.db.QueryRowContext(ctx, `
+	err = tx.QueryRowContext(ctx, `
 INSERT INTO cases (tenant_id, case_type_id, case_number, status, data, created_by, workflow_id, workflow_version)
 VALUES ($1, $2, $3, 'open', $4::jsonb, $5, $6, $7)
 RETURNING id
@@ -240,7 +263,46 @@ RETURNING id
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("create case from webhook: %w", err)
 	}
+	for _, stepID := range stepIDs {
+		if _, err := tx.ExecContext(ctx, `
+INSERT INTO case_steps (case_id, step_id, state, result, events, error, retry_count, draft_data, metadata)
+VALUES ($1, $2, 'pending', '{}'::jsonb, '[]'::jsonb, '{}'::jsonb, 0, '{}'::jsonb, '{}'::jsonb)
+`, caseID, stepID); err != nil {
+			return uuid.Nil, fmt.Errorf("init webhook case step %s: %w", stepID, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return uuid.Nil, fmt.Errorf("commit webhook case create tx: %w", err)
+	}
+	if h.eval != nil {
+		_ = h.eval.EvaluateDAG(ctx, caseID)
+	}
 	return caseID, nil
+}
+
+func parseWorkflowStepIDs(astRaw []byte) ([]string, error) {
+	var ast struct {
+		Steps []struct {
+			ID string `json:"id"`
+		} `json:"steps"`
+	}
+	if err := json.Unmarshal(astRaw, &ast); err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(ast.Steps))
+	seen := make(map[string]struct{}, len(ast.Steps))
+	for _, step := range ast.Steps {
+		id := strings.TrimSpace(step.ID)
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 func validateSignature(secret string, payload []byte, signature string) bool {

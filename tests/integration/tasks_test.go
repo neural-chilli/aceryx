@@ -210,6 +210,133 @@ func TestTasksIntegration_ClaimAtomicAndAlreadyClaimed(t *testing.T) {
 	}
 }
 
+func TestTasksIntegration_ClaimRespectsAssignedRoleEligibility(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	tenantID, ownerID := seedTenantAndPrincipal(t, ctx, db, "t004-claim-role")
+	ineligibleID := seedPrincipal(t, ctx, db, tenantID, "ineligible", "ineligible@claim.local")
+	eligibleID := seedPrincipal(t, ctx, db, tenantID, "eligible", "eligible@claim.local")
+	mustSeedRoleMembership(t, ctx, db, tenantID, eligibleID, "case_worker")
+
+	cfgRaw, _ := json.Marshal(map[string]any{"assign_to_role": "case_worker"})
+	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{{ID: "review", Type: "human_task", Config: cfgRaw}}}
+	caseID := seedTaskCase(t, ctx, db, tenantID, ownerID, "claim_role_case", ast)
+
+	taskSvc := tasks.NewTaskService(db, nil, nil)
+	if err := taskSvc.CreateTaskFromActivation(ctx, caseID, "review", tasks.AssignmentConfig{AssignToRole: "case_worker"}); err != nil {
+		t.Fatalf("activate task for role-claim test: %v", err)
+	}
+
+	if err := taskSvc.ClaimTask(ctx, tenantID, ineligibleID, caseID, "review"); !errors.Is(err, tasks.ErrForbidden) {
+		t.Fatalf("expected forbidden for ineligible claimant, got %v", err)
+	}
+
+	if err := taskSvc.ClaimTask(ctx, tenantID, eligibleID, caseID, "review"); err != nil {
+		t.Fatalf("expected eligible claimant to succeed, got %v", err)
+	}
+}
+
+func TestTasksIntegration_BindDrivenFormValidationAndDecisionPatch(t *testing.T) {
+	ctx := context.Background()
+	db, cleanup := setupPostgresWithMigrations(t)
+	defer cleanup()
+
+	tenantID, ownerID := seedTenantAndPrincipal(t, ctx, db, "t009-bind-form")
+	assigneeID := seedPrincipal(t, ctx, db, tenantID, "assignee", "assignee@bind.local")
+
+	ast := engine.WorkflowAST{Steps: []engine.WorkflowStep{
+		{
+			ID:   "review",
+			Type: "human_task",
+			Config: mustJSON(t, map[string]any{
+				"assign_to_user": assigneeID.String(),
+				"form_schema": map[string]any{
+					"title": "Bind-First Review",
+					"layout": []map[string]any{
+						{
+							"section": "Decision",
+							"fields": []map[string]any{
+								{"bind": "decision.comment", "type": "string", "required": true, "min_length": 3},
+								{"bind": "decision.assessment.score", "type": "number", "required": true, "min": 0, "max": 100},
+							},
+						},
+					},
+					"actions": []map[string]any{
+						{"label": "Approve", "value": "approve"},
+						{"label": "Reject", "value": "reject", "requires": []string{"decision.comment"}},
+					},
+				},
+				"outcomes": []string{"approve", "reject"},
+			}),
+			Outcomes: map[string][]string{"approve": []string{}, "reject": []string{}},
+		},
+	}}
+	caseID := seedTaskCase(t, ctx, db, tenantID, ownerID, "bind_form_case", ast)
+
+	taskSvc := tasks.NewTaskService(db, nil, nil)
+	if err := taskSvc.CreateTaskFromActivation(ctx, caseID, "review", tasks.AssignmentConfig{
+		AssignToUser: assigneeID.String(),
+		FormSchema: tasks.FormSchema{
+			Title: "Bind-First Review",
+			Layout: []tasks.FormSection{{
+				Section: "Decision",
+				Fields: []tasks.FormField{
+					{Bind: "decision.comment", Type: "string", Required: true, MinLength: intPtrTask(3)},
+					{Bind: "decision.assessment.score", Type: "number", Required: true, Min: floatPtr(0), Max: floatPtr(100)},
+				},
+			}},
+			Actions: []tasks.FormAction{
+				{Label: "Approve", Value: "approve"},
+				{Label: "Reject", Value: "reject", Requires: []string{"decision.comment"}},
+			},
+		},
+		Outcomes: []string{"approve", "reject"},
+	}); err != nil {
+		t.Fatalf("activate bind-form task: %v", err)
+	}
+
+	err := taskSvc.CompleteTask(ctx, tenantID, assigneeID, caseID, "review", tasks.CompleteTaskRequest{
+		Outcome: "reject",
+		Data: map[string]any{
+			"assessment": map[string]any{"score": 70},
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "validation_failed") {
+		t.Fatalf("expected validation failure for missing bind-required comment, got %v", err)
+	}
+
+	if err := taskSvc.CompleteTask(ctx, tenantID, assigneeID, caseID, "review", tasks.CompleteTaskRequest{
+		Outcome: "approve",
+		Data: map[string]any{
+			"comment":    "Approved",
+			"assessment": map[string]any{"score": 88},
+		},
+	}); err != nil {
+		t.Fatalf("complete bind-form task: %v", err)
+	}
+
+	var decisionRaw []byte
+	if err := db.QueryRowContext(ctx, `SELECT data->'decision' FROM cases WHERE id = $1`, caseID).Scan(&decisionRaw); err != nil {
+		t.Fatalf("load case decision data: %v", err)
+	}
+	var decision map[string]any
+	if err := json.Unmarshal(decisionRaw, &decision); err != nil {
+		t.Fatalf("decode case decision data: %v", err)
+	}
+	if got := decision["comment"]; got != "Approved" {
+		t.Fatalf("expected decision.comment to be patched, got %#v", got)
+	}
+	assessment, ok := decision["assessment"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested decision.assessment object, got %#v", decision["assessment"])
+	}
+	if score, ok := assessment["score"].(float64); !ok || score != 88 {
+		t.Fatalf("expected decision.assessment.score=88, got %#v", assessment["score"])
+	}
+}
+
 func TestTasksIntegration_CompletionValidationReassignEscalation(t *testing.T) {
 	ctx := context.Background()
 	db, cleanup := setupPostgresWithMigrations(t)
@@ -471,4 +598,21 @@ ON CONFLICT DO NOTHING
 		t.Fatalf("insert principal role %s: %v", roleName, err)
 	}
 	return roleID
+}
+
+func mustJSON(t *testing.T, value any) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(value)
+	if err != nil {
+		t.Fatalf("marshal json: %v", err)
+	}
+	return raw
+}
+
+func intPtrTask(v int) *int {
+	return &v
+}
+
+func floatPtr(v float64) *float64 {
+	return &v
 }

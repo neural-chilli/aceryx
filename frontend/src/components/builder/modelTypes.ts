@@ -1,6 +1,8 @@
 export type StepType =
   | 'human_task'
   | 'agent'
+  | 'ai_component'
+  | 'extraction'
   | 'integration'
   | 'rule'
   | 'timer'

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import Button from 'primevue/button'
 
 const props = defineProps<{
@@ -9,9 +9,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   save: []
   publish: []
+  openAssistant: []
   exportYaml: []
   importYaml: [file: File]
 }>()
+
+const importInput = ref<HTMLInputElement | null>(null)
 
 function onBeforeUnload(event: BeforeUnloadEvent) {
   if (!props.unsaved) {
@@ -28,6 +31,20 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload)
 })
+
+function openImportPicker() {
+  importInput.value?.click()
+}
+
+function onImportChange(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) {
+    return
+  }
+  emit('importYaml', file)
+  input.value = ''
+}
 </script>
 
 <template>
@@ -35,11 +52,10 @@ onBeforeUnmount(() => {
     <div class="buttons">
       <Button label="Save" size="small" @click="emit('save')" />
       <Button label="Publish" size="small" severity="success" @click="emit('publish')" />
+      <Button label="AI Assist" size="small" severity="contrast" outlined @click="emit('openAssistant')" />
       <Button label="Export YAML" size="small" severity="secondary" @click="emit('exportYaml')" />
-      <label class="import">
-        <input type="file" accept=".yaml,.yml" @change="(event) => emit('importYaml', ((event.target as HTMLInputElement).files?.[0]) as File)" />
-        Import YAML
-      </label>
+      <Button label="Import YAML" size="small" severity="secondary" outlined @click="openImportPicker" />
+      <input ref="importInput" class="hidden-import" type="file" accept=".yaml,.yml" @change="onImportChange" />
     </div>
     <small v-if="unsaved" class="dirty">Unsaved changes</small>
   </header>
@@ -58,20 +74,12 @@ onBeforeUnmount(() => {
 
 .buttons {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.45rem;
 }
 
-.import {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  border: 1px solid var(--acx-border);
-  border-radius: 0.45rem;
-  padding: 0.2rem 0.4rem;
-}
-
-.import input {
-  max-width: 8rem;
+.hidden-import {
+  display: none;
 }
 
 .dirty {

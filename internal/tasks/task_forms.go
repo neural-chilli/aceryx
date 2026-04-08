@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -44,53 +45,218 @@ func SLAStatus(now time.Time, deadline *time.Time, startedAt *time.Time, slaHour
 
 func ValidateFormData(schema FormSchema, data map[string]any) []ValidationError {
 	errs := make([]ValidationError, 0)
-	for _, field := range schema.Fields {
-		v, ok := data[field.ID]
-		if field.Required && !ok {
-			errs = append(errs, ValidationError{Field: field.ID, Code: "required", Message: "field is required"})
+	for _, field := range flattenFormFields(schema) {
+		fieldKey := formFieldDataPath(field)
+		if fieldKey == "" {
+			continue
+		}
+		v, ok := getAtPath(data, fieldKey)
+		if field.Required && (!ok || isEmptyValue(v)) {
+			errs = append(errs, ValidationError{Field: fieldKey, Code: "required", Message: "field is required"})
 			continue
 		}
 		if !ok {
 			continue
 		}
+		if s, ok := v.(string); ok {
+			if field.MinLength != nil && len(s) < *field.MinLength {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "min_length", Message: fmt.Sprintf("minimum length is %d", *field.MinLength)})
+			}
+			if field.MaxLength != nil && len(s) > *field.MaxLength {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "max_length", Message: fmt.Sprintf("maximum length is %d", *field.MaxLength)})
+			}
+		}
 		switch strings.ToLower(field.Type) {
 		case "string":
 			if _, ok := v.(string); !ok {
-				errs = append(errs, ValidationError{Field: field.ID, Code: "type", Message: "must be a string"})
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "type", Message: "must be a string"})
 			}
 		case "number":
-			switch v.(type) {
-			case float64, float32, int, int64, int32, uint, uint64, json.Number:
-			default:
-				errs = append(errs, ValidationError{Field: field.ID, Code: "type", Message: "must be a number"})
+			num, ok := toFloat(v)
+			if !ok {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "type", Message: "must be a number"})
+				continue
+			}
+			if field.Min != nil && num < *field.Min {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "min", Message: fmt.Sprintf("minimum value is %v", *field.Min)})
+			}
+			if field.Max != nil && num > *field.Max {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "max", Message: fmt.Sprintf("maximum value is %v", *field.Max)})
+			}
+		case "integer":
+			num, ok := toFloat(v)
+			if !ok || num != float64(int64(num)) {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "type", Message: "must be an integer"})
+				continue
+			}
+			if field.Min != nil && num < *field.Min {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "min", Message: fmt.Sprintf("minimum value is %v", *field.Min)})
+			}
+			if field.Max != nil && num > *field.Max {
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "max", Message: fmt.Sprintf("maximum value is %v", *field.Max)})
 			}
 		case "boolean":
 			if _, ok := v.(bool); !ok {
-				errs = append(errs, ValidationError{Field: field.ID, Code: "type", Message: "must be a boolean"})
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "type", Message: "must be a boolean"})
 			}
 		case "object":
 			if _, ok := v.(map[string]any); !ok {
-				errs = append(errs, ValidationError{Field: field.ID, Code: "type", Message: "must be an object"})
+				errs = append(errs, ValidationError{Field: fieldKey, Code: "type", Message: "must be an object"})
 			}
 		}
 	}
 	return errs
 }
 
+func ValidateActionRequirements(schema FormSchema, outcome string, data map[string]any) []ValidationError {
+	if strings.TrimSpace(outcome) == "" {
+		return nil
+	}
+	for _, action := range schema.Actions {
+		if action.Value != outcome {
+			continue
+		}
+		errs := make([]ValidationError, 0)
+		for _, required := range action.Requires {
+			path := strings.TrimSpace(required)
+			if strings.HasPrefix(path, "decision.") {
+				path = strings.TrimPrefix(path, "decision.")
+			}
+			if path == "" {
+				continue
+			}
+			v, ok := getAtPath(data, path)
+			if !ok || isEmptyValue(v) {
+				errs = append(errs, ValidationError{Field: path, Code: "required_for_action", Message: "field is required for selected action"})
+			}
+		}
+		return errs
+	}
+	return nil
+}
+
 func buildDecisionPatch(schema FormSchema, data map[string]any) map[string]any {
 	out := map[string]any{}
-	for _, field := range schema.Fields {
+	for _, field := range flattenFormFields(schema) {
 		if !strings.HasPrefix(field.Bind, "decision.") {
 			continue
 		}
-		val, ok := data[field.ID]
+		writePath := strings.TrimPrefix(field.Bind, "decision.")
+		if writePath == "" {
+			continue
+		}
+		readPath := formFieldDataPath(field)
+		if readPath == "" {
+			readPath = writePath
+		}
+		val, ok := getAtPath(data, readPath)
 		if !ok {
 			continue
 		}
-		key := strings.TrimPrefix(field.Bind, "decision.")
-		out[key] = val
+		setAtPath(out, writePath, val)
 	}
 	return out
+}
+
+func hasFormSchemaContent(schema FormSchema) bool {
+	return strings.TrimSpace(schema.Title) != "" || len(schema.Actions) > 0 || len(schema.Layout) > 0 || len(schema.Fields) > 0
+}
+
+func flattenFormFields(schema FormSchema) []FormField {
+	out := make([]FormField, 0, len(schema.Fields))
+	out = append(out, schema.Fields...)
+	for _, section := range schema.Layout {
+		out = append(out, section.Fields...)
+	}
+	return out
+}
+
+func formFieldDataPath(field FormField) string {
+	if strings.TrimSpace(field.ID) != "" {
+		return strings.TrimSpace(field.ID)
+	}
+	bind := strings.TrimSpace(field.Bind)
+	if strings.HasPrefix(bind, "decision.") {
+		return strings.TrimPrefix(bind, "decision.")
+	}
+	return bind
+}
+
+func getAtPath(obj map[string]any, path string) (any, bool) {
+	parts := strings.Split(path, ".")
+	cur := any(obj)
+	for _, part := range parts {
+		next, ok := cur.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		value, ok := next[part]
+		if !ok {
+			return nil, false
+		}
+		cur = value
+	}
+	return cur, true
+}
+
+func setAtPath(obj map[string]any, path string, value any) {
+	parts := strings.Split(path, ".")
+	cur := obj
+	for i, part := range parts {
+		if i == len(parts)-1 {
+			cur[part] = value
+			return
+		}
+		next, ok := cur[part].(map[string]any)
+		if !ok {
+			next = map[string]any{}
+			cur[part] = next
+		}
+		cur = next
+	}
+}
+
+func isEmptyValue(v any) bool {
+	if v == nil {
+		return true
+	}
+	if s, ok := v.(string); ok {
+		return strings.TrimSpace(s) == ""
+	}
+	if arr, ok := v.([]any); ok {
+		return len(arr) == 0
+	}
+	if arr, ok := v.([]string); ok {
+		return len(arr) == 0
+	}
+	return false
+}
+
+func toFloat(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case float32:
+		return float64(n), true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case int32:
+		return float64(n), true
+	case uint:
+		return float64(n), true
+	case uint64:
+		return float64(n), true
+	case json.Number:
+		f, err := n.Float64()
+		if err != nil {
+			return 0, false
+		}
+		return f, true
+	default:
+		return 0, false
+	}
 }
 
 func contains(items []string, val string) bool {

@@ -28,12 +28,23 @@ WITH claim AS (
     UPDATE case_steps cs
     SET assigned_to = $4
     FROM cases c
-    WHERE cs.case_id = $1
+WHERE cs.case_id = $1
       AND cs.step_id = $2
       AND cs.case_id = c.id
       AND c.tenant_id = $3
       AND cs.state = 'active'
       AND cs.assigned_to IS NULL
+      AND (
+          COALESCE(cs.metadata->>'role', '') = ''
+          OR EXISTS (
+              SELECT 1
+              FROM principal_roles pr
+              JOIN roles r ON r.id = pr.role_id
+              WHERE pr.principal_id = $4
+                AND r.tenant_id = $3
+                AND r.name = COALESCE(cs.metadata->>'role', '')
+          )
+      )
     RETURNING 1
 )
 SELECT EXISTS(SELECT 1 FROM claim)
@@ -42,6 +53,41 @@ SELECT EXISTS(SELECT 1 FROM claim)
 		return fmt.Errorf("claim task: %w", err)
 	}
 	if !claimed {
+		var (
+			assignedTo   sql.NullString
+			requiredRole string
+		)
+		rowErr := tx.QueryRowContext(ctx, `
+SELECT cs.assigned_to, COALESCE(cs.metadata->>'role', '')
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE cs.case_id = $1
+  AND cs.step_id = $2
+  AND c.tenant_id = $3
+  AND cs.state = 'active'
+`, caseID, stepID, tenantID).Scan(&assignedTo, &requiredRole)
+		if rowErr != nil {
+			return ErrAlreadyClaimed
+		}
+		if assignedTo.Valid {
+			return ErrAlreadyClaimed
+		}
+		if requiredRole != "" {
+			var eligible bool
+			eligibilityErr := tx.QueryRowContext(ctx, `
+SELECT EXISTS (
+    SELECT 1
+    FROM principal_roles pr
+    JOIN roles r ON r.id = pr.role_id
+    WHERE pr.principal_id = $1
+      AND r.tenant_id = $2
+      AND r.name = $3
+)
+`, principalID, tenantID, requiredRole).Scan(&eligible)
+			if eligibilityErr == nil && !eligible {
+				return ErrForbidden
+			}
+		}
 		return ErrAlreadyClaimed
 	}
 
@@ -142,6 +188,7 @@ func (s *TaskService) CompleteTask(ctx context.Context, tenantID, principalID, c
 		payload = extractAgentOriginalOutput(taskDetail.Metadata)
 	}
 	validation := ValidateFormData(taskDetail.FormSchema, payload)
+	validation = append(validation, ValidateActionRequirements(taskDetail.FormSchema, req.Outcome, payload)...)
 	if len(validation) > 0 {
 		return fmt.Errorf("validation_failed: %s", validation[0].Message)
 	}
@@ -184,7 +231,15 @@ WHERE cs.case_id=$1 AND cs.step_id=$2 AND c.id=cs.case_id AND c.tenant_id=$3 AND
 		}
 		if _, err := tx.ExecContext(ctx, `
 UPDATE cases
-SET data = COALESCE(data, '{}'::jsonb) || jsonb_build_object('decision', COALESCE(data->'decision', '{}'::jsonb) || $2::jsonb),
+SET data = COALESCE(data, '{}'::jsonb) || jsonb_build_object(
+    'decision',
+    (
+      CASE
+        WHEN jsonb_typeof(data->'decision') = 'object' THEN data->'decision'
+        ELSE '{}'::jsonb
+      END
+    ) || $2::jsonb
+),
     version = version + 1,
     updated_at = now()
 WHERE id = $1

@@ -66,6 +66,10 @@ func (h *TaskHandlers) Claim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.Tasks.ClaimTask(r.Context(), principal.TenantID, principal.ID, caseID, stepID); err != nil {
+		if errors.Is(err, tasks.ErrForbidden) {
+			writeError(w, http.StatusForbidden, "forbidden")
+			return
+		}
 		if errors.Is(err, tasks.ErrAlreadyClaimed) {
 			writeError(w, http.StatusConflict, "task_already_claimed")
 			return

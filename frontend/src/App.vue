@@ -156,10 +156,12 @@ function onBrandLogoError() {
 }
 
 .shell {
+  height: 100vh;
   min-height: 100vh;
   display: grid;
   grid-template-rows: auto 1fr auto auto;
   background: var(--acx-surface);
+  overflow: hidden;
 }
 
 .topbar {
@@ -234,7 +236,11 @@ function onBrandLogoError() {
 }
 
 .content {
+  display: flex;
+  flex-direction: column;
   padding: 1rem;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .footer {

@@ -156,7 +156,7 @@ WHERE cs.case_id = $1 AND cs.step_id = $2 AND c.tenant_id = $3
 		d.Outcomes = outcomes
 		d.AvailableActions = append([]string(nil), outcomes...)
 	}
-	if schema := configuredFormSchema(d.Metadata); len(schema.Fields) > 0 {
+	if schema := configuredFormSchema(d.Metadata); hasFormSchemaContent(schema) {
 		d.FormSchema = schema
 		if d.Form == "" {
 			if v, ok := d.Metadata["form"].(string); ok {

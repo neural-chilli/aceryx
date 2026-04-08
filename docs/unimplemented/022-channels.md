@@ -1,0 +1,63 @@
+# Spec 022 — Channels & Data Ingestion — Gap Audit
+
+- Spec file: `docs/specs/022-channels.md`
+- Audit date: 2026-04-06
+- Scope lenses: DB, backend, frontend, AI builder understanding, workflow usability, functional completeness, intuitiveness
+- Note: this is evidence-based static comparison; route aliases/renames may require manual confirmation.
+
+## DB
+### Tables declared in spec
+- [x] `channel_events` has migration/code evidence.
+- [x] `channels` has migration/code evidence.
+### Remaining work
+- Ensure all tables/indexes/constraints/comments from spec are fully represented in migrations.
+- Verify tenancy scoping and audit/provenance columns where required by this spec.
+
+## Backend
+### Endpoints declared in spec
+- [ ] `DELETE /api/v1/channels/:id` route not found (likely unimplemented or renamed).
+- [x] `GET /api/v1/channels` route evidence found (matched as `GET /api/v1/channels`).
+- [ ] `GET /api/v1/channels/:id` route not found (likely unimplemented or renamed).
+- [ ] `GET /api/v1/channels/:id/events` route not found (likely unimplemented or renamed).
+- [ ] `GET /intake/:channel_id` route not found (likely unimplemented or renamed).
+- [x] `POST /api/v1/channels` route evidence found (matched as `POST /api/v1/channels`).
+- [ ] `POST /api/v1/channels/:id/disable` route not found (likely unimplemented or renamed).
+- [ ] `POST /api/v1/channels/:id/enable` route not found (likely unimplemented or renamed).
+- [ ] `POST /api/v1/channels/webhook/:channel_id` route not found (likely unimplemented or renamed).
+- [ ] `POST /intake/:channel_id` route not found (likely unimplemented or renamed).
+- [ ] `PUT /api/v1/channels/:id` route not found (likely unimplemented or renamed).
+### Remaining work
+- Confirm handlers implement full validation/error semantics from spec, not just route presence.
+- Confirm RBAC and audit behaviour for state-changing operations.
+
+## Frontend
+- No explicit frontend path references detected in this spec file.
+- Remaining work: manually verify required UX surfaces are implemented and discoverable.
+
+## AI Builder Understanding
+### Step/capability keywords detected
+- [ ] `hmac` has no obvious builder/engine references (assistant may not target it reliably).
+### Remaining work
+- Add canonical examples/rules for this spec to assistant prompt context.
+- Ensure capability metadata is exposed to AI assist (connectors/components/step schemas).
+
+## Workflow Usability Right Now
+- Assess if a user can build this feature end-to-end in Builder without hand-editing YAML.
+- Remaining work: verify config forms expose all required fields and validation is actionable.
+- Remaining work: verify preview/test/inspection flows exist for this feature.
+
+## Functional Completeness
+- Remaining work: validate all BDD scenarios and behavioural rules from the spec against implementation.
+- Remaining work: verify failure handling, retries/timeouts, idempotency, and audit trail semantics.
+- Remaining work: verify multi-tenant boundaries and data ownership constraints.
+
+## Intuitiveness
+- Remaining work: ensure defaults, labels, and affordances are understandable without reading docs.
+- Remaining work: add guardrails/messages for likely misconfiguration paths.
+
+## Consolidated To-Do
+1. Validate DB parity (tables/indexes/constraints) with this spec.
+2. Validate backend parity (routes + behaviour + RBAC + audit).
+3. Validate frontend parity (all required UX states and actions).
+4. Validate AI builder awareness (capability metadata + prompt context + canonical mappings).
+5. Run scenario-level verification against the spec's BDD/behaviour section and log gaps.

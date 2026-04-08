@@ -124,6 +124,7 @@ func TestParseInitialYAMLComponents(t *testing.T) {
 	files := []string{
 		"sentiment_analysis.yaml",
 		"document_classification.yaml",
+		"document_extraction.yaml",
 		"pii_detection.yaml",
 		"urgency_scoring.yaml",
 		"keyword_extraction.yaml",

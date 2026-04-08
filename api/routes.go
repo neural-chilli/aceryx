@@ -19,6 +19,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/agentic"
 	"github.com/neural-chilli/aceryx/internal/agents"
 	"github.com/neural-chilli/aceryx/internal/ai"
+	"github.com/neural-chilli/aceryx/internal/assistant"
 	"github.com/neural-chilli/aceryx/internal/audit"
 	"github.com/neural-chilli/aceryx/internal/cases"
 	"github.com/neural-chilli/aceryx/internal/channels"
@@ -30,6 +31,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/connectors/gchatconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/httpconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/jiraconn"
+	"github.com/neural-chilli/aceryx/internal/connectors/postgresconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/slackconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/teamsconn"
 	"github.com/neural-chilli/aceryx/internal/connectors/webhookreceiver"
@@ -50,6 +52,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/drivers/smtp"
 	"github.com/neural-chilli/aceryx/internal/drivers/sqlite"
 	"github.com/neural-chilli/aceryx/internal/engine"
+	"github.com/neural-chilli/aceryx/internal/extraction"
 	"github.com/neural-chilli/aceryx/internal/llm"
 	"github.com/neural-chilli/aceryx/internal/llm/anthropic"
 	"github.com/neural-chilli/aceryx/internal/llm/custom"
@@ -69,6 +72,7 @@ import (
 	"github.com/neural-chilli/aceryx/internal/tenants"
 	"github.com/neural-chilli/aceryx/internal/triggers"
 	"github.com/neural-chilli/aceryx/internal/vault"
+	workflowsvc "github.com/neural-chilli/aceryx/internal/workflows"
 )
 
 // NewRouter creates and configures the HTTP router.
@@ -93,6 +97,8 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	caseSvc := cases.NewCaseService(db, eng)
 	reportSvc := cases.NewReportsService(db, 5*time.Minute)
 	caseHandlers := handlers.NewCaseHandlers(ctSvc, caseSvc, reportSvc)
+	workflowService := workflowsvc.NewService(db)
+	workflowHandlers := handlers.NewWorkflowHandlers(workflowService)
 	reportingSvc := reports.NewService(db, agents.NewLLMClientFromEnv(120*time.Second))
 	reportsHandlers := handlers.NewReportsHandlers(reportingSvc)
 	auditSvc := audit.NewService(db)
@@ -114,6 +120,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	connectorRegistry.Register(teamsconn.New())
 	connectorRegistry.Register(gchatconn.New())
 	connectorRegistry.Register(jiraconn.New())
+	connectorRegistry.Register(postgresconn.New())
 	connectorRegistry.Register(docgenconn.New(db, nil))
 	connectorHandlers := handlers.NewConnectorHandlers(connectorRegistry, secretStore)
 	driverRegistry := drivers.NewDriverRegistry()
@@ -170,6 +177,11 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	aiComponentRegistry := ai.NewComponentRegistry(aiComponentStore)
 	_ = aiComponentRegistry.LoadFromDirectory(firstNonEmpty(os.Getenv("ACERYX_AI_COMPONENTS_DIR"), "./ai-components"))
 	aiComponentHandlers := handlers.NewAIComponentHandlers(aiComponentRegistry)
+	extractionService := extraction.NewService(extraction.NewRepository(db))
+	if eng != nil {
+		extractionService.SetStepCompleter(eng)
+	}
+	extractionHandlers := handlers.NewExtractionHandlers(extractionService)
 	pluginStore := plugins.NewStore(db)
 	httpHost := hostfns.NewHTTPHost(&http.Client{
 		Timeout: 60 * time.Second,
@@ -267,6 +279,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 		},
 	})
 	webhookHandler := webhookreceiver.NewHandler(db, secretStore)
+	webhookHandler.SetEvaluator(eng)
 	wsHub := notify.NewHub(db, notify.DefaultTokenValidator(func(ctx context.Context, token string) (uuid.UUID, uuid.UUID, error) {
 		ap, err := authSvc.AuthenticateBearer(ctx, token)
 		if err != nil {
@@ -291,6 +304,8 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	agenticTraceStore := agentic.NewPostgresTraceStore(db)
 	agenticAPI := agentic.NewAPI(db, agenticTraceStore)
 	agenticHandlers := handlers.NewAgenticHandlers(agenticAPI)
+	assistantAPI := assistant.NewAPI(db, agents.NewLLMClientFromEnv(120*time.Second))
+	assistantHandlers := handlers.NewAssistantHandlers(assistantAPI)
 	mcpServerEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("ACERYX_MCP_SERVER_ENABLED")), "true") || strings.TrimSpace(os.Getenv("ACERYX_MCP_SERVER_ENABLED")) == "1"
 	mcpServerConfig := mcpserver.ServerConfig{
 		Enabled:           mcpServerEnabled,
@@ -342,6 +357,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 			ai.NewTaskServiceAdapter(taskSvc),
 			aiComponentRegistry,
 		)))
+		eng.RegisterExecutor("extraction", extraction.NewStepExecutor(db, taskSvc))
 		eng.RegisterExecutor("plugin", plugins.NewStepExecutor(db, pluginRuntime))
 		eng.SetEscalationCallback(taskSvc.HandleOverdue)
 	}
@@ -410,6 +426,14 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("GET /case-types/{id}", withPerm("cases:read", caseHandlers.GetCaseType))
 
 	mux.Handle("POST /cases", withPerm("cases:create", caseHandlers.CreateCase))
+	mux.Handle("GET /workflows", withPerm("workflows:view", workflowHandlers.List))
+	mux.Handle("POST /workflows", withPerm("workflows:edit", workflowHandlers.Create))
+	mux.Handle("GET /workflows/{id}/versions/draft", withPerm("workflows:view", workflowHandlers.GetDraft))
+	mux.Handle("PUT /workflows/{id}/versions/draft", withPerm("workflows:edit", workflowHandlers.PutDraft))
+	mux.Handle("POST /workflows/{id}/publish", withPerm("workflows:deploy", workflowHandlers.Publish))
+	mux.Handle("GET /workflows/{id}/yaml/latest", withPerm("workflows:view", workflowHandlers.ExportYAMLLatest))
+	mux.Handle("GET /workflows/{id}/yaml/{version}", withPerm("workflows:view", workflowHandlers.ExportYAMLVersion))
+	mux.Handle("PUT /workflows/{id}/yaml/draft", withPerm("workflows:edit", workflowHandlers.ImportYAMLDraft))
 	mux.Handle("GET /cases/{id}", withPerm("cases:read", caseHandlers.GetCase))
 	mux.Handle("GET /cases", withPerm("cases:read", caseHandlers.ListCases))
 	mux.Handle("PATCH /cases/{id}/data", withPerm("cases:update", caseHandlers.PatchCaseData))
@@ -514,6 +538,14 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("GET /api/v1/agentic-traces", withPerm("cases:read", agenticHandlers.ListTraces))
 	mux.Handle("GET /api/v1/agentic-traces/{id}", withPerm("cases:read", agenticHandlers.GetTrace))
 	mux.Handle("GET /api/v1/agentic-traces/{id}/events", withPerm("cases:read", agenticHandlers.ListEvents))
+	mux.Handle("GET /api/v1/assistant/stream", withPerm("workflows:view", assistantHandlers.Stream))
+	mux.Handle("POST /api/v1/assistant/message", withPerm("workflows:view", assistantHandlers.Message))
+	mux.Handle("POST /api/v1/assistant/sessions", withPerm("workflows:view", assistantHandlers.CreateSession))
+	mux.Handle("GET /api/v1/assistant/sessions/{id}", withPerm("workflows:view", assistantHandlers.GetSession))
+	mux.Handle("DELETE /api/v1/assistant/sessions/{id}", withPerm("workflows:edit", assistantHandlers.DeleteSession))
+	mux.Handle("POST /api/v1/assistant/diffs/{id}/apply", withPerm("workflows:edit", assistantHandlers.ApplyDiff))
+	mux.Handle("POST /api/v1/assistant/diffs/{id}/reject", withPerm("workflows:edit", assistantHandlers.RejectDiff))
+	mux.Handle("GET /api/v1/assistant/diffs", withPerm("workflows:view", assistantHandlers.ListDiffs))
 	mux.Handle("GET /api/v1/admin/mcp-keys", withPerm("admin:tenant", mcpServerAdminHandlers.ListKeys))
 	mux.Handle("POST /api/v1/admin/mcp-keys", withPerm("admin:tenant", mcpServerAdminHandlers.CreateKey))
 	mux.Handle("PUT /api/v1/admin/mcp-keys/{id}", withPerm("admin:tenant", mcpServerAdminHandlers.UpdateKey))
@@ -549,6 +581,19 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("PUT /api/v1/ai-components/{id}", withPerm("workflows:edit", aiComponentHandlers.Update))
 	mux.Handle("DELETE /api/v1/ai-components/{id}", withPerm("workflows:edit", aiComponentHandlers.Delete))
 	mux.Handle("POST /api/v1/ai-components/reload", withPerm("admin:tenant", aiComponentHandlers.Reload))
+	mux.Handle("GET /api/v1/extraction-schemas", withPerm("workflows:view", extractionHandlers.ListSchemas))
+	mux.Handle("POST /api/v1/extraction-schemas", withPerm("workflows:edit", extractionHandlers.CreateSchema))
+	mux.Handle("GET /api/v1/extraction-schemas/{id}", withPerm("workflows:view", extractionHandlers.GetSchema))
+	mux.Handle("PUT /api/v1/extraction-schemas/{id}", withPerm("workflows:edit", extractionHandlers.UpdateSchema))
+	mux.Handle("DELETE /api/v1/extraction-schemas/{id}", withPerm("workflows:edit", extractionHandlers.DeleteSchema))
+	mux.Handle("GET /api/v1/extraction-jobs/{id}", withPerm("workflows:view", extractionHandlers.GetJob))
+	mux.Handle("GET /api/v1/extraction-jobs/{id}/fields", withPerm("workflows:view", extractionHandlers.ListFields))
+	mux.Handle("POST /api/v1/extraction-jobs/{id}/accept", withPerm("workflows:edit", extractionHandlers.AcceptJob))
+	mux.Handle("POST /api/v1/extraction-jobs/{id}/reject", withPerm("workflows:edit", extractionHandlers.RejectJob))
+	mux.Handle("PUT /api/v1/extraction-fields/{id}/confirm", withPerm("workflows:edit", extractionHandlers.ConfirmField))
+	mux.Handle("PUT /api/v1/extraction-fields/{id}/correct", withPerm("workflows:edit", extractionHandlers.CorrectField))
+	mux.Handle("PUT /api/v1/extraction-fields/{id}/reject", withPerm("workflows:edit", extractionHandlers.RejectField))
+	mux.Handle("GET /api/v1/extraction-corrections", withPerm("workflows:view", extractionHandlers.ListCorrections))
 	mux.Handle("GET /api/v1/knowledge-bases", withPerm("workflows:view", ragHandlers.ListKnowledgeBases))
 	mux.Handle("POST /api/v1/knowledge-bases", withPerm("workflows:edit", ragHandlers.CreateKnowledgeBase))
 	mux.Handle("GET /api/v1/knowledge-bases/{id}", withPerm("workflows:view", ragHandlers.GetKnowledgeBase))
@@ -563,9 +608,9 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	mux.Handle("POST /webhooks/{path...}", http.HandlerFunc(webhookHandler.ServeHTTP))
 	mux.Handle("GET /tasks", withAuth(taskHandlers.Inbox))
 	mux.Handle("GET /tasks/{case_id}/{step_id}", withAuth(taskHandlers.GetTask))
-	mux.Handle("POST /tasks/{case_id}/{step_id}/claim", withAuth(taskHandlers.Claim))
-	mux.Handle("POST /tasks/{case_id}/{step_id}/complete", withAuth(taskHandlers.Complete))
-	mux.Handle("PUT /tasks/{case_id}/{step_id}/draft", withAuth(taskHandlers.SaveDraft))
+	mux.Handle("POST /tasks/{case_id}/{step_id}/claim", withPerm("tasks:claim", taskHandlers.Claim))
+	mux.Handle("POST /tasks/{case_id}/{step_id}/complete", withPerm("tasks:complete", taskHandlers.Complete))
+	mux.Handle("PUT /tasks/{case_id}/{step_id}/draft", withPerm("tasks:complete", taskHandlers.SaveDraft))
 	mux.Handle("POST /tasks/{case_id}/{step_id}/reassign", withPerm("tasks:reassign", taskHandlers.Reassign))
 	mux.Handle("POST /tasks/{case_id}/{step_id}/escalate", withPerm("tasks:escalate", taskHandlers.Escalate))
 	mux.HandleFunc("GET /ws", wsHub.HandleWS)

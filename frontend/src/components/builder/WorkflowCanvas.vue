@@ -5,6 +5,8 @@ import '@vue-flow/core/dist/style.css'
 import '@vue-flow/core/dist/theme-default.css'
 import HumanTaskNode from './nodes/HumanTaskNode.vue'
 import AgentNode from './nodes/AgentNode.vue'
+import AIComponentNode from './nodes/AIComponentNode.vue'
+import ExtractionNode from './nodes/ExtractionNode.vue'
 import IntegrationNode from './nodes/IntegrationNode.vue'
 import RuleNode from './nodes/RuleNode.vue'
 import TimerNode from './nodes/TimerNode.vue'
@@ -61,6 +63,8 @@ const edges = computed(() => astToEdges(props.ast))
 const nodeTypes: Record<string, Component> = {
   human_task: HumanTaskNode,
   agent: AgentNode,
+  ai_component: AIComponentNode,
+  extraction: ExtractionNode,
   integration: IntegrationNode,
   rule: RuleNode,
   timer: TimerNode,
@@ -116,7 +120,17 @@ function onPaneClick() {
 
 function onDrop(event: DragEvent) {
   event.preventDefault()
-  const type = event.dataTransfer?.getData('text/aceryx-step-type')
+  const rawPayload = event.dataTransfer?.getData('text/aceryx-step-payload')?.trim()
+  const fallbackType = event.dataTransfer?.getData('text/aceryx-step-type')?.trim()
+  let payload: { type: string; config?: Record<string, unknown> } | null = null
+  if (rawPayload) {
+    try {
+      payload = JSON.parse(rawPayload) as { type: string; config?: Record<string, unknown> }
+    } catch {
+      payload = null
+    }
+  }
+  const type = payload?.type || fallbackType
   if (!type) {
     return
   }
@@ -124,7 +138,13 @@ function onDrop(event: DragEvent) {
     x: event.clientX,
     y: event.clientY,
   })
-  addStep(props.ast, type, position)
+  const id = addStep(props.ast, type, position)
+  if (payload?.config) {
+    const step = props.ast.steps.find((candidate) => candidate.id === id)
+    if (step) {
+      step.config = { ...(step.config ?? {}), ...payload.config }
+    }
+  }
   updateAst()
 }
 

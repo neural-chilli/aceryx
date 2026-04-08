@@ -120,6 +120,25 @@ VALUES ($1, '/inbound/loan', 'webhook_case', 'create', 'X-Signature', 'webhook_s
 	if rr1.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d body=%s", rr1.Code, rr1.Body.String())
 	}
+	var caseCount int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cases WHERE tenant_id = $1`, tenantID).Scan(&caseCount); err != nil {
+		t.Fatalf("count webhook-created cases: %v", err)
+	}
+	if caseCount != 1 {
+		t.Fatalf("expected one webhook-created case, got %d", caseCount)
+	}
+	var initializedSteps int
+	if err := db.QueryRowContext(ctx, `
+SELECT COUNT(*)
+FROM case_steps cs
+JOIN cases c ON c.id = cs.case_id
+WHERE c.tenant_id = $1
+`, tenantID).Scan(&initializedSteps); err != nil {
+		t.Fatalf("count webhook-initialized case steps: %v", err)
+	}
+	if initializedSteps == 0 {
+		t.Fatal("expected webhook-created case to initialize case_steps")
+	}
 
 	req2 := httptest.NewRequest(http.MethodPost, "/webhooks/inbound/loan", strings.NewReader(payload))
 	req2.SetPathValue("path", "inbound/loan")
@@ -136,6 +155,13 @@ VALUES ($1, '/inbound/loan', 'webhook_case', 'create', 'X-Signature', 'webhook_s
 	}
 	if deliveries != 1 {
 		t.Fatalf("expected one idempotency delivery row, got %d", deliveries)
+	}
+	var caseCountAfterDuplicate int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM cases WHERE tenant_id = $1`, tenantID).Scan(&caseCountAfterDuplicate); err != nil {
+		t.Fatalf("count cases after duplicate delivery: %v", err)
+	}
+	if caseCountAfterDuplicate != 1 {
+		t.Fatalf("expected duplicate delivery to avoid creating extra cases, got %d", caseCountAfterDuplicate)
 	}
 }
 

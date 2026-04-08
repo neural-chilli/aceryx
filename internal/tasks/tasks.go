@@ -71,14 +71,37 @@ type AssignmentConfig struct {
 }
 
 type FormSchema struct {
-	Fields []FormField `json:"fields"`
+	Title   string        `json:"title,omitempty"`
+	Layout  []FormSection `json:"layout,omitempty"`
+	Actions []FormAction  `json:"actions,omitempty"`
+	Fields  []FormField   `json:"fields,omitempty"`
+}
+
+type FormSection struct {
+	Section string      `json:"section"`
+	Fields  []FormField `json:"fields"`
+}
+
+type FormAction struct {
+	Label    string   `json:"label"`
+	Value    string   `json:"value"`
+	Style    string   `json:"style,omitempty"`
+	Requires []string `json:"requires,omitempty"`
 }
 
 type FormField struct {
-	ID       string `json:"id"`
-	Type     string `json:"type"`
-	Required bool   `json:"required"`
-	Bind     string `json:"bind"`
+	ID          string   `json:"id,omitempty"`
+	Bind        string   `json:"bind,omitempty"`
+	Label       string   `json:"label,omitempty"`
+	Type        string   `json:"type,omitempty"`
+	Readonly    bool     `json:"readonly,omitempty"`
+	Required    bool     `json:"required,omitempty"`
+	Options     []string `json:"options,omitempty"`
+	OptionsFrom string   `json:"options_from,omitempty"`
+	MinLength   *int     `json:"min_length,omitempty"`
+	MaxLength   *int     `json:"max_length,omitempty"`
+	Min         *float64 `json:"min,omitempty"`
+	Max         *float64 `json:"max,omitempty"`
 }
 
 type InboxTask struct {
@@ -181,7 +204,7 @@ func (s *TaskService) CreateTaskFromActivation(ctx context.Context, caseID uuid.
 	}
 
 	metadata := map[string]any{"role": cfg.AssignToRole, "form": cfg.Form, "sla_hours": cfg.SLAHours, "escalation": cfg.Escalation}
-	if len(cfg.FormSchema.Fields) > 0 {
+	if hasFormSchemaContent(cfg.FormSchema) {
 		metadata["form_schema"] = cfg.FormSchema
 	}
 	if len(cfg.Outcomes) > 0 {

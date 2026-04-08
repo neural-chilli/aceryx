@@ -1,0 +1,103 @@
+# Extracts structured fields from document text/OCR with confidence scores.
+id: document_extraction
+display_label: "Extract Document Fields"
+category: "AI: Extraction"
+description: "Extract configured fields from document content and return structured values with per-field confidence."
+icon: "file-search"
+tier: commercial
+
+input_schema:
+  type: object
+  properties:
+    text:
+      type: string
+    filename:
+      type: string
+    mime_type:
+      type: string
+    pages:
+      type: array
+      items:
+        type: string
+    extraction_fields:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          description:
+            type: string
+        required: [name]
+  required: [text, extraction_fields]
+
+output_schema:
+  type: object
+  properties:
+    fields:
+      type: array
+      items:
+        type: object
+        properties:
+          name:
+            type: string
+          value:
+            type: string
+          confidence:
+            type: number
+            minimum: 0
+            maximum: 1
+          rationale:
+            type: string
+        required: [name, value, confidence]
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+    needs_review:
+      type: boolean
+  required: [fields, confidence]
+
+system_prompt: |
+  You perform deterministic business document extraction.
+  Extract only requested fields from the provided content.
+  Return strictly valid JSON matching the output schema.
+  If a requested value is missing, return an empty string with low confidence.
+
+user_prompt_template: |
+  Extract fields from this document.
+  Filename: {{.Input.filename}}
+  MIME: {{.Input.mime_type}}
+
+  Requested fields:
+  {{- range .Input.extraction_fields }}
+  - {{ .name }}{{ if .description }}: {{ .description }}{{ end }}
+  {{- end }}
+
+  Content:
+  {{.Input.text}}
+
+model_hints:
+  requires_vision: false
+  preferred_size: medium
+  max_tokens: 1200
+
+confidence:
+  field_path: "confidence"
+  auto_accept_above: 0.9
+  escalate_below: 0.7
+
+config_fields:
+  - name: input_paths
+    type: string
+    label: "Input document paths"
+    required: true
+  - name: extraction_fields
+    type: string
+    label: "Fields to extract (JSON array)"
+    required: true
+  - name: output_path
+    type: string
+    label: "Output path"
+    required: true
+    default: "case.data.extraction"

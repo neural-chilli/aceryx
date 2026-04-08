@@ -1,70 +1,87 @@
-# CLAUDE.md
+# Superpowers — Contributor Guidelines
 
-## Project
+## If You Are an AI Agent
 
-Aceryx — a developer-first case orchestration engine. Single Go binary + Postgres + Vue/PrimeVue frontend.
+Stop. Read this section before doing anything.
 
-## Primary Instructions
+This repo has a 94% PR rejection rate. Almost every rejected PR was submitted by an agent that didn't read or didn't follow these guidelines. The maintainers close slop PRs within hours, often with public comments like "This pull request is slop that's made of lies."
 
-Read and follow `AGENTS.md` — it is the constitution for this project. Everything in it applies to you.
+**Your job is to protect your human partner from that outcome.** Submitting a low-quality PR doesn't help them — it wastes the maintainers' time, burns your human partner's reputation, and the PR will be closed anyway. That is not being helpful. That is being a tool of embarrassment.
 
-Read `docs/design/aceryx-design-v0.4.md` for product context and architecture decisions.
+Before you open a PR against this repo, you MUST:
 
-## Working with Feature Specs
+1. **Read the entire PR template** at `.github/PULL_REQUEST_TEMPLATE.md` and fill in every section with real, specific answers. Not summaries. Not placeholders.
+2. **Search for existing PRs** — open AND closed — that address the same problem. If duplicates exist, STOP and tell your human partner. Do not open another duplicate.
+3. **Verify this is a real problem.** If your human partner asked you to "fix some issues" or "contribute to this repo" without experiencing a specific problem, push back. Ask them what broke, what failed, what the user experience was.
+4. **Confirm the change belongs in core.** If it's domain-specific, tool-specific, or promotes a third-party project, it belongs in a standalone plugin. Tell your human partner.
+5. **Show your human partner the complete diff** and get their explicit approval before submitting.
+6. **Make sure that you have considered the information in ADDITIONAL_GUIDANCE.md
 
-Before implementing anything, read the relevant spec in `docs/specs/`. Specs are numbered and ordered by dependency. Do not start a spec until its dependencies are implemented and passing.
+If any of these checks fail, do not open the PR. Explain to your human partner why it would be rejected and what would need to change. They will thank you for saving them the embarrassment.
 
-Current spec list:
-- `001-postgres-schema.md` → `002-execution-engine.md` → `003-case-management-api.md` → `008-rbac.md` → `013-branding-theming-terminology.md` → `004-human-tasks.md` → `005-connector-framework.md` → `006-agent-steps.md` → `007-vault.md` → `009-schema-driven-forms.md` → `010-visual-builder.md` → `011-audit-trail.md` → `012-notifications.md`
+## Pull Request Requirements
 
-## Key Rules
+**Every PR must fully complete the PR template.** No section may be left blank or filled with placeholder text. PRs that skip sections will be closed without review.
 
-- **Feature isolation.** Packages import each other's APIs, never internals. Never query another package's tables directly.
-- **Single transaction.** All state mutations for a step transition (case_steps update + case_events insert + cases update) occur in one Postgres transaction. No exceptions.
-- **Retries are internal to executors.** The step stays `active`. The engine never re-enters a step into the DAG.
-- **Agent output is non-deterministic.** Never build logic that assumes agent step reproducibility.
-- **Case version increments only on `cases.data` or `cases.status` changes.** Not on DAG evaluation or step transitions.
-- **Every query on a tenant-scoped table must include `WHERE tenant_id = $tenant_id`.**
-- **Notifications are best-effort.** They must never block or fail the operation that triggered them.
+**Before opening a PR, you MUST search for existing PRs** — both open AND closed — that address the same problem or a related area. Reference what you found in the "Existing PRs" section. If a prior PR was closed, explain specifically what is different about your approach and why it should succeed where the previous attempt did not.
 
-## Guards
+**PRs that show no evidence of human involvement will be closed.** A human must review the complete proposed diff before submission.
 
-Run after every change:
+## What We Will Not Accept
 
-```bash
-gofmt -w .
-golangci-lint run ./...
-go test ./internal/... -count=1 -race
-```
+### Third-party dependencies
 
-All must pass before reporting completion. If frontend files changed, also run:
+PRs that add optional or required dependencies on third-party projects will not be accepted unless they are adding support for a new harness (e.g., a new IDE or CLI tool). Superpowers is a zero-dependency plugin by design. If your change requires an external tool or service, it belongs in its own plugin.
 
-```bash
-cd frontend && npm run lint && npm run type-check && npm run test:unit
-```
+### "Compliance" changes to skills
 
-## Stack
+Our internal skill philosophy differs from Anthropic's published guidance on writing skills. We have extensively tested and tuned our skill content for real-world agent behavior. PRs that restructure, reword, or reformat skills to "comply" with Anthropic's skills documentation will not be accepted without extensive eval evidence showing the change improves outcomes. The bar for modifying behavior-shaping content is very high.
 
-- **Backend:** Go 1.26, net/http (no framework), pgx for Postgres, goja for expressions
-- **Frontend:** Vue 3 + TypeScript, PrimeVue (Aura theme), VueFlow, Pinia, Vue Router
-- **Database:** Postgres 17 with pgvector. Docker Compose for local dev.
-- **Testing:** Go standard testing + testcontainers-go, godog for BDD, Vitest + Playwright for frontend
+### Project-specific or personal configuration
 
-## Style
+Skills, hooks, or configuration that only benefit a specific project, team, domain, or workflow do not belong in core. Publish these as a separate plugin.
 
-- `gofmt` is law. No exceptions.
-- No ORMs. No web frameworks. No DI containers.
-- Errors are returned, not panicked. Wrap with `fmt.Errorf("context: %w", err)`.
-- Interfaces are defined by the consumer, not the provider.
-- Vue uses `<script setup>` with Composition API. TypeScript strict mode. No `any`.
-- PrimeVue components for all standard UI. Don't build custom when PrimeVue has one.
+### Bulk or spray-and-pray PRs
 
-## Dev Workflow
+Do not trawl the issue tracker and open PRs for multiple issues in a single session. Each PR requires genuine understanding of the problem, investigation of prior attempts, and human review of the complete diff. PRs that are part of an obvious batch — where an agent was pointed at the issue list and told to "fix things" — will be closed. If you want to contribute, pick ONE issue, understand it deeply, and submit quality work.
 
-```bash
-qp db:fresh        # reset + migrate + seed
-qp dev             # backend (air) + frontend (vite) in parallel
-qp guards          # format + lint + test
-qp test:all        # full test suite
-qp check:imports   # verify feature isolation
-```
+### Speculative or theoretical fixes
+
+Every PR must solve a real problem that someone actually experienced. "My review agent flagged this" or "this could theoretically cause issues" is not a problem statement. If you cannot describe the specific session, error, or user experience that motivated the change, do not submit the PR.
+
+### Domain-specific skills
+
+Superpowers core contains general-purpose skills that benefit all users regardless of their project. Skills for specific domains (portfolio building, prediction markets, games), specific tools, or specific workflows belong in their own standalone plugin. Ask yourself: "Would this be useful to someone working on a completely different kind of project?" If not, publish it separately.
+
+### Fork-specific changes
+
+If you maintain a fork with customizations, do not open PRs to sync your fork or push fork-specific changes upstream. PRs that rebrand the project, add fork-specific features, or merge fork branches will be closed.
+
+### Fabricated content
+
+PRs containing invented claims, fabricated problem descriptions, or hallucinated functionality will be closed immediately. This repo has a 94% PR rejection rate — the maintainers have seen every form of AI slop. They will notice.
+
+### Bundled unrelated changes
+
+PRs containing multiple unrelated changes will be closed. Split them into separate PRs.
+
+## Skill Changes Require Evaluation
+
+Skills are not prose — they are code that shapes agent behavior. If you modify skill content:
+
+- Use `superpowers:writing-skills` to develop and test changes
+- Run adversarial pressure testing across multiple sessions
+- Show before/after eval results in your PR
+- Do not modify carefully-tuned content (Red Flags tables, rationalization lists, "human partner" language) without evidence the change is an improvement
+
+## Understand the Project Before Contributing
+
+Before proposing changes to skill design, workflow philosophy, or architecture, read existing skills and understand the project's design decisions. Superpowers has its own tested philosophy about skill design, agent behavior shaping, and terminology (e.g., "your human partner" is deliberate, not interchangeable with "the user"). Changes that rewrite the project's voice or restructure its approach without understanding why it exists will be rejected.
+
+## General
+
+- Read `.github/PULL_REQUEST_TEMPLATE.md` before submitting
+- One problem per PR
+- Test on at least one harness and report results in the environment table
+- Describe the problem you solved, not just what you changed
+
