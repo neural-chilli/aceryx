@@ -151,4 +151,27 @@ describe('builder model', () => {
     const ast = sampleAST()
     expect(normalizeForRoundTrip(ast)).toEqual(normalizeForRoundTrip(JSON.parse(JSON.stringify(ast))))
   })
+
+  it('handles rule config outcomes object map without throwing', () => {
+    const ast: WorkflowAST = {
+      steps: [
+        {
+          id: 'route_review_decision',
+          type: 'rule',
+          depends_on: [],
+          outcomes: {
+            approved: 'insert_customer_onboarding',
+            rejected: 'capture_customer_pdf',
+          },
+          config: {
+            outcomes: {
+              approved: { condition: "case.data.review.decision == 'approve'", next_step: 'insert_customer_onboarding' },
+              rejected: { condition: "case.data.review.decision == 'reject'", next_step: 'capture_customer_pdf' },
+            },
+          },
+        },
+      ],
+    }
+    expect(() => validateAST(ast)).not.toThrow()
+  })
 })

@@ -83,10 +83,24 @@ export function expressionFields(step: WorkflowStep): Array<{ label: string; val
         }
       }
     } else {
-      const outcomes = cfg.outcomes as Array<{ condition?: string; name?: string }> | undefined
-      for (const outcome of outcomes ?? []) {
-        if (outcome.condition) {
-          out.push({ label: `outcome:${outcome.name ?? 'unnamed'}`, value: outcome.condition })
+      const rawOutcomes = cfg.outcomes as unknown
+      if (Array.isArray(rawOutcomes)) {
+        const outcomes = rawOutcomes as Array<{ condition?: string; name?: string }>
+        for (const outcome of outcomes) {
+          if (outcome.condition) {
+            out.push({ label: `outcome:${outcome.name ?? 'unnamed'}`, value: outcome.condition })
+          }
+        }
+      } else if (rawOutcomes && typeof rawOutcomes === 'object') {
+        const outcomesMap = rawOutcomes as Record<string, unknown>
+        for (const [name, rawValue] of Object.entries(outcomesMap)) {
+          if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+            continue
+          }
+          const condition = String((rawValue as Record<string, unknown>).condition ?? '').trim()
+          if (condition.length > 0) {
+            out.push({ label: `outcome:${name}`, value: condition })
+          }
         }
       }
     }
