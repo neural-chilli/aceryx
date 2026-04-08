@@ -340,15 +340,6 @@ func addMissingRequiredConfigErrors(validation *PublishValidationErrors, step en
 			})
 		}
 	case "rule":
-		hasRuleExpression := hasStringValue(cfg, "expression") || strings.TrimSpace(step.Condition) != ""
-		if !hasRuleExpression {
-			validation.add(PublishValidationError{
-				StepID:  stepID,
-				Field:   "config.expression",
-				Code:    "MISSING_REQUIRED_CONFIG",
-				Message: fmt.Sprintf("Step %q rule requires expression or guard condition", stepID),
-			})
-		}
 		if len(step.Outcomes) == 0 {
 			validation.add(PublishValidationError{
 				StepID:  stepID,

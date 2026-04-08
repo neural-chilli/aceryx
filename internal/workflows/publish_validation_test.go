@@ -7,12 +7,11 @@ import (
 	"github.com/neural-chilli/aceryx/internal/engine"
 )
 
-func TestAddMissingRequiredConfigErrors_RuleAcceptsGuardCondition(t *testing.T) {
+func TestAddMissingRequiredConfigErrors_RuleDoesNotRequireExpression(t *testing.T) {
 	validation := &PublishValidationErrors{Errors: make([]PublishValidationError, 0)}
 	step := engine.WorkflowStep{
-		ID:        "review_decision",
-		Type:      "rule",
-		Condition: "case.steps.verify_extracted_details.result.action != ''",
+		ID:   "review_decision",
+		Type: "rule",
 		Outcomes: map[string][]string{
 			"approved": {"insert_customer_onboarding"},
 		},
@@ -21,13 +20,13 @@ func TestAddMissingRequiredConfigErrors_RuleAcceptsGuardCondition(t *testing.T) 
 	addMissingRequiredConfigErrors(validation, step, map[string]any{})
 
 	for _, err := range validation.Errors {
-		if strings.Contains(err.Message, "requires expression") {
-			t.Fatalf("expected guard condition to satisfy publish requirement, got error: %#v", err)
+		if strings.Contains(err.Message, "rule requires expression") {
+			t.Fatalf("unexpected expression requirement for rule step: %#v", err)
 		}
 	}
 }
 
-func TestAddMissingRequiredConfigErrors_RuleRequiresExpressionOrGuardCondition(t *testing.T) {
+func TestAddMissingRequiredConfigErrors_RuleRequiresOutcomes(t *testing.T) {
 	validation := &PublishValidationErrors{Errors: make([]PublishValidationError, 0)}
 	step := engine.WorkflowStep{
 		ID:   "review_decision",
@@ -38,12 +37,12 @@ func TestAddMissingRequiredConfigErrors_RuleRequiresExpressionOrGuardCondition(t
 
 	found := false
 	for _, err := range validation.Errors {
-		if strings.Contains(err.Message, "requires expression or guard condition") {
+		if strings.Contains(err.Message, "rule requires outcomes") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Fatalf("expected missing expression/condition error, got %#v", validation.Errors)
+		t.Fatalf("expected missing outcomes error, got %#v", validation.Errors)
 	}
 }
