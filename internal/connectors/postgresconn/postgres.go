@@ -76,7 +76,7 @@ func (c *Connector) selectAction(ctx context.Context, auth map[string]string, in
 		return nil, err
 	}
 	selectClause := "*"
-	if len(columns) > 0 && !(len(columns) == 1 && columns[0] == "*") {
+	if len(columns) != 1 || columns[0] != "*" {
 		quoted := make([]string, 0, len(columns))
 		for _, col := range columns {
 			quoted = append(quoted, quoteIdent(col))

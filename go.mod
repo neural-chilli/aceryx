@@ -1,6 +1,6 @@
 module github.com/neural-chilli/aceryx
 
-go 1.26.1
+go 1.26.2
 
 require (
 	cloud.google.com/go/storage v1.61.3
@@ -99,7 +99,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
-	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
+	github.com/go-viper/mapstructure/v2 v2.3.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.0 // indirect
 	github.com/google/flatbuffers v25.1.24+incompatible // indirect

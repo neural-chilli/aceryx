@@ -119,9 +119,7 @@ func ValidateActionRequirements(schema FormSchema, outcome string, data map[stri
 		errs := make([]ValidationError, 0)
 		for _, required := range action.Requires {
 			path := strings.TrimSpace(required)
-			if strings.HasPrefix(path, "decision.") {
-				path = strings.TrimPrefix(path, "decision.")
-			}
+			path = strings.TrimPrefix(path, "decision.")
 			if path == "" {
 				continue
 			}

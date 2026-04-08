@@ -542,9 +542,7 @@ func normalizeBuilderStep(step map[string]any) {
 
 	switch stepType {
 	case "agent":
-		if normalizeAgentToAIComponentStep(cfg, step) {
-			stepType = "ai_component"
-		}
+		normalizeAgentToAIComponentStep(cfg, step)
 	case "integration":
 		if asTrimmedString(cfg["connector"]) == "" && asTrimmedString(cfg["integration"]) != "" {
 			cfg["connector"] = asTrimmedString(cfg["integration"])

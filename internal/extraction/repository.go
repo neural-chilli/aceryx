@@ -290,7 +290,6 @@ WHERE c.tenant_id = $1
 	if since != nil {
 		query += fmt.Sprintf(" AND c.created_at >= $%d", idx)
 		args = append(args, *since)
-		idx++
 	}
 	query += " ORDER BY c.created_at DESC"
 
