@@ -32,6 +32,7 @@ const searchInput = ref<HTMLInputElement | null>(null)
 const createCaseOpen = ref(false)
 const creatingCase = ref(false)
 const createCaseError = ref('')
+const createCaseInfo = ref('')
 const caseTypes = ref<Array<{ id: string; name: string; status?: string }>>([])
 const createCaseType = ref('')
 const createPriority = ref<number>(2)
@@ -135,12 +136,32 @@ async function load() {
 
 async function loadCaseTypes() {
   try {
-    const res = await authFetch('/case-types')
-    if (!res.ok) {
+    const [caseTypesRes, workflowsRes] = await Promise.all([
+      authFetch('/case-types'),
+      authFetch('/workflows'),
+    ])
+    if (!caseTypesRes.ok) {
       return
     }
-    const payload = (await res.json()) as Array<{ id: string; name: string; status?: string }>
-    caseTypes.value = payload.filter((item) => String(item.status ?? 'active') === 'active')
+    const payload = (await caseTypesRes.json()) as Array<{ id: string; name: string; status?: string }>
+    const activeTypes = payload.filter((item) => String(item.status ?? 'active') === 'active')
+    const publishedCaseTypes = new Set<string>()
+    if (workflowsRes.ok) {
+      const workflows = (await workflowsRes.json()) as Array<{
+        case_type_id?: string
+        published_versions?: Array<{ version: number }>
+      }>
+      for (const workflow of workflows) {
+        const caseTypeID = String(workflow.case_type_id ?? '').trim()
+        if (!caseTypeID || !Array.isArray(workflow.published_versions) || workflow.published_versions.length === 0) {
+          continue
+        }
+        publishedCaseTypes.add(caseTypeID)
+      }
+      caseTypes.value = activeTypes.filter((item) => publishedCaseTypes.has(String(item.name).trim()))
+    } else {
+      caseTypes.value = activeTypes
+    }
     if (!createCaseType.value && caseTypes.value.length > 0) {
       createCaseType.value = caseTypes.value[0].name
     }
@@ -151,10 +172,14 @@ async function loadCaseTypes() {
 
 function openCreateCase() {
   createCaseError.value = ''
+  createCaseInfo.value = ''
   createDataText.value = '{}'
   createPriority.value = 2
   if (!createCaseType.value && caseTypes.value.length > 0) {
     createCaseType.value = caseTypes.value[0].name
+  }
+  if (caseTypes.value.length === 0) {
+    createCaseInfo.value = 'No case types with a published workflow are available yet. Publish a workflow first.'
   }
   createCaseOpen.value = true
 }
@@ -190,7 +215,8 @@ async function createCase() {
       }),
     })
     if (!res.ok) {
-      const detail = (await res.text().catch(() => '')).trim()
+      const payload = (await res.json().catch(() => null)) as { error?: unknown } | null
+      const detail = String(payload?.error ?? '').trim() || (await res.text().catch(() => '')).trim()
       createCaseError.value = detail || 'Unable to create case right now.'
       return
     }
@@ -378,12 +404,14 @@ watch(() => route.query, () => {
     <Dialog v-model:visible="createCaseOpen" header="Create Case" modal>
       <div class="create-case">
         <Message v-if="createCaseError" severity="error">{{ createCaseError }}</Message>
+        <Message v-if="createCaseInfo" severity="info">{{ createCaseInfo }}</Message>
         <label>Case Type</label>
         <Dropdown
           v-model="createCaseType"
           :options="caseTypes.map((item) => item.name)"
           placeholder="Select case type"
           aria-label="Select case type"
+          :disabled="caseTypes.length === 0"
         />
         <label>Priority</label>
         <InputNumber v-model="createPriority" :min="0" :max="5" />
@@ -391,7 +419,7 @@ watch(() => route.query, () => {
         <Textarea v-model="createDataText" rows="8" />
         <div class="create-actions">
           <Button label="Cancel" severity="secondary" text @click="createCaseOpen = false" />
-          <Button label="Create" :loading="creatingCase" @click="createCase" />
+          <Button label="Create" :loading="creatingCase" :disabled="caseTypes.length === 0" @click="createCase" />
         </div>
       </div>
     </Dialog>
