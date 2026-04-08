@@ -500,8 +500,9 @@ async function runAssistant() {
     if ((assistantMode.value === 'describe' || assistantMode.value === 'refactor') && selectedWorkflowID.value && assistantYAML.value.trim()) {
       await applyAssistantToWorkflow(true)
     }
-  } catch {
-    assistantError.value = 'Unable to run AI Assist right now.'
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.trim() : ''
+    assistantError.value = detail ? `Unable to run AI Assist right now. ${detail}` : 'Unable to run AI Assist right now.'
   } finally {
     assistantLoading.value = false
   }
@@ -581,8 +582,9 @@ async function applyAssistantToWorkflow(auto = false) {
     }
     await openWorkflow(selectedWorkflowID.value)
     assistantInfo.value = auto ? 'AI output applied to the current workflow draft.' : 'Applied to current workflow draft.'
-  } catch {
-    assistantError.value = 'Unable to apply AI output to workflow draft.'
+  } catch (error) {
+    const detail = error instanceof Error ? error.message.trim() : ''
+    assistantError.value = detail ? `Unable to apply AI output to workflow draft. ${detail}` : 'Unable to apply AI output to workflow draft.'
   } finally {
     assistantApplying.value = false
   }
