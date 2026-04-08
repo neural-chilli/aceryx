@@ -771,41 +771,68 @@ func normalizeRuleConfig(cfg map[string]any, step map[string]any) {
 	if existing, ok := step["outcomes"].(map[string]any); ok && len(existing) > 0 {
 		return
 	}
-	rawOutcomes, ok := cfg["outcomes"].([]any)
-	if !ok || len(rawOutcomes) == 0 {
-		return
-	}
 	outcomes := make(map[string]any)
-	for _, raw := range rawOutcomes {
-		item, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		name := asTrimmedString(item["name"])
-		if name == "" {
-			continue
-		}
-		targets := make([]string, 0)
-		if target := asTrimmedString(item["target"]); target != "" {
-			targets = append(targets, target)
-		}
-		if rawTargets, ok := item["targets"].([]any); ok {
-			for _, candidate := range rawTargets {
-				target := asTrimmedString(candidate)
-				if target == "" {
-					continue
-				}
-				targets = append(targets, target)
+	rawOutcomeValues := cfg["outcomes"]
+	switch typed := rawOutcomeValues.(type) {
+	case []any:
+		for _, raw := range typed {
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
 			}
+			name := asTrimmedString(item["name"])
+			if name == "" {
+				continue
+			}
+			targets := normalizeRuleTargets(item)
+			if len(targets) == 0 {
+				continue
+			}
+			outcomes[name] = targets
 		}
-		if len(targets) == 0 {
-			continue
+	case map[string]any:
+		for name, raw := range typed {
+			name = strings.TrimSpace(name)
+			if name == "" {
+				continue
+			}
+			item, ok := raw.(map[string]any)
+			if !ok {
+				continue
+			}
+			targets := normalizeRuleTargets(item)
+			if len(targets) == 0 {
+				continue
+			}
+			outcomes[name] = targets
 		}
-		outcomes[name] = targets
 	}
 	if len(outcomes) > 0 {
 		step["outcomes"] = outcomes
 	}
+}
+
+func normalizeRuleTargets(item map[string]any) []string {
+	targets := make([]string, 0)
+	if target := asTrimmedString(item["target"]); target != "" {
+		targets = append(targets, target)
+	}
+	if nextStep := asTrimmedString(item["next_step"]); nextStep != "" {
+		targets = append(targets, nextStep)
+	}
+	if gotoStep := asTrimmedString(item["goto"]); gotoStep != "" {
+		targets = append(targets, gotoStep)
+	}
+	if rawTargets, ok := item["targets"].([]any); ok {
+		for _, candidate := range rawTargets {
+			target := asTrimmedString(candidate)
+			if target == "" {
+				continue
+			}
+			targets = append(targets, target)
+		}
+	}
+	return targets
 }
 
 func normalizeFormSchemaFields(formSchema map[string]any) {

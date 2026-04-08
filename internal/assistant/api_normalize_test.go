@@ -262,6 +262,46 @@ func TestNormalizeToBuilderASTYAML_RuleOutcomesFromConfig(t *testing.T) {
 	}
 }
 
+func TestNormalizeToBuilderASTYAML_RuleOutcomesFromConfigMap(t *testing.T) {
+	input := `steps:
+  - id: route_review_decision
+    type: rule
+    depends_on: []
+    config:
+      outcomes:
+        approved:
+          condition: case.data.review.decision == 'approve'
+          next_step: insert_customer_onboarding_record
+        rejected:
+          condition: case.data.review.decision == 'reject'
+          next_step: capture_customer_pdf
+`
+
+	normalized, err := normalizeToBuilderASTYAML(input)
+	if err != nil {
+		t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+	}
+
+	var ast map[string]any
+	if err := yaml.Unmarshal([]byte(normalized), &ast); err != nil {
+		t.Fatalf("unmarshal normalized yaml: %v", err)
+	}
+	steps := ast["steps"].([]any)
+	step := steps[0].(map[string]any)
+	outcomes, ok := step["outcomes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected synthesized rule outcomes on step from map-style config")
+	}
+	approve := outcomes["approved"].([]any)
+	if len(approve) != 1 || approve[0] != "insert_customer_onboarding_record" {
+		t.Fatalf("expected approved route mapping, got %#v", outcomes["approved"])
+	}
+	reject := outcomes["rejected"].([]any)
+	if len(reject) != 1 || reject[0] != "capture_customer_pdf" {
+		t.Fatalf("expected rejected route mapping, got %#v", outcomes["rejected"])
+	}
+}
+
 func TestNormalizeToBuilderASTYAML_GoldenPromptFixtures(t *testing.T) {
 	t.Parallel()
 
