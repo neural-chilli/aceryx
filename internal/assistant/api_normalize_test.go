@@ -302,6 +302,59 @@ func TestNormalizeToBuilderASTYAML_RuleOutcomesFromConfigMap(t *testing.T) {
 	}
 }
 
+func TestNormalizeToBuilderASTYAML_RuleOutcomesFromRunWhenBranches(t *testing.T) {
+	input := `steps:
+  - id: review_decision
+    type: rule
+    depends_on: [verify_extracted_details]
+    config:
+      outcomes:
+        approved: "case.steps.verify_extracted_details.result.action == 'approve'"
+        rejected: "case.steps.verify_extracted_details.result.action == 'reject'"
+  - id: insert_customer_onboarding
+    type: integration
+    depends_on: [review_decision]
+    config:
+      connector: postgres
+      action: insert
+      run_when: "case.steps.review_decision.result.outcome == 'approved'"
+  - id: reupload_corrected_pdf
+    type: human_task
+    depends_on: [review_decision]
+    config:
+      assign_to_role: operations
+      form_schema:
+        title: Re-upload
+        fields: []
+        actions: []
+      run_when: "case.steps.review_decision.result.outcome == 'rejected'"
+`
+
+	normalized, err := normalizeToBuilderASTYAML(input)
+	if err != nil {
+		t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+	}
+
+	var ast map[string]any
+	if err := yaml.Unmarshal([]byte(normalized), &ast); err != nil {
+		t.Fatalf("unmarshal normalized yaml: %v", err)
+	}
+	steps := ast["steps"].([]any)
+	rule := steps[0].(map[string]any)
+	outcomes, ok := rule["outcomes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected synthesized rule outcomes from run_when branches")
+	}
+	approved := outcomes["approved"].([]any)
+	if len(approved) != 1 || approved[0] != "insert_customer_onboarding" {
+		t.Fatalf("expected approved route to insert_customer_onboarding, got %#v", outcomes["approved"])
+	}
+	rejected := outcomes["rejected"].([]any)
+	if len(rejected) != 1 || rejected[0] != "reupload_corrected_pdf" {
+		t.Fatalf("expected rejected route to reupload_corrected_pdf, got %#v", outcomes["rejected"])
+	}
+}
+
 func TestNormalizeToBuilderASTYAML_GoldenPromptFixtures(t *testing.T) {
 	t.Parallel()
 

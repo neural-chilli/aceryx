@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -536,6 +537,7 @@ func normalizeBuilderAST(ast map[string]any) error {
 			return err
 		}
 	}
+	synthesizeRuleOutcomesFromRunWhen(steps)
 	return nil
 }
 
@@ -791,9 +793,21 @@ func normalizeRuleConfig(cfg map[string]any, step map[string]any) {
 			outcomes[name] = targets
 		}
 	case map[string]any:
+		legacyRows := make([]any, 0, len(typed))
 		for name, raw := range typed {
 			name = strings.TrimSpace(name)
 			if name == "" {
+				continue
+			}
+			if rawString, ok := raw.(string); ok {
+				condition := strings.TrimSpace(rawString)
+				if condition == "" {
+					continue
+				}
+				legacyRows = append(legacyRows, map[string]any{
+					"name":      name,
+					"condition": condition,
+				})
 				continue
 			}
 			item, ok := raw.(map[string]any)
@@ -802,9 +816,23 @@ func normalizeRuleConfig(cfg map[string]any, step map[string]any) {
 			}
 			targets := normalizeRuleTargets(item)
 			if len(targets) == 0 {
+				if condition := asTrimmedString(item["condition"]); condition != "" {
+					legacyRows = append(legacyRows, map[string]any{
+						"name":      name,
+						"condition": condition,
+					})
+				}
 				continue
 			}
 			outcomes[name] = targets
+			legacyRows = append(legacyRows, map[string]any{
+				"name":      name,
+				"condition": asTrimmedString(item["condition"]),
+				"target":    targets[0],
+			})
+		}
+		if len(legacyRows) > 0 {
+			cfg["outcomes"] = legacyRows
 		}
 	}
 	if len(outcomes) > 0 {
@@ -833,6 +861,154 @@ func normalizeRuleTargets(item map[string]any) []string {
 		}
 	}
 	return targets
+}
+
+var ruleRunWhenOutcomePattern = regexp.MustCompile(`case\.steps\.([A-Za-z0-9_.:-]+)\.result\.outcome\s*==\s*['"]([^'"]+)['"]`)
+
+func synthesizeRuleOutcomesFromRunWhen(rawSteps []any) {
+	stepByID := make(map[string]map[string]any, len(rawSteps))
+	for _, raw := range rawSteps {
+		step, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		stepID := asTrimmedString(step["id"])
+		if stepID == "" {
+			continue
+		}
+		stepByID[stepID] = step
+	}
+
+	for _, raw := range rawSteps {
+		step, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if asTrimmedString(step["type"]) != "rule" {
+			continue
+		}
+		if existing, ok := step["outcomes"].(map[string]any); ok && len(existing) > 0 {
+			continue
+		}
+
+		ruleID := asTrimmedString(step["id"])
+		if ruleID == "" {
+			continue
+		}
+		cfg, _ := step["config"].(map[string]any)
+		if cfg == nil {
+			continue
+		}
+		declared := declaredRuleOutcomeNames(cfg["outcomes"])
+		if len(declared) == 0 {
+			continue
+		}
+
+		outcomes := make(map[string]any)
+		for _, name := range declared {
+			outcomes[name] = []string{}
+		}
+		for _, candidate := range rawSteps {
+			targetStep, ok := candidate.(map[string]any)
+			if !ok {
+				continue
+			}
+			if !stepDependsOn(targetStep, ruleID) {
+				continue
+			}
+			targetID := asTrimmedString(targetStep["id"])
+			if targetID == "" {
+				continue
+			}
+			targetCfg, _ := targetStep["config"].(map[string]any)
+			runWhen := asTrimmedString(targetCfg["run_when"])
+			if runWhen == "" {
+				continue
+			}
+			matches := ruleRunWhenOutcomePattern.FindAllStringSubmatch(runWhen, -1)
+			for _, match := range matches {
+				if len(match) < 3 {
+					continue
+				}
+				if strings.TrimSpace(match[1]) != ruleID {
+					continue
+				}
+				outcome := strings.TrimSpace(match[2])
+				if outcome == "" {
+					continue
+				}
+				rawTargets, ok := outcomes[outcome].([]string)
+				if !ok {
+					continue
+				}
+				if !containsString(rawTargets, targetID) {
+					outcomes[outcome] = append(rawTargets, targetID)
+				}
+			}
+		}
+
+		finalOutcomes := make(map[string]any)
+		for name, rawTargets := range outcomes {
+			targets, ok := rawTargets.([]string)
+			if !ok || len(targets) == 0 {
+				continue
+			}
+			encoded := make([]any, 0, len(targets))
+			for _, target := range targets {
+				encoded = append(encoded, target)
+			}
+			finalOutcomes[name] = encoded
+		}
+		if len(finalOutcomes) > 0 {
+			step["outcomes"] = finalOutcomes
+		}
+	}
+}
+
+func declaredRuleOutcomeNames(raw any) []string {
+	names := make([]string, 0)
+	switch typed := raw.(type) {
+	case []any:
+		for _, item := range typed {
+			obj, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			name := asTrimmedString(obj["name"])
+			if name == "" || containsString(names, name) {
+				continue
+			}
+			names = append(names, name)
+		}
+	case map[string]any:
+		for name := range typed {
+			trimmed := strings.TrimSpace(name)
+			if trimmed == "" || containsString(names, trimmed) {
+				continue
+			}
+			names = append(names, trimmed)
+		}
+	}
+	return names
+}
+
+func stepDependsOn(step map[string]any, depID string) bool {
+	depends, _ := step["depends_on"].([]any)
+	for _, rawDep := range depends {
+		if asTrimmedString(rawDep) == depID {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(items []string, value string) bool {
+	for _, item := range items {
+		if item == value {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeFormSchemaFields(formSchema map[string]any) {
