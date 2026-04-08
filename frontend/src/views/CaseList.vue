@@ -34,6 +34,7 @@ const creatingCase = ref(false)
 const createCaseError = ref('')
 const createCaseInfo = ref('')
 const caseTypes = ref<Array<{ id: string; name: string; status?: string }>>([])
+const publishableCaseTypeNames = ref<Set<string>>(new Set())
 const createCaseType = ref('')
 const createPriority = ref<number>(2)
 const createDataText = ref('{}')
@@ -158,10 +159,10 @@ async function loadCaseTypes() {
         }
         publishedCaseTypes.add(caseTypeID)
       }
-      caseTypes.value = activeTypes.filter((item) => publishedCaseTypes.has(String(item.name).trim()))
-    } else {
-      caseTypes.value = activeTypes
     }
+    publishableCaseTypeNames.value = publishedCaseTypes
+    // Keep all active case types visible; we gate create by publish linkage with clear messaging.
+    caseTypes.value = activeTypes
     if (!createCaseType.value && caseTypes.value.length > 0) {
       createCaseType.value = caseTypes.value[0].name
     }
@@ -179,7 +180,9 @@ function openCreateCase() {
     createCaseType.value = caseTypes.value[0].name
   }
   if (caseTypes.value.length === 0) {
-    createCaseInfo.value = 'No case types with a published workflow are available yet. Publish a workflow first.'
+    createCaseInfo.value = 'No active case types are available yet.'
+  } else if (publishableCaseTypeNames.value.size === 0) {
+    createCaseInfo.value = 'No published workflows are linked to case types yet. Publish a workflow first.'
   }
   createCaseOpen.value = true
 }
@@ -187,6 +190,11 @@ function openCreateCase() {
 async function createCase() {
   if (!createCaseType.value.trim()) {
     createCaseError.value = 'Select a case type first.'
+    return
+  }
+  const selectedCaseType = createCaseType.value.trim()
+  if (publishableCaseTypeNames.value.size > 0 && !publishableCaseTypeNames.value.has(selectedCaseType)) {
+    createCaseError.value = `No published workflow is linked to case type "${selectedCaseType}".`
     return
   }
   let parsedData: Record<string, unknown> = {}
@@ -209,7 +217,7 @@ async function createCase() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        case_type: createCaseType.value.trim(),
+        case_type: selectedCaseType,
         priority: Number(createPriority.value ?? 2),
         data: parsedData,
       }),
