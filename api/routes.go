@@ -176,6 +176,7 @@ func NewRouterWithServicesContext(bgCtx context.Context, db *sql.DB, eng *engine
 	aiComponentStore := ai.NewStore(db)
 	aiComponentRegistry := ai.NewComponentRegistry(aiComponentStore)
 	_ = aiComponentRegistry.LoadFromDirectory(firstNonEmpty(os.Getenv("ACERYX_AI_COMPONENTS_DIR"), "./ai-components"))
+	workflowService.SetAIComponentCatalog(aiComponentRegistry)
 	aiComponentHandlers := handlers.NewAIComponentHandlers(aiComponentRegistry)
 	extractionService := extraction.NewService(extraction.NewRepository(db))
 	if eng != nil {

@@ -10,6 +10,7 @@ import InputText from 'primevue/inputtext'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
 import Message from 'primevue/message'
+import Textarea from 'primevue/textarea'
 import { useAuth } from '../composables/useAuth'
 import { useBreakpoint } from '../composables/useBreakpoint'
 import { useKeyboard } from '../composables/useKeyboard'
@@ -28,6 +29,15 @@ const loading = ref(false)
 const selectedIndex = ref(0)
 const filterPanel = ref<HTMLElement | null>(null)
 const searchInput = ref<HTMLInputElement | null>(null)
+const createCaseOpen = ref(false)
+const creatingCase = ref(false)
+const createCaseError = ref('')
+const createCaseInfo = ref('')
+const caseTypes = ref<Array<{ id: string; name: string; status?: string }>>([])
+const publishableCaseTypeNames = ref<Set<string>>(new Set())
+const createCaseType = ref('')
+const createPriority = ref<number>(2)
+const createDataText = ref('{}')
 
 const statuses = ref<string[]>([])
 const caseType = ref('')
@@ -125,6 +135,117 @@ async function load() {
   }
 }
 
+async function loadCaseTypes() {
+  try {
+    const [caseTypesRes, workflowsRes] = await Promise.all([
+      authFetch('/case-types'),
+      authFetch('/workflows'),
+    ])
+    if (!caseTypesRes.ok) {
+      return
+    }
+    const payload = (await caseTypesRes.json()) as Array<{ id: string; name: string; status?: string }>
+    const activeTypes = payload.filter((item) => String(item.status ?? 'active') === 'active')
+    const activeNameByID = new Map<string, string>()
+    for (const item of activeTypes) {
+      const id = String(item.id ?? '').trim()
+      const name = String(item.name ?? '').trim()
+      if (!id || !name) continue
+      activeNameByID.set(id, name)
+    }
+    const publishedCaseTypes = new Set<string>()
+    if (workflowsRes.ok) {
+      const workflows = (await workflowsRes.json()) as Array<{
+        case_type_id?: string
+        published_versions?: Array<{ version: number }>
+      }>
+      for (const workflow of workflows) {
+        const caseTypeRef = String(workflow.case_type_id ?? '').trim()
+        if (!caseTypeRef || !Array.isArray(workflow.published_versions) || workflow.published_versions.length === 0) {
+          continue
+        }
+        publishedCaseTypes.add(activeNameByID.get(caseTypeRef) ?? caseTypeRef)
+      }
+    }
+    publishableCaseTypeNames.value = publishedCaseTypes
+    // Keep all active case types visible; we gate create by publish linkage with clear messaging.
+    caseTypes.value = activeTypes
+    if (!createCaseType.value && caseTypes.value.length > 0) {
+      createCaseType.value = caseTypes.value[0].name
+    }
+  } catch {
+    // Non-blocking for case list load.
+  }
+}
+
+function openCreateCase() {
+  createCaseError.value = ''
+  createCaseInfo.value = ''
+  createDataText.value = '{}'
+  createPriority.value = 2
+  if (!createCaseType.value && caseTypes.value.length > 0) {
+    createCaseType.value = caseTypes.value[0].name
+  }
+  if (caseTypes.value.length === 0) {
+    createCaseInfo.value = 'No active case types are available yet.'
+  } else if (publishableCaseTypeNames.value.size === 0) {
+    createCaseInfo.value = 'No published workflows are linked to case types yet. Publish a workflow first.'
+  }
+  createCaseOpen.value = true
+}
+
+async function createCase() {
+  if (!createCaseType.value.trim()) {
+    createCaseError.value = 'Select a case type first.'
+    return
+  }
+  const selectedCaseType = createCaseType.value.trim()
+  if (publishableCaseTypeNames.value.size > 0 && !publishableCaseTypeNames.value.has(selectedCaseType)) {
+    createCaseError.value = `No published workflow is linked to case type "${selectedCaseType}".`
+    return
+  }
+  let parsedData: Record<string, unknown> = {}
+  try {
+    const raw = createDataText.value.trim()
+    parsedData = raw ? JSON.parse(raw) as Record<string, unknown> : {}
+    if (parsedData === null || Array.isArray(parsedData) || typeof parsedData !== 'object') {
+      createCaseError.value = 'Case data must be a JSON object.'
+      return
+    }
+  } catch {
+    createCaseError.value = 'Case data must be valid JSON.'
+    return
+  }
+
+  creatingCase.value = true
+  createCaseError.value = ''
+  try {
+    const res = await authFetch('/cases', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        case_type: selectedCaseType,
+        priority: Number(createPriority.value ?? 2),
+        data: parsedData,
+      }),
+    })
+    if (!res.ok) {
+      const payload = (await res.json().catch(() => null)) as { error?: unknown } | null
+      const detail = String(payload?.error ?? '').trim() || (await res.text().catch(() => '')).trim()
+      createCaseError.value = detail || 'Unable to create case right now.'
+      return
+    }
+    const payload = (await res.json()) as { id?: string }
+    createCaseOpen.value = false
+    await load()
+    if (payload.id) {
+      void router.push(`/cases/${payload.id}`)
+    }
+  } finally {
+    creatingCase.value = false
+  }
+}
+
 async function applyFilters() {
   page.value = 1
   await syncQuery()
@@ -210,6 +331,7 @@ async function onPullEnd() {
 onMounted(() => {
   readQueryState()
   void load()
+  void loadCaseTypes()
   register('j', () => moveSelection(1), 'Next case', 'case_list')
   register('k', () => moveSelection(-1), 'Previous case', 'case_list')
   register('enter', openSelected, 'Open selected case', 'case_list')
@@ -236,7 +358,10 @@ watch(() => route.query, () => {
 
 <template>
   <section class="case-list">
-    <h1>{{ t('Cases') }}</h1>
+    <header class="page-header">
+      <h1>{{ t('Cases') }}</h1>
+      <Button label="Create Case" icon="pi pi-plus" @click="openCreateCase" />
+    </header>
     <Message v-if="loadError" severity="error">{{ loadError }}</Message>
 
     <Button v-if="isMobileOrTablet" label="Filters" icon="pi pi-filter" aria-label="Open case filters" @click="showFilters = true" />
@@ -290,6 +415,29 @@ watch(() => route.query, () => {
         <Button label="Apply" @click="showFilters = false; applyFilters()" />
       </div>
     </Dialog>
+
+    <Dialog v-model:visible="createCaseOpen" header="Create Case" modal>
+      <div class="create-case">
+        <Message v-if="createCaseError" severity="error">{{ createCaseError }}</Message>
+        <Message v-if="createCaseInfo" severity="info">{{ createCaseInfo }}</Message>
+        <label>Case Type</label>
+        <Dropdown
+          v-model="createCaseType"
+          :options="caseTypes.map((item) => item.name)"
+          placeholder="Select case type"
+          aria-label="Select case type"
+          :disabled="caseTypes.length === 0"
+        />
+        <label>Priority</label>
+        <InputNumber v-model="createPriority" :min="0" :max="5" />
+        <label>Initial Data (JSON object)</label>
+        <Textarea v-model="createDataText" rows="8" />
+        <div class="create-actions">
+          <Button label="Cancel" severity="secondary" text @click="createCaseOpen = false" />
+          <Button label="Create" :loading="creatingCase" :disabled="caseTypes.length === 0" @click="createCase" />
+        </div>
+      </div>
+    </Dialog>
   </section>
 </template>
 
@@ -297,6 +445,13 @@ watch(() => route.query, () => {
 .case-list {
   display: grid;
   gap: 0.8rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 
 .filters {
@@ -367,5 +522,18 @@ h1 {
 
 .filters-mobile {
   grid-template-columns: 1fr;
+}
+
+.create-case {
+  display: grid;
+  gap: 0.55rem;
+  min-width: min(42rem, 86vw);
+}
+
+.create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
 }
 </style>

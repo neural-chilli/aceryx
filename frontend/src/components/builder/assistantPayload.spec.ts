@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildBuilderAssistantPromptPack, extractAssistantYAML, extractCaseTypeIDFromYAML } from './assistantPayload'
+import { BUILDER_ASSISTANT_CONTRACT_VERSION, buildBuilderAssistantPromptPack, extractAssistantYAML, extractCaseTypeIDFromYAML } from './assistantPayload'
 
 describe('extractAssistantYAML', () => {
   it('prefers yaml_after when present', () => {
@@ -62,6 +62,7 @@ describe('buildBuilderAssistantPromptPack', () => {
     expect(content).toContain('loan_application_pdf')
     expect(content).toContain('Agent steps must include `prompt_template`')
     expect(content).toContain('Use only supported step types')
+    expect(content).toContain(`assistant_contract_version: ${BUILDER_ASSISTANT_CONTRACT_VERSION}`)
     expect(content).toContain('Data-path and mapping guidance:')
   })
 })

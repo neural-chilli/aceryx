@@ -19,6 +19,14 @@ const emit = defineEmits<{
   update: [config: Record<string, unknown>]
 }>()
 
+function documentPathValue(): string {
+  return String(props.config.document_path ?? props.config.document_ref ?? '').trim()
+}
+
+function schemaValue(): string {
+  return String(props.config.schema ?? props.config.schema_name ?? props.config.schema_id ?? '').trim()
+}
+
 function reviewConfig(): Record<string, unknown> {
   const raw = props.config.on_review
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
@@ -40,7 +48,7 @@ function schemaOptions() {
     label: schema.name,
     value: schema.id,
   }))
-  const current = String(props.config.schema ?? '').trim()
+  const current = schemaValue()
   if (current && !options.some((option) => option.value === current)) {
     options.unshift({ label: `${current} (custom)`, value: current })
   }
@@ -54,21 +62,21 @@ function schemaOptions() {
 
     <label>Document Path</label>
     <InputText
-      :model-value="String(config.document_path ?? '')"
+      :model-value="documentPathValue()"
       placeholder="case.data.attachments[0].vault_id"
-      @update:model-value="(value) => emit('update', { ...config, document_path: value })"
+      @update:model-value="(value) => emit('update', { ...config, document_path: value, document_ref: value })"
     />
 
     <label>Schema</label>
     <Select
-      :model-value="String(config.schema ?? '')"
+      :model-value="schemaValue()"
       :options="schemaOptions()"
       option-label="label"
       option-value="value"
       filter
       show-clear
       placeholder="Select extraction schema"
-      @update:model-value="(value) => emit('update', { ...config, schema: String(value ?? '') })"
+      @update:model-value="(value) => emit('update', { ...config, schema: String(value ?? ''), schema_name: String(value ?? '') })"
     />
 
     <label>Model</label>

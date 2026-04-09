@@ -52,11 +52,15 @@ export function missingConfigMessages(step: WorkflowStep): string[] {
     case 'ai_component':
       return [...(cfg.component ? [] : ['choose an AI component'])]
     case 'extraction':
-      return [
-        ...(cfg.document_path ? [] : ['set document path']),
-        ...(cfg.schema ? [] : ['set extraction schema']),
-        ...(cfg.output_path ? [] : ['set output path']),
-      ]
+      {
+        const hasDocumentRef = Boolean(cfg.document_path || cfg.document_ref)
+        const hasSchemaRef = Boolean(cfg.schema || cfg.schema_name || cfg.schema_id)
+        return [
+          ...(hasDocumentRef ? [] : ['set document path']),
+          ...(hasSchemaRef ? [] : ['set extraction schema']),
+          ...(cfg.output_path ? [] : ['set output path']),
+        ]
+      }
     case 'rule':
       return [...(typeof step.outcomes === 'object' && Object.keys(step.outcomes ?? {}).length > 0 ? [] : ['define at least one outcome'])]
     case 'timer':
@@ -83,10 +87,24 @@ export function expressionFields(step: WorkflowStep): Array<{ label: string; val
         }
       }
     } else {
-      const outcomes = cfg.outcomes as Array<{ condition?: string; name?: string }> | undefined
-      for (const outcome of outcomes ?? []) {
-        if (outcome.condition) {
-          out.push({ label: `outcome:${outcome.name ?? 'unnamed'}`, value: outcome.condition })
+      const rawOutcomes = cfg.outcomes as unknown
+      if (Array.isArray(rawOutcomes)) {
+        const outcomes = rawOutcomes as Array<{ condition?: string; name?: string }>
+        for (const outcome of outcomes) {
+          if (outcome.condition) {
+            out.push({ label: `outcome:${outcome.name ?? 'unnamed'}`, value: outcome.condition })
+          }
+        }
+      } else if (rawOutcomes && typeof rawOutcomes === 'object') {
+        const outcomesMap = rawOutcomes as Record<string, unknown>
+        for (const [name, rawValue] of Object.entries(outcomesMap)) {
+          if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) {
+            continue
+          }
+          const condition = String((rawValue as Record<string, unknown>).condition ?? '').trim()
+          if (condition.length > 0) {
+            out.push({ label: `outcome:${name}`, value: condition })
+          }
         }
       }
     }
@@ -137,7 +155,7 @@ export function summarizeStep(step: WorkflowStep): string[] {
       ]
     case 'extraction':
       return [
-        `schema: ${String(cfg.schema ?? '-')}`,
+        `schema: ${String(cfg.schema ?? cfg.schema_name ?? cfg.schema_id ?? '-')}`,
         `output: ${String(cfg.output_path ?? '-')}`,
       ]
     case 'rule':

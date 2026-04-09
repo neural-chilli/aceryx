@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -13,11 +14,16 @@ import (
 )
 
 type Service struct {
-	db *sql.DB
+	db      *sql.DB
+	catalog aiComponentCatalog
 }
 
 func NewService(db *sql.DB) *Service {
 	return &Service{db: db}
+}
+
+func (s *Service) SetAIComponentCatalog(catalog aiComponentCatalog) {
+	s.catalog = catalog
 }
 
 func (s *Service) List(ctx context.Context, tenantID uuid.UUID) ([]Workflow, error) {
@@ -171,7 +177,7 @@ WHERE w.id = $1
 	return nil
 }
 
-func (s *Service) PublishDraft(ctx context.Context, tenantID, workflowID uuid.UUID) error {
+func (s *Service) PublishDraft(ctx context.Context, tenantID, actorID, workflowID uuid.UUID) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("begin publish workflow tx: %w", err)
@@ -179,21 +185,46 @@ func (s *Service) PublishDraft(ctx context.Context, tenantID, workflowID uuid.UU
 	defer func() { _ = tx.Rollback() }()
 
 	var (
-		draftID uuid.UUID
-		astRaw  []byte
+		draftID        uuid.UUID
+		draftVersion   int
+		astRaw         []byte
+		draftYAML      string
+		draftCreatedBy uuid.UUID
 	)
 	err = tx.QueryRowContext(ctx, `
-SELECT wv.id, wv.ast
+SELECT wv.id, wv.version, wv.ast, COALESCE(wv.yaml_source, ''), wv.created_by
 FROM workflows w
 JOIN workflow_versions wv ON wv.workflow_id = w.id
 WHERE w.id = $1 AND w.tenant_id = $2 AND wv.status = 'draft'
 ORDER BY wv.version DESC
 LIMIT 1
-`, workflowID, tenantID).Scan(&draftID, &astRaw)
+`, workflowID, tenantID).Scan(&draftID, &draftVersion, &astRaw, &draftYAML, &draftCreatedBy)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			var publishedExists bool
+			publishedErr := tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1
+  FROM workflows w
+  JOIN workflow_versions wv ON wv.workflow_id = w.id
+  WHERE w.id = $1
+    AND w.tenant_id = $2
+    AND wv.status = 'published'
+)
+`, workflowID, tenantID).Scan(&publishedExists)
+			if publishedErr != nil {
+				return publishedErr
+			}
+			if publishedExists {
+				if err := tx.Commit(); err != nil {
+					return fmt.Errorf("commit idempotent publish tx: %w", err)
+				}
+				return nil
+			}
+		}
 		return err
 	}
-	if err := validateWorkflowAST(astRaw); err != nil {
+	if err := validatePublishWorkflow(ctx, tenantID, astRaw, s.catalog); err != nil {
 		return err
 	}
 
@@ -218,10 +249,25 @@ WHERE id = $1
 		return fmt.Errorf("publish draft version: %w", err)
 	}
 
+	nextVersion := draftVersion + 1
+	if _, err := tx.ExecContext(ctx, `
+INSERT INTO workflow_versions (workflow_id, version, status, ast, yaml_source, created_by)
+VALUES ($1, $2, 'draft', $3::jsonb, $4, $5)
+`, workflowID, nextVersion, string(astRaw), draftYAML, nonZeroUUID(actorID, draftCreatedBy)); err != nil {
+		return fmt.Errorf("create post-publish draft version: %w", err)
+	}
+
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit publish workflow tx: %w", err)
 	}
 	return nil
+}
+
+func nonZeroUUID(primary uuid.UUID, fallback uuid.UUID) uuid.UUID {
+	if primary != uuid.Nil {
+		return primary
+	}
+	return fallback
 }
 
 func (s *Service) ExportYAMLLatest(ctx context.Context, tenantID, workflowID uuid.UUID) (string, error) {

@@ -30,20 +30,21 @@ LIMIT 1
 	return ct, nil
 }
 
-func resolveLatestPublishedWorkflowTx(ctx context.Context, tx *sql.Tx, tenantID uuid.UUID, caseType string) (uuid.UUID, int, []byte, error) {
+func resolveLatestPublishedWorkflowTx(ctx context.Context, tx *sql.Tx, tenantID uuid.UUID, caseTypeName string, caseTypeID uuid.UUID) (uuid.UUID, int, []byte, error) {
 	var workflowID uuid.UUID
 	var version int
 	var ast []byte
+	caseTypeIDText := strings.TrimSpace(caseTypeID.String())
 	err := tx.QueryRowContext(ctx, `
 SELECT w.id, wv.version, wv.ast
 FROM workflows w
 JOIN workflow_versions wv ON wv.workflow_id = w.id
 WHERE w.tenant_id = $1
-  AND w.case_type = $2
+  AND (w.case_type = $2 OR w.case_type = $3)
   AND wv.status = 'published'
 ORDER BY wv.version DESC
 LIMIT 1
-`, tenantID, caseType).Scan(&workflowID, &version, &ast)
+`, tenantID, caseTypeName, caseTypeIDText).Scan(&workflowID, &version, &ast)
 	if err != nil {
 		return uuid.Nil, 0, nil, err
 	}

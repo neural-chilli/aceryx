@@ -1,0 +1,126 @@
+{
+  "steps": [
+    {
+      "id": "extract_claim",
+      "type": "extraction",
+      "depends_on": [],
+      "config": {
+        "document_ref": "case.data.documents.claim_pdf",
+        "schema_name": "insurance_claim_pdf",
+        "output_path": "case.data.extraction.claim"
+      }
+    },
+    {
+      "id": "score_urgency",
+      "type": "ai_component",
+      "depends_on": [
+        "extract_claim"
+      ],
+      "config": {
+        "component": "urgency_scoring",
+        "input_paths": {
+          "claim_text": "case.data.extraction.claim.text"
+        },
+        "output_path": "case.data.ai.urgency"
+      }
+    },
+    {
+      "id": "route_urgency",
+      "type": "rule",
+      "depends_on": [
+        "score_urgency"
+      ],
+      "outcomes": {
+        "fast_track": [
+          "fast_track_review"
+        ],
+        "standard": [
+          "standard_review"
+        ]
+      },
+      "config": {
+        "expression": "case.data.ai.urgency.urgency_score",
+        "outcomes": [
+          {
+            "condition": "case.data.ai.urgency.urgency_score >= 0.70",
+            "name": "fast_track",
+            "target": "fast_track_review"
+          },
+          {
+            "condition": "case.data.ai.urgency.urgency_score < 0.70",
+            "name": "standard",
+            "target": "standard_review"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fast_track_review",
+      "type": "human_task",
+      "depends_on": [
+        "route_urgency"
+      ],
+      "config": {
+        "assignee": "fast_track_adjuster",
+        "form_schema": {
+          "actions": [
+            {
+              "label": "Submit",
+              "style": "primary",
+              "value": "submit"
+            }
+          ],
+          "fields": [
+            {
+              "bind": "triage_notes",
+              "label": "Triage notes",
+              "required": true,
+              "type": "textarea"
+            }
+          ],
+          "title": "fast_track_review"
+        }
+      }
+    },
+    {
+      "id": "standard_review",
+      "type": "human_task",
+      "depends_on": [
+        "route_urgency"
+      ],
+      "config": {
+        "assignee": "claims_adjuster",
+        "form_schema": {
+          "actions": [
+            {
+              "label": "Submit",
+              "style": "primary",
+              "value": "submit"
+            }
+          ],
+          "fields": [
+            {
+              "bind": "review_notes",
+              "label": "Review notes",
+              "required": true,
+              "type": "textarea"
+            }
+          ],
+          "title": "standard_review"
+        }
+      }
+    },
+    {
+      "id": "completion_notification",
+      "type": "notification",
+      "depends_on": [
+        "fast_track_review",
+        "standard_review"
+      ],
+      "config": {
+        "channel": "email",
+        "message": "Claim intake complete"
+      }
+    }
+  ]
+}

@@ -1,6 +1,11 @@
 package assistant
 
 import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -181,6 +186,8 @@ func TestNormalizeToBuilderASTYAML_ExtractionStepAlias(t *testing.T) {
       document_path: case.data.attachments[0].vault_id
       schema: loan_application_pdf
       output_path: case.data.extracted
+      on_review: extraction_review
+      on_reject: manual_data_entry
 `
 
 	normalized, err := normalizeToBuilderASTYAML(input)
@@ -197,4 +204,272 @@ func TestNormalizeToBuilderASTYAML_ExtractionStepAlias(t *testing.T) {
 	if got := step["type"]; got != "extraction" {
 		t.Fatalf("expected normalized step type extraction, got: %#v", got)
 	}
+	cfg := step["config"].(map[string]any)
+	onReview, ok := cfg["on_review"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected on_review object alias normalization")
+	}
+	if got := onReview["task_type"]; got != "extraction_review" {
+		t.Fatalf("expected on_review.task_type alias normalization, got: %#v", got)
+	}
+	onReject, ok := cfg["on_reject"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected on_reject object alias normalization")
+	}
+	if got := onReject["goto"]; got != "manual_data_entry" {
+		t.Fatalf("expected on_reject.goto alias normalization, got: %#v", got)
+	}
+}
+
+func TestNormalizeToBuilderASTYAML_RuleOutcomesFromConfig(t *testing.T) {
+	input := `steps:
+  - id: review_decision
+    type: rule
+    depends_on: []
+    config:
+      expression: case.data.score
+      outcomes:
+        - name: approve
+          condition: case.data.score >= 0.8
+          target: approved_notification
+        - name: reject
+          condition: case.data.score < 0.8
+          targets: [manual_review]
+`
+
+	normalized, err := normalizeToBuilderASTYAML(input)
+	if err != nil {
+		t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+	}
+
+	var ast map[string]any
+	if err := yaml.Unmarshal([]byte(normalized), &ast); err != nil {
+		t.Fatalf("unmarshal normalized yaml: %v", err)
+	}
+	steps := ast["steps"].([]any)
+	step := steps[0].(map[string]any)
+	outcomes, ok := step["outcomes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected synthesized rule outcomes on step")
+	}
+	approve := outcomes["approve"].([]any)
+	if len(approve) != 1 || approve[0] != "approved_notification" {
+		t.Fatalf("expected approve route to approved_notification, got %#v", outcomes["approve"])
+	}
+	reject := outcomes["reject"].([]any)
+	if len(reject) != 1 || reject[0] != "manual_review" {
+		t.Fatalf("expected reject route to manual_review, got %#v", outcomes["reject"])
+	}
+}
+
+func TestNormalizeToBuilderASTYAML_RuleOutcomesFromConfigMap(t *testing.T) {
+	input := `steps:
+  - id: route_review_decision
+    type: rule
+    depends_on: []
+    config:
+      outcomes:
+        approved:
+          condition: case.data.review.decision == 'approve'
+          next_step: insert_customer_onboarding_record
+        rejected:
+          condition: case.data.review.decision == 'reject'
+          next_step: capture_customer_pdf
+`
+
+	normalized, err := normalizeToBuilderASTYAML(input)
+	if err != nil {
+		t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+	}
+
+	var ast map[string]any
+	if err := yaml.Unmarshal([]byte(normalized), &ast); err != nil {
+		t.Fatalf("unmarshal normalized yaml: %v", err)
+	}
+	steps := ast["steps"].([]any)
+	step := steps[0].(map[string]any)
+	outcomes, ok := step["outcomes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected synthesized rule outcomes on step from map-style config")
+	}
+	approve := outcomes["approved"].([]any)
+	if len(approve) != 1 || approve[0] != "insert_customer_onboarding_record" {
+		t.Fatalf("expected approved route mapping, got %#v", outcomes["approved"])
+	}
+	reject := outcomes["rejected"].([]any)
+	if len(reject) != 1 || reject[0] != "capture_customer_pdf" {
+		t.Fatalf("expected rejected route mapping, got %#v", outcomes["rejected"])
+	}
+}
+
+func TestNormalizeToBuilderASTYAML_RuleOutcomesFromRunWhenBranches(t *testing.T) {
+	input := `steps:
+  - id: review_decision
+    type: rule
+    depends_on: [verify_extracted_details]
+    config:
+      outcomes:
+        approved: "case.steps.verify_extracted_details.result.action == 'approve'"
+        rejected: "case.steps.verify_extracted_details.result.action == 'reject'"
+  - id: insert_customer_onboarding
+    type: integration
+    depends_on: [review_decision]
+    config:
+      connector: postgres
+      action: insert
+      run_when: "case.steps.review_decision.result.outcome == 'approved'"
+  - id: reupload_corrected_pdf
+    type: human_task
+    depends_on: [review_decision]
+    config:
+      assign_to_role: operations
+      form_schema:
+        title: Re-upload
+        fields: []
+        actions: []
+      run_when: "case.steps.review_decision.result.outcome == 'rejected'"
+`
+
+	normalized, err := normalizeToBuilderASTYAML(input)
+	if err != nil {
+		t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+	}
+
+	var ast map[string]any
+	if err := yaml.Unmarshal([]byte(normalized), &ast); err != nil {
+		t.Fatalf("unmarshal normalized yaml: %v", err)
+	}
+	steps := ast["steps"].([]any)
+	rule := steps[0].(map[string]any)
+	outcomes, ok := rule["outcomes"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected synthesized rule outcomes from run_when branches")
+	}
+	approved := outcomes["approved"].([]any)
+	if len(approved) != 1 || approved[0] != "insert_customer_onboarding" {
+		t.Fatalf("expected approved route to insert_customer_onboarding, got %#v", outcomes["approved"])
+	}
+	rejected := outcomes["rejected"].([]any)
+	if len(rejected) != 1 || rejected[0] != "reupload_corrected_pdf" {
+		t.Fatalf("expected rejected route to reupload_corrected_pdf, got %#v", outcomes["rejected"])
+	}
+}
+
+func TestNormalizeToBuilderASTYAML_GoldenPromptFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtureDir := filepath.Join("..", "..", "tests", "fixtures", "ai_builder_golden")
+	assertFixtureExists(t, fixtureDir, "prompt-a-assistant-raw.json")
+	assertFixtureExists(t, fixtureDir, "prompt-b-assistant-raw.json")
+	assertFixtureExists(t, fixtureDir, "prompt-a-normalized.json")
+	assertFixtureExists(t, fixtureDir, "prompt-b-normalized.json")
+
+	for _, tc := range []struct {
+		name           string
+		rawFixture     string
+		oracleFixture  string
+		thresholdToken string
+	}{
+		{
+			name:           "prompt_a",
+			rawFixture:     "prompt-a-assistant-raw.json",
+			oracleFixture:  "prompt-a-normalized.json",
+			thresholdToken: "0.80",
+		},
+		{
+			name:           "prompt_b",
+			rawFixture:     "prompt-b-assistant-raw.json",
+			oracleFixture:  "prompt-b-normalized.json",
+			thresholdToken: "0.70",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rawYAML := loadRawFixtureYAML(t, filepath.Join(fixtureDir, tc.rawFixture))
+			if !strings.Contains(rawYAML, tc.thresholdToken) {
+				t.Fatalf("raw fixture must pin routing threshold %s", tc.thresholdToken)
+			}
+
+			firstNormalized, err := normalizeToBuilderASTYAML(rawYAML)
+			if err != nil {
+				t.Fatalf("normalizeToBuilderASTYAML returned error: %v", err)
+			}
+			secondNormalized, err := normalizeToBuilderASTYAML(firstNormalized)
+			if err != nil {
+				t.Fatalf("normalize(normalized) returned error: %v", err)
+			}
+
+			firstObj := mustYAMLObject(t, firstNormalized)
+			secondObj := mustYAMLObject(t, secondNormalized)
+			if !reflect.DeepEqual(firstObj, secondObj) {
+				t.Fatalf("expected normalization idempotency for fixture %s", tc.rawFixture)
+			}
+
+			wantObj := loadNormalizedOracle(t, filepath.Join(fixtureDir, tc.oracleFixture))
+			if !reflect.DeepEqual(firstObj, wantObj) {
+				t.Fatalf("normalized output mismatch for fixture %s", tc.rawFixture)
+			}
+		})
+	}
+}
+
+func TestNormalizeToBuilderASTYAML_RejectsUnknownStepTypeAlias(t *testing.T) {
+	input := `steps:
+  - id: bad
+    type: magical_step
+    config: {}`
+	_, err := normalizeToBuilderASTYAML(input)
+	if err == nil {
+		t.Fatal("expected unknown step type alias to be rejected")
+	}
+	if !strings.Contains(err.Error(), "unknown step type") {
+		t.Fatalf("expected unknown step type error, got %v", err)
+	}
+}
+
+func assertFixtureExists(t *testing.T, fixtureDir, filename string) {
+	t.Helper()
+	path := filepath.Join(fixtureDir, filename)
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected fixture at %s: %v", path, err)
+	}
+}
+
+func loadRawFixtureYAML(t *testing.T, path string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read raw fixture %s: %v", path, err)
+	}
+	var payload struct {
+		YAML string `json:"yaml"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		t.Fatalf("decode raw fixture %s: %v", path, err)
+	}
+	if strings.TrimSpace(payload.YAML) == "" {
+		t.Fatalf("raw fixture %s missing yaml payload", path)
+	}
+	return payload.YAML
+}
+
+func loadNormalizedOracle(t *testing.T, path string) map[string]any {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read oracle fixture %s: %v", path, err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(data, &out); err != nil {
+		t.Fatalf("decode oracle fixture %s: %v", path, err)
+	}
+	return out
+}
+
+func mustYAMLObject(t *testing.T, raw string) map[string]any {
+	t.Helper()
+	var out map[string]any
+	if err := yaml.Unmarshal([]byte(raw), &out); err != nil {
+		t.Fatalf("decode yaml object: %v", err)
+	}
+	return out
 }

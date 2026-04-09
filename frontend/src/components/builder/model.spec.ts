@@ -151,4 +151,47 @@ describe('builder model', () => {
     const ast = sampleAST()
     expect(normalizeForRoundTrip(ast)).toEqual(normalizeForRoundTrip(JSON.parse(JSON.stringify(ast))))
   })
+
+  it('handles rule config outcomes object map without throwing', () => {
+    const ast: WorkflowAST = {
+      steps: [
+        {
+          id: 'route_review_decision',
+          type: 'rule',
+          depends_on: [],
+          outcomes: {
+            approved: 'insert_customer_onboarding',
+            rejected: 'capture_customer_pdf',
+          },
+          config: {
+            outcomes: {
+              approved: { condition: "case.data.review.decision == 'approve'", next_step: 'insert_customer_onboarding' },
+              rejected: { condition: "case.data.review.decision == 'reject'", next_step: 'capture_customer_pdf' },
+            },
+          },
+        },
+      ],
+    }
+    expect(() => validateAST(ast)).not.toThrow()
+  })
+
+  it('treats extraction canonical aliases as complete config', () => {
+    const ast: WorkflowAST = {
+      steps: [
+        {
+          id: 'extract_customer_details',
+          type: 'extraction',
+          depends_on: [],
+          config: {
+            document_ref: 'case.data.capture.customer_pdf',
+            schema_name: 'customer_onboarding_schema',
+            output_path: 'case.data.extracted.customer',
+          },
+        },
+      ],
+    }
+    const issues = validateAST(ast)
+    expect(issues.some((issue) => issue.code === 'missing_config' && issue.stepId === 'extract_customer_details')).toBe(false)
+    expect(issues.some((issue) => issue.code === 'missing_config_field' && issue.stepId === 'extract_customer_details')).toBe(false)
+  })
 })

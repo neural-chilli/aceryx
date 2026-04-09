@@ -69,6 +69,7 @@ type MessageRequest struct {
 }
 
 type PromptPackInput struct {
+	ContractVersion string `json:"contract_version,omitempty"`
 	FrontendContext string `json:"frontend_context,omitempty"`
 }
 

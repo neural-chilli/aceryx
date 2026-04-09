@@ -121,7 +121,7 @@ function doRename() {
         @update:model-value="(value) => patchConfig({ ...(step?.config ?? {}), label: value })"
       />
 
-      <label>Guard Condition</label>
+      <label>Run When</label>
       <ExpressionEditor
         :model-value="String(step.condition ?? '')"
         :fields="availableFields"

@@ -1,3 +1,5 @@
+export const BUILDER_ASSISTANT_CONTRACT_VERSION = '2026-04-08-a1'
+
 export function extractAssistantYAML(payload: Record<string, unknown>): string {
   const yamlAfter = String(payload.yaml_after ?? '').trim()
   if (yamlAfter) {
@@ -162,6 +164,7 @@ export function buildBuilderAssistantPromptPack(input: {
   }))
 
   const contract = [
+    `assistant_contract_version: ${BUILDER_ASSISTANT_CONTRACT_VERSION}`,
     'Builder AST and schema contract:',
     '- Top-level must include `steps` array.',
     '- Use only supported step types: `human_task`, `agent`, `ai_component`, `extraction`, `integration`, `rule`, `timer`, `notification`.',

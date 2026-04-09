@@ -61,4 +61,63 @@ describe('Builder view mobile gating', () => {
 
     expect(wrapper.text()).toContain('Unable to load')
   })
+
+  it('renders structured publish validation errors from backend payload', async () => {
+    setViewport(1280)
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url === '/workflows' || url === '/connectors' || url === '/prompt-templates') {
+        return new Response(JSON.stringify([]), { status: 200 })
+      }
+      if (url === '/api/v1/ai-components' || url === '/api/v1/extraction-schemas') {
+        return new Response(JSON.stringify({ items: [] }), { status: 200 })
+      }
+      if (url.endsWith('/publish') && init?.method === 'POST') {
+        return new Response(
+          JSON.stringify({
+            errors: [
+              {
+                stepId: 'risk_step',
+                field: 'config.component',
+                code: 'INVALID_COMPONENT_REF',
+                message: 'Component does_not_exist_component is not registered',
+                suggestion: 'Use one of: document_extraction, sentiment_analysis',
+              },
+            ],
+          }),
+          { status: 400 },
+        )
+      }
+      return new Response(JSON.stringify([]), { status: 200 })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(BuilderView, {
+      global: {
+        plugins: [[PrimeVue, { theme: { preset: Aura } }]],
+        stubs: {
+          StepPalette: true,
+          WorkflowCanvas: true,
+          StepConfigPanel: true,
+          ValidationPanel: true,
+          WorkflowToolbar: {
+            emits: ['publish', 'save', 'openAssistant', 'exportYaml', 'importYaml'],
+            template: '<button data-testid="publish-btn" @click="$emit(`publish`)">Publish</button>',
+          },
+        },
+      },
+    })
+    await flushPromises()
+
+    const vm = wrapper.vm as unknown as { selectedWorkflowID: string }
+    vm.selectedWorkflowID = 'wf-1'
+
+    await wrapper.get('[data-testid="publish-btn"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('INVALID_COMPONENT_REF')
+    expect(wrapper.text()).toContain('Component does_not_exist_component is not registered')
+    expect(wrapper.text()).toContain('Use one of: document_extraction, sentiment_analysis')
+  })
 })
